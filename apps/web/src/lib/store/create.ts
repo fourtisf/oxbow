@@ -18,6 +18,8 @@ export interface CreateForm {
   lock: LockKind;
   days: number;
   lpct: number;
+  /** Creator confirmed the token's risk warnings (step 1). Reset when the mint changes. */
+  ack: boolean;
 }
 
 const initial: CreateForm = {
@@ -30,6 +32,7 @@ const initial: CreateForm = {
   lock: 'burn',
   days: 180,
   lpct: 100,
+  ack: false,
 };
 
 interface CreateState extends CreateForm {
@@ -45,7 +48,7 @@ interface CreateState extends CreateForm {
  */
 export const useCreateForm = create<CreateState>((set) => ({
   ...initial,
-  set: (patch) => set(patch),
+  set: (patch) => set(patch.mint !== undefined ? { ...patch, ack: false } : patch),
   setQuote: (sym) => set({ quote: sym, qamt: '' }),
   reset: () => set(initial),
 }));

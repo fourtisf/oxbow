@@ -41,3 +41,164 @@ a.fchip,a.fi,a.mv{text-decoration:none;color:inherit}
 
 /* Footer column titles are <h2> (were <h5>) for a valid heading order; same look as `.fgrid h5`. */
 .fgrid h2{font:500 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--text3);margin-bottom:14px}
+
+/* ---------- Post-M1 additions (safety, market hours, trading, i18n, legal, status) ---------- */
+
+/* Safety mark next to a pair, and the level pill in the drawer. */
+.smark{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:7px;vertical-align:-3px;border-radius:5px}
+.smark.caution{color:var(--amber);background:rgba(255,184,107,.12)}
+.smark.danger{color:var(--down);background:rgba(255,90,110,.14)}
+.spill{font:600 10.5px var(--mono);letter-spacing:.1em;padding:4px 8px;border-radius:7px;white-space:nowrap}
+.spill.ok{color:var(--up);background:rgba(61,220,151,.1)}
+.spill.caution{color:var(--amber);background:rgba(255,184,107,.1)}
+.spill.danger{color:var(--down);background:rgba(255,90,110,.12)}
+.sfty{display:flex;align-items:center;gap:10px;font-size:14.5px;color:var(--text2);margin-bottom:12px}
+.flags{list-style:none;display:grid;gap:8px;margin-bottom:14px}
+.flags li{display:flex;gap:8px;align-items:flex-start;font-size:14px;line-height:1.45}
+.flags li svg{flex:none;margin-top:3px}
+.flags li.caution{color:#FFDDB8}
+.flags li.danger{color:#FFC2C8}
+.fine{font-size:13px;color:var(--text2);margin-top:10px;line-height:1.5}
+
+/* Stock market session chip. */
+.mchip{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px 8px;width:max-content;max-width:100%;font:600 10.5px var(--mono);letter-spacing:.1em;padding:5px 9px;border-radius:8px}
+.mchip .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.mchip .when{color:var(--text2);letter-spacing:.04em;font-weight:500}
+.mchip.open{color:var(--up);background:rgba(61,220,151,.08);box-shadow:inset 0 0 0 1px rgba(61,220,151,.2)}
+.mchip.closed{color:var(--amber);background:rgba(255,184,107,.08);box-shadow:inset 0 0 0 1px rgba(255,184,107,.2)}
+.vnotice{font-size:13px;color:#FFDDB8;line-height:1.45}
+.mnow{display:flex;align-items:center;gap:14px;margin-top:20px;flex-wrap:wrap}
+
+/* Launch-day empty states. */
+.feed-empty{padding:28px 20px;color:var(--text2);font-size:14.5px}
+.mv-empty{padding:0 20px;color:var(--text2);font-size:14px;line-height:66px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fi.watched{box-shadow:inset 2px 0 0 var(--amber)}
+
+/* Watchlist. */
+.wtoggle{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 14px;border-radius:12px;box-shadow:inset 0 0 0 1px var(--stroke2);background:rgba(3,6,12,.55);color:var(--text2);font-size:14px;font-weight:500}
+.wtoggle[aria-pressed="true"]{color:var(--text);box-shadow:inset 0 0 0 1px rgba(255,184,107,.5)}
+.wtoggle[aria-pressed="true"] svg{color:var(--amber)}
+.pair .star{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--text3);flex:none;transition:color .15s,background .15s}
+.pair .star:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.star[aria-pressed="true"]{color:var(--amber)}
+
+/* Drawer header actions, share menu, chart controls. */
+.dh-acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+.share{position:relative}
+.sharemenu{position:absolute;right:0;top:calc(100% + 8px);min-width:190px;display:grid;padding:6px;border-radius:14px;background:rgba(12,22,37,.97);box-shadow:inset 0 0 0 1px var(--stroke2),0 30px 60px -20px rgba(0,0,0,.9);z-index:5}
+.sharemenu a,.sharemenu button{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;color:var(--text);text-decoration:none;font:500 14px var(--sans);text-align:left}
+.sharemenu a:hover,.sharemenu button:hover{background:rgba(158,207,255,.08)}
+.dt-ctrls{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+/* Explorer links, recent trades, proof links. */
+.xlink{display:inline-flex;align-items:center;gap:5px;color:var(--ice2);text-decoration:none;font:500 13px var(--mono)}
+.xlink:hover{text-decoration:underline;text-underline-offset:3px}
+.links{display:flex;flex-wrap:wrap;gap:8px}
+.links .xlink{height:34px;padding:0 12px;border-radius:9px;box-shadow:inset 0 0 0 1px var(--stroke2);background:rgba(3,6,12,.45)}
+.legend span.hl{margin-left:0;font:inherit;color:inherit;display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.legend span.hl .xlink{font-size:12px}
+.ttable{width:100%;border-collapse:collapse;font:500 13px var(--mono)}
+.ttable th{font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--text3);text-align:left;padding:8px 6px;border-bottom:1px solid var(--stroke)}
+.ttable td{padding:9px 6px;border-bottom:1px solid rgba(170,205,240,.06);white-space:nowrap}
+.ttable tr:last-child td{border-bottom:0}
+.ttable .ft{display:inline-block;padding:3px 7px}
+
+/* Trade box: tabs + settings, buy/sell, flip, slippage. */
+.trade-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}
+.trade-h .ttabs{margin-bottom:0}
+.trade-h .gear{width:34px;height:34px}
+.slip{padding:12px 14px;border-radius:14px;background:rgba(3,6,12,.5);box-shadow:inset 0 0 0 1px var(--stroke);margin-bottom:12px}
+.slip .flabel{margin-bottom:0}
+.slip .chips{margin-top:8px;align-items:center}
+.slip-custom{display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 10px;border-radius:9px;box-shadow:inset 0 0 0 1px var(--stroke2);color:var(--text2);font:600 12px var(--mono)}
+.slip-custom:focus-within{box-shadow:inset 0 0 0 1px var(--ice2)}
+.slip-custom input{width:44px;background:none;border:0;outline:none;color:var(--text);font:inherit;text-align:right}
+.slip .err{margin-top:8px;font-size:13px}
+.bsseg{display:grid;grid-template-columns:1fr 1fr;padding:3px;border-radius:12px;background:rgba(3,6,12,.5);box-shadow:inset 0 0 0 1px var(--stroke);margin-bottom:10px}
+.bsseg button{height:36px;border-radius:9px;font:600 13.5px var(--sans);color:var(--text3);transition:background .15s,color .15s}
+.bsseg .b[aria-pressed="true"]{background:rgba(61,220,151,.14);color:var(--up)}
+.bsseg .s[aria-pressed="true"]{background:rgba(255,90,110,.14);color:var(--down)}
+.flip{position:relative;z-index:1;display:grid;place-items:center;width:34px;height:34px;margin:-10px auto;border-radius:10px;background:#0B1626;box-shadow:inset 0 0 0 1px var(--stroke2);color:var(--ice2);transition:transform .2s var(--ease)}
+.flip:hover{transform:rotate(180deg)}
+.maxbtn{color:var(--ice2);font:600 11.5px var(--mono);letter-spacing:.08em;margin-left:4px}
+.getlink{display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:var(--ice2);font:600 12.5px var(--mono);text-decoration:none}
+.getlink:hover{text-decoration:underline;text-underline-offset:3px}
+.ilnote{font-size:13.5px;color:var(--text2);margin:0 2px 14px;line-height:1.5}
+.btn.sellbtn{background:linear-gradient(180deg,#FFB1BB 0%,#FF7A8B 60%,#FF5A6E 100%);color:#2A0309;box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 0 0 1px rgba(255,140,155,.55),0 16px 40px -14px rgba(255,90,110,.75)}
+
+/* Checkboxes: wallet terms gate, risk acknowledgment. */
+.check{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--text2);line-height:1.5;cursor:pointer}
+.check input{width:18px;height:18px;margin-top:2px;accent-color:var(--ice2);flex:none;cursor:pointer}
+.check a{color:var(--ice2);text-underline-offset:3px}
+.check.ack{margin-top:12px}
+.gate{display:grid;gap:8px;padding:14px;margin-bottom:14px;border-radius:14px;background:rgba(255,184,107,.06);box-shadow:inset 0 0 0 1px rgba(255,184,107,.2)}
+.gate p{color:var(--text2);font-size:14px}
+.witem[disabled]{opacity:.45;cursor:not-allowed}
+.witem[disabled]:hover{box-shadow:inset 0 0 0 1px var(--stroke2);background:rgba(3,6,12,.45)}
+.pv-note{margin:0 0 6px;font-size:13.5px}
+
+/* Dashboard: four summary cards, withdraw dialog, activity. */
+.dsum4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.wd .flabel{margin-bottom:10px}
+.wd-out{margin:18px 0}
+.wd-out dd{white-space:normal}
+.alist{list-style:none}
+.alist li{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:12px 24px;border-bottom:1px solid rgba(170,205,240,.06)}
+.alist li:last-child{border-bottom:0}
+.alist .ft{padding:4px 8px}
+.alist b{font:600 13.5px var(--mono);flex:1;min-width:0}
+.alist .amt{font:600 13.5px var(--mono)}
+.alist .when{color:var(--text2);font:500 12.5px var(--mono)}
+
+/* Docs impermanent-loss calculator. */
+.ilcalc{margin-top:22px;padding:20px;border-radius:16px;background:rgba(3,6,12,.45);box-shadow:inset 0 0 0 1px var(--stroke2);max-width:560px}
+.ilcalc > .label{display:block;margin-bottom:14px}
+.ilcalc label{display:flex;justify-content:space-between;align-items:baseline;font-size:14.5px;color:var(--text2);margin-bottom:14px}
+.ilcalc label b{color:var(--text);font-family:var(--mono)}
+
+/* Legal pages. */
+.legal{padding:34px 36px;max-width:880px}
+.legal .note{margin:0 0 8px}
+.legal section{margin-top:26px}
+.legal h2{font:600 19px var(--sans);letter-spacing:-.015em}
+.legal p{color:var(--text2);font-size:15.5px;line-height:1.7;margin-top:10px;max-width:72ch}
+.legal a{color:var(--ice2);text-underline-offset:3px}
+
+/* Status page. */
+.status .srow{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:16px 24px;border-bottom:1px solid rgba(170,205,240,.06)}
+.status .sname{font-weight:500}
+.status .sdetail{color:var(--text2);font:500 13px var(--mono)}
+.status .sstate,.status .mchip{margin-left:auto}
+.sstate{display:inline-flex;align-items:center;gap:8px;font:600 12px var(--mono);letter-spacing:.08em}
+.sstate .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+.sstate.ok{color:var(--up)}
+.sstate.degraded{color:var(--amber)}
+.sstate.down{color:var(--down)}
+
+/* Footer language switch. */
+.lang{display:flex;align-items:center;gap:6px;margin-top:18px;color:var(--text3)}
+.lang button{height:30px;padding:0 10px;border-radius:8px;font:600 12px var(--mono);letter-spacing:.06em;color:var(--text2);box-shadow:inset 0 0 0 1px var(--stroke2)}
+.lang button[aria-pressed="true"]{color:var(--ink);background:linear-gradient(180deg,#EAF5FF,#A8D3FF);box-shadow:none}
+
+@media (max-width:1180px){.dsum4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){
+  .legal{padding:26px 20px}
+  .alist li{padding:12px 16px}
+  .status .srow{padding:14px 16px}
+  .dt-chart-h{flex-wrap:wrap;gap:10px}
+}
+
+/* Lite mode (low-memory phones, data saver): no backdrop blur or grain. */
+.lite .card,.lite .nav,.lite .fchip,.lite .ca,.lite .mtabs,.lite .toast,.lite .drawer-h,.lite .scrim,.lite .modal{-webkit-backdrop-filter:none;backdrop-filter:none}
+.lite .grain{display:none}
+.sfty-kv dd{white-space:normal;line-height:1.3}
+
+/* Prototype bug fix: `.prow > div:not(:first-child)` also restyled the column titles and the buttons. */
+.prow.head > div:not(:first-child){font:inherit}
+.prow .acts .btn{font-family:var(--sans)}
+
+/* Longer translations wrap instead of being clipped by the gradient text box. */
+.hero h1 .l1,.hero h1 span{white-space:normal;text-wrap:balance}
+html[lang=id] .hero h1{font-size:clamp(40px,3.4vw,68px)}
+/* Phones: drop the wallet column so recent trades fit without sideways scrolling (the time still links to the transaction). */
+@media (max-width:560px){.ttable .tw{display:none}}

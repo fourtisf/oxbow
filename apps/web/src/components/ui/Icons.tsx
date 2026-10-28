@@ -152,3 +152,43 @@ export const BackIcon = (p: P) => (
     <path d="M16 10H4M9 5l-5 5 5 5" />
   </svg>
 );
+export const WarnIcon = (p: P) => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...base} {...p}>
+    <path d="M8 2.2 14.3 13.4H1.7L8 2.2Z" />
+    <path d="M8 6.6v3M8 11.6v.1" />
+  </svg>
+);
+export const StarIcon = ({ filled, ...p }: P & { filled?: boolean }) => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" {...base} {...p}>
+    <path d="m8 1.9 1.85 3.75 4.15.6-3 2.92.7 4.13L8 11.36 4.3 13.3l.7-4.13-3-2.92 4.15-.6L8 1.9Z" />
+  </svg>
+);
+export const ShareIcon = (p: P) => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" {...base} {...p}>
+    <path d="M8 10V2.5M5 5.2 8 2.3l3 2.9" />
+    <path d="M3.2 8.5v4.3c0 .5.4.9.9.9h7.8c.5 0 .9-.4.9-.9V8.5" />
+  </svg>
+);
+export const ExternalIcon = (p: P) => (
+  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...base} {...p}>
+    <path d="M9.5 2.5h4v4M13.5 2.5 7.8 8.2" />
+    <path d="M12 9.5v3.3c0 .4-.3.7-.7.7H3.2a.7.7 0 0 1-.7-.7V4.7c0-.4.3-.7.7-.7h3.3" />
+  </svg>
+);
+export const FlipIcon = (p: P) => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...base} {...p}>
+    <path d="M5 2.5v11M2.5 5 5 2.5 7.5 5M11 13.5v-11M8.5 11 11 13.5 13.5 11" />
+  </svg>
+);
+export const GearIcon = (p: P) => (
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...base} {...p}>
+    <circle cx="8" cy="8" r="2.2" />
+    <path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6" />
+  </svg>
+);
+export const GlobeIcon = (p: P) => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" {...base} {...p}>
+    <circle cx="8" cy="8" r="6" />
+    <path d="M2 8h12M8 2c1.8 1.8 2.6 3.8 2.6 6S9.8 12.2 8 14C6.2 12.2 5.4 10.2 5.4 8S6.2 3.8 8 2Z" />
+  </svg>
+);

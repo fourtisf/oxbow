@@ -27,3 +27,10 @@ Open `apps/web/screens/out/index.html`. Filter with `ONLY=home,drawer` and
 connected wallet address (random in both), and anti-aliasing on a few glyphs
 because the prototype loads Geist from Google Fonts while the app self-hosts
 the `geist` package build.
+
+Since M1 the app also adds things the prototype doesn't have, so these show
+up as intended differences too: token safety marks next to pair names,
+market-hours chips on stock cards, watchlist stars, the Buy / Sell toggle and
+slippage settings in the trade box, recent trades, on-chain links, the
+dashboard's profit / loss card and activity list, and the footer's legal links
+and language switch.

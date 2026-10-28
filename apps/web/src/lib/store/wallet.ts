@@ -3,7 +3,6 @@
 import { create } from 'zustand';
 import { b58, hash, rng } from '@oxbow/shared';
 import { seedMockPositions } from '../chain/mock';
-import { toast } from './toast';
 
 /**
  * Mock wallet for M1, with the prototype's "Select wallet" flow. M3 replaces
@@ -21,6 +20,25 @@ export const WALLETS: { name: string; bg: string }[] = [
   { name: 'Backpack', bg: 'linear-gradient(135deg,#FF6B6B,#C9262D)' },
 ];
 
+/** Bump when the Terms or Risk disclosure change materially, to ask again. */
+const TERMS_KEY = 'oxbow_terms_v1';
+
+export function termsAccepted(): boolean {
+  try {
+    return localStorage.getItem(TERMS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function acceptTerms() {
+  try {
+    localStorage.setItem(TERMS_KEY, '1');
+  } catch {
+    // Blocked storage: the visitor is asked again next visit.
+  }
+}
+
 interface WalletState {
   wallet: ConnectedWallet | null;
   modal: 'select' | 'account' | null;
@@ -29,7 +47,8 @@ interface WalletState {
   /** Opens the picker, or the account view when already connected. `after` runs once connected. */
   open(after?: () => void): void;
   close(): void;
-  connect(name: string): Promise<void>;
+  /** Resolves with the connected wallet, or null if a connection is already in progress. */
+  connect(name: string): Promise<ConnectedWallet | null>;
   disconnect(): void;
 }
 
@@ -44,22 +63,15 @@ export const useWallet = create<WalletState>((set, get) => ({
     set({ modal: null, after: null });
   },
   connect: async (name) => {
-    if (get().connecting) return;
+    if (get().connecting) return null;
     set({ connecting: name });
     await new Promise((r) => setTimeout(r, 850));
     seedMockPositions();
     const after = get().after;
-    set({
-      wallet: { name, address: b58(rng(hash(name + Date.now())), 44) },
-      connecting: null,
-      modal: null,
-      after: null,
-    });
-    toast('Connected ' + name);
+    const wallet = { name, address: b58(rng(hash(name + Date.now())), 44) };
+    set({ wallet, connecting: null, modal: null, after: null });
     after?.();
+    return wallet;
   },
-  disconnect: () => {
-    set({ wallet: null, modal: null });
-    toast('Wallet disconnected');
-  },
+  disconnect: () => set({ wallet: null, modal: null }),
 }));

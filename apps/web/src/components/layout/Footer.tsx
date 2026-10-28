@@ -1,8 +1,11 @@
 import Link from 'next/link';
+import { getLocale, getT } from '@/i18n/server';
 import { social } from '@/lib/site';
 import { FooterMark } from './BrandMark';
+import { LanguageSwitch } from './LanguageSwitch';
 
 export function Footer() {
+  const t = getT();
   return (
     <footer>
       <div className="wrap">
@@ -12,22 +15,27 @@ export function Footer() {
               <FooterMark />
               Oxbow
             </Link>
-            <p>Stock-paired liquidity pools for any token on Solana.</p>
+            <p>{t.footer.tagline}</p>
+            <LanguageSwitch locale={getLocale()} label={t.footer.language} />
           </div>
           <div>
-            <h2>Product</h2>
-            <Link href="/explore">Explore</Link>
-            <Link href="/create">Create pool</Link>
-            <Link href="/dashboard">Dashboard</Link>
+            <h2>{t.footer.product}</h2>
+            <Link href="/explore">{t.footer.explore}</Link>
+            <Link href="/create">{t.footer.create}</Link>
+            <Link href="/dashboard">{t.footer.dashboard}</Link>
+            <Link href="/status">{t.footer.status}</Link>
           </div>
           <div>
-            <h2>Resources</h2>
-            <Link href="/docs">Docs</Link>
-            <Link href="/docs#d-fees">Fees</Link>
-            <Link href="/docs#d-faq">FAQ</Link>
+            <h2>{t.footer.resources}</h2>
+            <Link href="/docs">{t.footer.docs}</Link>
+            <Link href="/docs#d-fees">{t.footer.fees}</Link>
+            <Link href="/docs#d-faq">{t.footer.faq}</Link>
+            <Link href="/terms">{t.footer.terms}</Link>
+            <Link href="/privacy">{t.footer.privacy}</Link>
+            <Link href="/risk">{t.footer.risk}</Link>
           </div>
           <div>
-            <h2>Community</h2>
+            <h2>{t.footer.community}</h2>
             <a href={social.x}>X</a>
             <a href={social.telegram}>Telegram</a>
             <a href={social.discord}>Discord</a>
@@ -35,8 +43,8 @@ export function Footer() {
         </div>
         <div className="fbot">
           {/* Remove once M2 wires real data (brief, ground rule 7). */}
-          <span>Oxbow prototype. Pools, prices and volumes shown are sample data.</span>
-          <span>Not financial advice. Trading tokens carries risk.</span>
+          <span>{t.footer.sample}</span>
+          <span>{t.footer.nfa}</span>
         </div>
       </div>
     </footer>

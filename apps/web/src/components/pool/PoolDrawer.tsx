@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useT } from '@/i18n/client';
 import { prefersReducedMotion, useBodyLock } from '@/lib/hooks';
 import { Portal, useDialogFocus, useEscape, usePresence } from '../ui/overlay';
 import { cx } from '../ui/primitives';
@@ -15,6 +16,7 @@ import type { TradeTab } from './TradePanel';
  */
 export function PoolDrawer({ address, tab }: { address: string; tab: TradeTab }) {
   const router = useRouter();
+  const t = useT();
   const [open, setOpen] = useState(true);
   const { mounted, on } = usePresence(open, 360);
   const ref = useRef<HTMLElement>(null);
@@ -38,7 +40,7 @@ export function PoolDrawer({ address, tab }: { address: string; tab: TradeTab })
   return (
     <Portal>
       <div className={cx('scrim', on && 'on')} onClick={close} aria-hidden="true" />
-      <aside ref={ref} className={cx('drawer', on && 'on')} role="dialog" aria-modal="true" aria-label="Pool details">
+      <aside ref={ref} className={cx('drawer', on && 'on')} role="dialog" aria-modal="true" aria-label={t.pool.details}>
         <PoolView address={address} tab={tab} onClose={close} />
       </aside>
     </Portal>

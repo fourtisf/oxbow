@@ -3,7 +3,7 @@
 /**
  * Isometric pixel city behind the hero, ported as-is from the prototype's
  * `cityRenderer` / `startCity`: capped at 24fps, paused while offscreen or the
- * tab is hidden, and a single static frame under prefers-reduced-motion.
+ * tab is hidden, and a single static frame under prefers-reduced-motion or lite mode.
  */
 import { useEffect, useRef } from 'react';
 import { hash, rng } from '@oxbow/shared';
@@ -343,7 +343,8 @@ export function PixelCity() {
     const cv = ref.current;
     if (!cv || !cv.getContext) return;
     const draw = cityRenderer(cv);
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // Reduced motion, or lite mode on low-end phones: one still frame.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('lite')) {
       draw(0, 1.6, 0);
       return;
     }

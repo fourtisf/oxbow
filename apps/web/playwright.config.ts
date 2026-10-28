@@ -21,6 +21,7 @@ export default defineConfig({
     command: `node node_modules/next/dist/bin/next start -p ${PORT}`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
-    env: { NEXT_TELEMETRY_DISABLED: '1' },
+    // XX is a user-assigned ISO code, so no real visitor is blocked; legal.spec.ts sends it to test the region notice.
+    env: { NEXT_TELEMETRY_DISABLED: '1', GEO_BLOCKED_COUNTRIES: 'XX' },
   },
 });

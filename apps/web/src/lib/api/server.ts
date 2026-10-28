@@ -24,6 +24,8 @@ export class Prefetch {
       initialPageParam: null as string | null,
     });
   pool = (address: string) => this.qc.prefetchQuery({ queryKey: qk.pool(address), queryFn: () => api.pool(address) });
+  trades = (address: string) => this.qc.prefetchQuery({ queryKey: qk.trades(address), queryFn: () => api.trades(address) });
+  status = () => this.qc.prefetchQuery({ queryKey: qk.status(), queryFn: () => api.status() });
   chart = (address: string, tf: Timeframe) =>
     this.qc.prefetchQuery({ queryKey: qk.chart(address, tf), queryFn: () => api.chart(address, tf) });
 

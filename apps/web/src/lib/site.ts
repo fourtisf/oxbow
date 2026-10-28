@@ -5,9 +5,4 @@ export const social = {
   discord: process.env.NEXT_PUBLIC_DISCORD_URL || '#',
 };
 
-export const NAV = [
-  { href: '/explore', label: 'Explore', short: 'Explore' },
-  { href: '/create', label: 'Create Pool', short: 'Create' },
-  { href: '/dashboard', label: 'Dashboard', short: 'Dashboard' },
-  { href: '/docs', label: 'Docs', short: 'Docs' },
-] as const;
+export const NAV = [{ href: '/explore' }, { href: '/create' }, { href: '/dashboard' }, { href: '/docs' }] as const;

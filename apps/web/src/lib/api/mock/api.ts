@@ -1,18 +1,21 @@
 import {
   b58,
   hash,
+  isAddress,
   isLockedOrBurned,
   PoolsQuerySchema,
   rng,
   rwalk,
   type ActivityItem,
   type ActivityKind,
+  type Candle,
   type PoolSummary,
   type TickerItem,
   type Timeframe,
+  type Trade,
 } from '@oxbow/shared';
 import type { OxbowApi } from '../types';
-import { baseAsset, db, quoteAsset, tickerOrder, toDetail, toPosition, toSummary } from './db';
+import { baseAsset, db, fakeSig, quoteAsset, symbolTaken, tickerOrder, toActivity, toDetail, toPosition, toSummary } from './db';
 import { EXAMPLE_MINT, ORB, Q, series, STOCKS, TF_STEP_MS, type MockPool } from './seed';
 
 const isBrowser = typeof window !== 'undefined';
@@ -35,9 +38,10 @@ function sortKey(sort: string): (p: PoolSummary) => number {
   }
 }
 
-function activityItem(r: () => number, now: number): ActivityItem {
+function activityItem(r: () => number, now: number): ActivityItem | null {
   const pools = db().pools;
-  const p = pools[Math.floor(r() * pools.length)]!;
+  const p = pools[Math.floor(r() * pools.length)];
+  if (!p) return null;
   const x = r();
   const kind: ActivityKind = x < 0.5 ? 'BUY' : x < 0.82 ? 'SELL' : x < 0.93 ? 'ADD_LP' : 'POOL';
   const amountUsd = kind === 'POOL' ? p.tvl * 0.02 : Math.exp(4 + r() * 5);
@@ -89,11 +93,16 @@ export const mockApi: OxbowApi = {
 
   async pools(input) {
     const q = PoolsQuerySchema.parse(input);
-    const s = (q.q ?? '').toLowerCase();
+    const raw = (q.q ?? '').trim();
+    const s = raw.toLowerCase();
+    // A pasted address matches the pool, its token or its pair asset exactly.
+    const byAddress = isAddress(raw);
     const now = Date.now();
     const list = db()
       .pools.map((p) => toSummary(p, now))
       .filter((p) => {
+        if (q.addresses && !q.addresses.includes(p.address)) return false;
+        if (byAddress) return p.address === raw || p.base.mint === raw || p.quote.mint === raw;
         if (q.quote === 'stock' && p.quote.kind !== 'STOCK') return false;
         if (q.quote !== 'all' && q.quote !== 'stock' && p.quote.symbol !== q.quote) return false;
         if (q.locked && !isLockedOrBurned(p.lp)) return false;
@@ -127,7 +136,41 @@ export const mockApi: OxbowApi = {
     const data = p ? series(p, tf) : [];
     const step = TF_STEP_MS[tf];
     const now = Date.now();
-    return { tf, stepMs: step, points: data.map((v, i) => ({ t: now - (data.length - 1 - i) * step, p: v })) };
+    const t = (i: number) => now - (data.length - 1 - i) * step;
+    // Candles built around the same walk: open = previous close, wicks and volume from a seeded PRNG.
+    const r = rng(hash((p?.id ?? '') + tf + 'ohlc'));
+    const wick = { '1H': 0.004, '1D': 0.012, '1W': 0.025 }[tf];
+    const volPer = p && p.vol ? (p.vol * step) / 864e5 : 0;
+    const candles: Candle[] = data.map((c, i) => {
+      const o = i ? data[i - 1]! : c * (1 + (r() - 0.5) * wick);
+      return { t: t(i), o, c, h: Math.max(o, c) * (1 + r() * wick), l: Math.min(o, c) * (1 - r() * wick), v: volPer * (0.3 + r() * 1.4) };
+    });
+    return { tf, stepMs: step, points: data.map((v, i) => ({ t: t(i), p: v })), candles };
+  },
+
+  async trades(address) {
+    const p = db().pools.find((x) => x.addr === address);
+    if (!p || !p.vol) return [];
+    const r = rng(hash(p.id + 'trades'));
+    const now = Date.now();
+    const q = Q[p.quote]!;
+    let ts = now - r() * 60_000;
+    return Array.from({ length: 20 }, (_, i): Trade => {
+      const side = r() * 100 < p.buys ? 'BUY' : 'SELL';
+      const amountUsd = Math.exp(3 + r() * 6);
+      const priceUsd = p.priceUSD * (1 + (r() - 0.5) * 0.01);
+      ts -= (r() * r() * 30 + 0.2) * 60_000;
+      return {
+        sig: fakeSig(p.id + 't' + i),
+        ts,
+        side,
+        wallet: b58(r, 44),
+        amountUsd,
+        baseAmount: amountUsd / priceUsd,
+        quoteAmount: amountUsd / q.price,
+        priceUsd,
+      };
+    });
   },
 
   async stocks() {
@@ -158,6 +201,9 @@ export const mockApi: OxbowApi = {
       name = sym.charAt(0) + sym.slice(1).toLowerCase() + ' token';
     }
     db().held.set(mint, 1e9);
+    const taken = symbolTaken(sym, mint);
+    // Mints starting with "Risk" keep their mint and freeze authority, so the risk warning can be tried.
+    const authority = mint.startsWith('Risk') ? mint : null;
     return {
       mint,
       symbol: sym,
@@ -165,11 +211,13 @@ export const mockApi: OxbowApi = {
       decimals: 6,
       supply: 1e9,
       tokenProgram: 'spl-token',
-      mintAuthority: null,
-      freezeAuthority: null,
+      mintAuthority: authority,
+      freezeAuthority: authority,
       logoUri: null,
       extensions: [],
-      risk: { mintable: false, freezable: false, transferFee: false, transferHook: false, permanentDelegate: false },
+      risk: { mintable: !!authority, freezable: !!authority, transferFee: false, transferHook: false, permanentDelegate: false },
+      symbolTaken: taken,
+      createdAt: new Date(Date.now() - 30 * 864e5).toISOString(),
     };
   },
 
@@ -182,18 +230,38 @@ export const mockApi: OxbowApi = {
     });
   },
 
+  async walletActivity() {
+    return db().activity.flatMap((a) => {
+      const x = toActivity(a);
+      return x ? [x] : [];
+    });
+  },
+
+  async status() {
+    const now = new Date().toISOString();
+    return {
+      checkedAt: now,
+      api: 'OK',
+      rpc: { state: 'OK', slot: null, latencyMs: null },
+      indexer: { state: 'OK', lagSec: 0 },
+      prices: { state: 'OK', updatedAt: now },
+      sampleData: true,
+    };
+  },
+
   async recentActivity() {
     // Random like the prototype's feed, so only generated in the browser.
     if (!isBrowser) return [];
     const now = Date.now();
-    return Array.from({ length: 8 }, (_, i) => activityItem(Math.random, now - (i * 7 + 3) * 1000));
+    return Array.from({ length: 8 }, (_, i) => activityItem(Math.random, now - (i * 7 + 3) * 1000)).filter((x): x is ActivityItem => !!x);
   },
 
   subscribeActivity(onItem) {
     if (!isBrowser) return () => {};
     const t = setInterval(() => {
       if (document.hidden) return;
-      onItem(activityItem(Math.random, Date.now()));
+      const it = activityItem(Math.random, Date.now());
+      if (it) onItem(it);
     }, 2600);
     return () => clearInterval(t);
   },

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
+import { useT } from '@/i18n/client';
+import { track } from '@/lib/analytics';
 import { invalidateAfterTx, useQuotes } from '@/lib/api/queries';
 import { chain } from '@/lib/chain/mock';
 import { CREATE_STEPS } from '@/lib/chain/types';
@@ -30,6 +32,7 @@ interface Run {
 
 /** The /create page body: five steps, sticky preview, progress and success dialog. */
 export function CreateView({ initialMint, initialQuote }: { initialMint?: string; initialQuote?: string }) {
+  const t = useT();
   const m = useCreateModel();
   const form = useCreateForm();
   const { data: quotes } = useQuotes();
@@ -56,12 +59,13 @@ export function CreateView({ initialMint, initialQuote }: { initialMint?: string
     if (!wallet || m.msg || !m.token || !m.quote || run) return;
     const lp = m.lp;
     const labels = [
-      'Approve in ' + wallet.name,
-      'Verify the ' + m.quote.symbol + ' price feed',
-      'Create the pool on ' + m.costs.venueLabel,
-      lp.status === 'BURNED' ? 'Burn the liquidity' : lp.status === 'UNLOCKED' ? 'Skip the lock' : 'Lock ' + lp.lockedPct + '% of the liquidity',
-      'Publish to Explore',
+      t.create.stepApprove(wallet.name),
+      t.create.stepVerify(m.quote.symbol),
+      t.create.stepCreate(m.costs.venueLabel),
+      lp.status === 'BURNED' ? t.create.stepBurn : lp.status === 'UNLOCKED' ? t.create.stepSkip : t.create.stepLock(lp.lockedPct),
+      t.create.stepPublish,
     ];
+    track('pool_create_started', { venue: form.venue, quote: m.quote.symbol, lock: lp.status });
     const base = { labels, pair: `${m.token.symbol}/${m.quote.symbol}`, venue: m.costs.venueLabel, address: null };
     setRun({ ...base, step: 0 });
     try {
@@ -71,10 +75,11 @@ export function CreateView({ initialMint, initialQuote }: { initialMint?: string
         (step) => setRun((r) => r && { ...r, step }),
       );
       await invalidateAfterTx(qc);
+      track('pool_created', { venue: form.venue });
       setRun((r) => r && { ...r, step: CREATE_STEPS.length, address });
-    } catch (e) {
+    } catch {
       setRun(null);
-      toast(e instanceof Error ? e.message : 'Pool creation failed');
+      toast(t.create.failed);
     }
   };
 
@@ -98,13 +103,13 @@ export function CreateView({ initialMint, initialQuote }: { initialMint?: string
     <div className="create">
       <CreateSteps m={m} />
       <PoolPreview m={m} onCreate={start} busy={!!run} />
-      <Modal open={!!run} onClose={another} label={run?.address ? 'Pool created' : 'Creating pool'} busy={busy}>
+      <Modal open={!!run} onClose={another} label={run?.address ? t.create.dialogDone : t.create.dialogCreating} busy={busy}>
         {run && !run.address && (
           <>
             <div className="m-h">
-              <h3>Creating {run.pair}</h3>
+              <h3>{t.create.creating(run.pair)}</h3>
             </div>
-            <p className="m-sub">Keep this window open. It takes a few seconds.</p>
+            <p className="m-sub">{t.create.keepOpen}</p>
             <ol className="dsteps" aria-live="polite">
               {run.labels.map((s, j) => (
                 <li key={s} className={cx(j < run.step && 'done', j === run.step && 'active')} aria-current={j === run.step ? 'step' : undefined}>
@@ -122,20 +127,19 @@ export function CreateView({ initialMint, initialQuote }: { initialMint?: string
             <div className="burst">
               <DropIcon />
             </div>
-            <h3>Your pool is live</h3>
-            <p>
-              {run.pair} is open for trading on {run.venue}. Share the pool address so people can find it.
-            </p>
+            <h3>{t.create.live}</h3>
+            <p>{t.create.liveBody(run.pair, run.venue)}</p>
             <div className="addr" style={{ marginBottom: 22, textAlign: 'left' }}>
-              Pool<code>{run.address}</code>
-              <button className="icon-btn" onClick={() => copyText(run.address!)} aria-label="Copy pool address">
+              {t.pool.poolLabel}
+              <code>{run.address}</code>
+              <button className="icon-btn" onClick={() => copyText(run.address!, t.common.copied)} aria-label={t.pool.copyPool}>
                 <CopyIcon />
               </button>
             </div>
             <div className="cta">
-              <Button onClick={viewPool}>View pool</Button>
+              <Button onClick={viewPool}>{t.create.viewPool}</Button>
               <Button variant="glass" onClick={another}>
-                Create another
+                {t.create.another}
               </Button>
             </div>
           </div>

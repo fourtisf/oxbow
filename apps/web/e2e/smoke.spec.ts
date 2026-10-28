@@ -6,6 +6,8 @@ const ROUTES: [string, RegExp][] = [
   ['/create', /Build the pair/],
   ['/dashboard', /Your positions/],
   ['/docs', /How Oxbow works/],
+  ['/status', /System status/],
+  ['/terms', /Terms of Service/],
 ];
 
 for (const [path, heading] of ROUTES) {

@@ -3,6 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ['@oxbow/shared'],
+  experimental: {
+    // Next 14 needs this for src/instrumentation.ts (server error reporting).
+    instrumentationHook: true,
+  },
 };
 
 export default nextConfig;

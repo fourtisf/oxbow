@@ -1,17 +1,19 @@
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ButtonLink } from '@/components/ui/primitives';
+import { getT } from '@/i18n/server';
 
 export default function NotFound() {
+  const t = getT();
   return (
     <section className="view">
       <div className="wrap">
-        <PageHeader eyebrow="404" title="Nothing here">
-          That page doesn&apos;t exist. Head back to the markets or create a pool.
+        <PageHeader eyebrow={t.errors.notFoundEyebrow} title={t.errors.notFoundTitle}>
+          {t.errors.notFoundBody}
         </PageHeader>
         <div className="cta" style={{ marginTop: 0 }}>
-          <ButtonLink href="/explore">Explore markets</ButtonLink>
+          <ButtonLink href="/explore">{t.errors.exploreMarkets}</ButtonLink>
           <ButtonLink variant="glass" href="/create">
-            Create a pool
+            {t.errors.createPool}
           </ButtonLink>
         </div>
       </div>

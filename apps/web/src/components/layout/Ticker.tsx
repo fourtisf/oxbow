@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { signed, usd, type TickerItem } from '@oxbow/shared';
+import { useT } from '@/i18n/client';
 import { useTicker } from '@/lib/api/queries';
 import { TokenAvatar } from '../ui/TokenAvatar';
 import { Fmt } from '../ui/primitives';
@@ -33,8 +34,9 @@ function Item({ t, dup }: { t: TickerItem; dup?: boolean }) {
 /** Top marquee (`.ticker`). The second copy only exists for the seamless loop. */
 export function Ticker() {
   const { data = [] } = useTicker();
+  const t = useT();
   return (
-    <div className="ticker" role="marquee" aria-label="Live prices">
+    <div className="ticker" role="marquee" aria-label={t.nav.livePrices}>
       <div className="track">
         {data.map((t, i) => (
           <Item key={'a' + i} t={t} />

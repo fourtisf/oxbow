@@ -1,31 +1,23 @@
 'use client';
 
+import Link from 'next/link';
 import type { CSSProperties, ReactNode } from 'react';
-import {
-  amt,
-  dateIn,
-  FEE_TIERS,
-  feePct,
-  LOCK_DAY_OPTIONS,
-  num,
-  quoteChips,
-  tiny,
-  usd,
-  compactTrim,
-  VENUES,
-  type QuoteAsset,
-} from '@oxbow/shared';
+import { amt, compactTrim, FEE_TIERS, feePct, LOCK_DAY_OPTIONS, num, quoteChips, tiny, usd, VENUES, type QuoteAsset } from '@oxbow/shared';
+import { useLocale, useT } from '@/i18n/client';
+import { dateInL } from '@/i18n/format';
 import { EXAMPLE_MINT } from '@/lib/api/mock/seed';
+import { links } from '@/lib/links';
 import { useCreateForm, type LockKind } from '@/lib/store/create';
 import { useWallet } from '@/lib/store/wallet';
-import { CheckIcon, CloseIcon, SearchSmIcon } from '../ui/Icons';
+import { CheckIcon, CloseIcon, ExternalIcon, SearchSmIcon, WarnIcon } from '../ui/Icons';
 import { TokenAvatar } from '../ui/TokenAvatar';
 import { cx, Fmt } from '../ui/primitives';
 import type { CreateModel } from './model';
 
 const cleanNum = (v: string) => v.replace(/[^0-9.,]/g, '');
 
-function Step({ n, title, sub, done, children }: { n: number; title: string; sub: string; done: boolean; children: ReactNode }) {
+function Step({ n, title, sub, done, children }: { n: number; title: string; sub: ReactNode; done: boolean; children: ReactNode }) {
+  const t = useT();
   return (
     <li className={cx('card fstep', done && 'done')} id={'s' + n}>
       <div className="fstep-h">
@@ -34,7 +26,7 @@ function Step({ n, title, sub, done, children }: { n: number; title: string; sub
         </span>
         <h3>{title}</h3>
         <span className="ok" aria-hidden={!done}>
-          ✓ DONE
+          {t.create.done}
         </span>
       </div>
       <p className="sub">{sub}</p>
@@ -44,18 +36,19 @@ function Step({ n, title, sub, done, children }: { n: number; title: string; sub
 }
 
 function TokenStep({ m }: { m: CreateModel }) {
+  const t = useT();
   const set = useCreateForm((s) => s.set);
-  const t = m.token;
-  const risky = t && (t.freezeAuthority || t.mintAuthority || t.risk.transferFee || t.risk.transferHook || t.risk.permanentDelegate);
+  const ack = useCreateForm((s) => s.ack);
+  const tk = m.token;
   return (
-    <Step n={1} title="Your token" sub="Paste the mint address of the token you want to pair." done={m.done[0]}>
+    <Step n={1} title={t.create.s1} sub={t.create.s1sub} done={m.done[0]}>
       <div className="body">
         <label className={cx('field', m.lookup === 'invalid' && 'bad')}>
           <SearchSmIcon />
           <input
             id="mint"
-            placeholder="Token mint address"
-            aria-label="Token mint address"
+            placeholder={t.create.mintAria}
+            aria-label={t.create.mintAria}
             aria-invalid={m.lookup === 'invalid' || undefined}
             aria-describedby="tokenOut"
             autoComplete="off"
@@ -67,38 +60,50 @@ function TokenStep({ m }: { m: CreateModel }) {
         <div id="tokenOut" aria-live="polite">
           {m.lookup === 'empty' && (
             <button className="link" onClick={() => set({ mint: EXAMPLE_MINT })}>
-              Use an example token
+              {t.create.example}
             </button>
           )}
-          {m.lookup === 'invalid' && <p className="err">That isn&apos;t a Solana mint address. It should be 32 to 44 letters and numbers, with no 0, O, I or l.</p>}
+          {m.lookup === 'invalid' && <p className="err">{t.create.invalid}</p>}
           {m.lookup === 'loading' && (
             <div className="loading">
               <span className="spin" aria-hidden="true" />
-              Looking up the token
+              {t.create.lookingUp}
             </div>
           )}
-          {m.lookup === 'missing' && <p className="err">We couldn&apos;t find a token with that mint on Solana. Check the address and try again.</p>}
-          {m.lookup === 'error' && <p className="err">The token lookup failed. Check your connection and try again.</p>}
-          {t && (
+          {m.lookup === 'missing' && <p className="err">{t.create.missing}</p>}
+          {m.lookup === 'error' && <p className="err">{t.create.lookupError}</p>}
+          {tk && (
             <>
               <div className="tcard">
-                <TokenAvatar asset={t} size={44} />
+                <TokenAvatar asset={tk} size={44} />
                 <div>
-                  <b>{t.symbol}</b> <span className="meta">{t.name}</span>
-                  <div className="meta">
-                    Supply {t.supply.toLocaleString('en-US', { maximumFractionDigits: t.decimals })}, {t.decimals} decimals
-                  </div>
+                  <b>{tk.symbol}</b> <span className="meta">{tk.name}</span>
+                  <div className="meta">{t.create.supply(tk.supply.toLocaleString('en-US', { maximumFractionDigits: tk.decimals }), tk.decimals)}</div>
                   <div className="checks">
-                    {t.mintAuthority ? <span className="warn">! MINT AUTHORITY ACTIVE</span> : <span><CheckIcon />MINT AUTHORITY REVOKED</span>}
-                    {t.freezeAuthority ? <span className="warn">! FREEZE AUTHORITY ON</span> : <span><CheckIcon />FREEZE AUTHORITY OFF</span>}
-                    {t.risk.transferFee && <span className="warn">! TRANSFER FEE</span>}
-                    {t.risk.transferHook && <span className="warn">! TRANSFER HOOK</span>}
-                    {t.risk.permanentDelegate && <span className="warn">! PERMANENT DELEGATE</span>}
+                    {tk.mintAuthority ? (
+                      <span className="warn">! {t.create.check.mintActive}</span>
+                    ) : (
+                      <span>
+                        <CheckIcon />
+                        {t.create.check.mintRevoked}
+                      </span>
+                    )}
+                    {tk.freezeAuthority ? (
+                      <span className="warn">! {t.create.check.freezeOn}</span>
+                    ) : (
+                      <span>
+                        <CheckIcon />
+                        {t.create.check.freezeOff}
+                      </span>
+                    )}
+                    {tk.risk.transferFee && <span className="warn">! {t.create.check.fee}</span>}
+                    {tk.risk.transferHook && <span className="warn">! {t.create.check.hook}</span>}
+                    {tk.risk.permanentDelegate && <span className="warn">! {t.create.check.delegate}</span>}
                   </div>
                 </div>
                 <button
                   className="icon-btn"
-                  aria-label="Use a different token"
+                  aria-label={t.create.clear}
                   onClick={() => {
                     set({ mint: '' });
                     document.getElementById('mint')?.focus();
@@ -107,16 +112,28 @@ function TokenStep({ m }: { m: CreateModel }) {
                   <CloseIcon />
                 </button>
               </div>
-              {risky && (
+              {tk.symbolTaken && (
+                <div className="note mid">
+                  <WarnIcon />
+                  <span>{t.create.risk.dupe(tk.symbol)}</span>
+                </div>
+              )}
+              {m.risky && (
                 <div className="note warn" role="alert">
+                  <WarnIcon />
                   <span>
-                    {t.freezeAuthority && 'Someone can freeze holders of this token, so buyers might not be able to sell. '}
-                    {t.mintAuthority && 'More of this token can still be minted. '}
-                    {(t.risk.transferFee || t.risk.transferHook || t.risk.permanentDelegate) &&
-                      'This token runs extra logic on every transfer, which some venues and wallets do not support. '}
-                    Buyers will see these warnings too.
+                    {tk.freezeAuthority && t.create.risk.freeze + ' '}
+                    {tk.mintAuthority && t.create.risk.mint + ' '}
+                    {(tk.risk.transferFee || tk.risk.transferHook || tk.risk.permanentDelegate) && t.create.risk.ext + ' '}
+                    {t.create.risk.tail}
                   </span>
                 </div>
+              )}
+              {m.risky && (
+                <label className="check ack">
+                  <input type="checkbox" id="riskAck" checked={ack} onChange={(e) => set({ ack: e.target.checked })} />
+                  <span>{t.create.risk.ack}</span>
+                </label>
               )}
             </>
           )}
@@ -127,6 +144,7 @@ function TokenStep({ m }: { m: CreateModel }) {
 }
 
 function QuoteTile({ q, pressed }: { q: QuoteAsset; pressed: boolean }) {
+  const t = useT();
   const setQuote = useCreateForm((s) => s.setQuote);
   return (
     <button className="qtile" aria-pressed={pressed} onClick={() => setQuote(q.symbol)}>
@@ -135,6 +153,7 @@ function QuoteTile({ q, pressed }: { q: QuoteAsset; pressed: boolean }) {
         <b>{q.symbol}</b>
         <small>
           {q.name}, <Fmt>{usd(q.priceUsd)}</Fmt>
+          {q.market?.status === 'CLOSED' && <span className="sr-only">, {t.market.closed}</span>}
         </small>
       </span>
     </button>
@@ -142,13 +161,14 @@ function QuoteTile({ q, pressed }: { q: QuoteAsset; pressed: boolean }) {
 }
 
 function QuoteStep({ m }: { m: CreateModel }) {
+  const t = useT();
   const stocks = m.quotes.filter((q) => q.kind === 'STOCK');
   const other = m.quotes.filter((q) => q.kind !== 'STOCK');
   return (
-    <Step n={2} title="Pair it with" sub="Traders buy your token with this asset. Prices, fees and your earnings are all counted in it." done={m.done[1]}>
+    <Step n={2} title={t.create.s2} sub={t.create.s2sub} done={m.done[1]}>
       <div className="body">
         <div className="qgroup">
-          <h4 className="label">Verified stocks</h4>
+          <h4 className="label">{t.create.stocksGroup}</h4>
           <div className="qgrid">
             {stocks.map((q) => (
               <QuoteTile key={q.symbol} q={q} pressed={m.form.quote === q.symbol} />
@@ -156,7 +176,7 @@ function QuoteStep({ m }: { m: CreateModel }) {
           </div>
         </div>
         <div className="qgroup">
-          <h4 className="label">Crypto and dollars</h4>
+          <h4 className="label">{t.create.cryptoGroup}</h4>
           <div className="qgrid">
             {other.map((q) => (
               <QuoteTile key={q.symbol} q={q} pressed={m.form.quote === q.symbol} />
@@ -169,30 +189,43 @@ function QuoteStep({ m }: { m: CreateModel }) {
 }
 
 function DepositStep({ m }: { m: CreateModel }) {
+  const t = useT();
   const set = useCreateForm((s) => s.set);
   const wallet = useWallet((s) => s.wallet);
-  const { token: t, quote: q } = m;
-  const sym = t?.symbol ?? 'TOKEN';
+  const { token: tk, quote: q } = m;
+  const sym = tk?.symbol ?? 'TOKEN';
   return (
-    <Step n={3} title="Deposit" sub="How much of each goes in. The ratio sets your token's starting price." done={m.done[2]}>
+    <Step
+      n={3}
+      title={t.create.s3}
+      sub={
+        <>
+          {t.create.s3sub}{' '}
+          <Link href="/docs#d-risks" className="link" style={{ marginTop: 0 }}>
+            {t.trade.ilLink}
+          </Link>
+        </>
+      }
+      done={m.done[2]}
+    >
       <div className="body">
         <div className="two">
           <div>
             <div className="flabel">
-              <b>{t ? t.symbol : 'Your token'}</b>
-              <span>{t && wallet ? `You hold ${compactTrim(m.baseBal)}` : ''}</span>
+              <b>{tk ? tk.symbol : t.create.yourToken}</b>
+              <span>{tk && wallet ? t.create.youHold(compactTrim(m.baseBal)) : ''}</span>
             </div>
             <label className={cx('field big', m.baseOver && 'bad')}>
-              <input inputMode="decimal" placeholder="0" aria-label="Amount of your token" value={m.form.base} onChange={(e) => set({ base: cleanNum(e.target.value) })} />
+              <input inputMode="decimal" placeholder="0" aria-label={t.create.baseAria} value={m.form.base} onChange={(e) => set({ base: cleanNum(e.target.value) })} />
               <span className="suffix">{sym}</span>
             </label>
             <div className="chips">
-              {t &&
+              {tk &&
                 [25, 50, 80, 100].map((p) => {
-                  const v = (t.supply * p) / 100;
+                  const v = (tk.supply * p) / 100;
                   return (
                     <button key={p} className="chip" aria-pressed={num(m.form.base) === v} onClick={() => set({ base: v.toLocaleString('en-US') })}>
-                      {p}% SUPPLY
+                      {t.create.pctSupply(p)}
                     </button>
                   );
                 })}
@@ -200,23 +233,23 @@ function DepositStep({ m }: { m: CreateModel }) {
           </div>
           <div>
             <div className="flabel">
-              <b>{q ? q.symbol : 'Pair asset'}</b>
+              <b>{q ? q.symbol : t.create.pairAsset}</b>
               <span>
                 {q &&
                   (wallet ? (
                     <>
-                      Balance {amt(m.quoteBal)}{' '}
+                      {t.create.balance(amt(m.quoteBal))}{' '}
                       <button type="button" onClick={() => set({ qamt: String(m.quoteBal) })}>
-                        MAX
+                        {t.trade.max}
                       </button>
                     </>
                   ) : (
-                    'Select a wallet to see your balance'
+                    t.create.selectForBalance
                   ))}
               </span>
             </div>
             <label className={cx('field big', m.quoteOver && 'bad')}>
-              <input inputMode="decimal" placeholder="0" aria-label="Amount of pair asset" value={m.form.qamt} onChange={(e) => set({ qamt: cleanNum(e.target.value) })} />
+              <input inputMode="decimal" placeholder="0" aria-label={t.create.quoteAria} value={m.form.qamt} onChange={(e) => set({ qamt: cleanNum(e.target.value) })} />
               <span className="suffix">{q ? q.symbol : '—'}</span>
             </label>
             <div className="chips">
@@ -227,11 +260,16 @@ function DepositStep({ m }: { m: CreateModel }) {
                   </button>
                 ))}
             </div>
+            {q && wallet && (m.quoteBal === 0 || m.quoteOver) && (
+              <a className="getlink" href={links.buy(q.mint)} target="_blank" rel="noopener noreferrer">
+                {t.create.getOn(q.symbol)} <ExternalIcon />
+              </a>
+            )}
           </div>
         </div>
         <dl className="derived">
           <div>
-            <dt>Starting price</dt>
+            <dt>{t.create.startPrice}</dt>
             <dd>
               {m.priceQ ? <Fmt>{usd(m.priceU)}</Fmt> : '—'}
               <small>
@@ -240,23 +278,23 @@ function DepositStep({ m }: { m: CreateModel }) {
                     <Fmt>{tiny(m.priceQ)}</Fmt> {q.symbol}
                   </>
                 ) : (
-                  'per ' + sym
+                  t.create.per(sym)
                 )}
               </small>
             </dd>
           </div>
           <div>
-            <dt>Starting mkt cap</dt>
+            <dt>{t.create.startMcap}</dt>
             <dd>
               {m.priceQ ? <Fmt>{usd(m.mcap)}</Fmt> : '—'}
-              <small>at {t ? compactTrim(t.supply) : '1B'} supply</small>
+              <small>{t.create.atSupply(tk ? compactTrim(tk.supply) : '1B')}</small>
             </dd>
           </div>
           <div>
-            <dt>Liquidity</dt>
+            <dt>{t.create.liquidity}</dt>
             <dd>
               {m.liq ? <Fmt>{usd(m.liq)}</Fmt> : '—'}
-              <small>both sides together</small>
+              <small>{t.create.bothSides}</small>
             </dd>
           </div>
         </dl>
@@ -266,27 +304,28 @@ function DepositStep({ m }: { m: CreateModel }) {
 }
 
 function VenueStep({ m }: { m: CreateModel }) {
+  const t = useT();
   const set = useCreateForm((s) => s.set);
   return (
-    <Step n={4} title="Venue and fee" sub="Where the pool lives, and what traders pay on each swap. Higher fees earn more per trade but can slow trading down." done={m.done[3]}>
+    <Step n={4} title={t.create.s4} sub={t.create.s4sub} done={m.done[3]}>
       <div className="body">
         <div className="venues">
           {VENUES.map((v) => (
             <button key={v.id} className="vtile" aria-pressed={m.form.venue === v.id} onClick={() => set({ venue: v.id })}>
               <b>{v.label}</b>
-              <small>{v.desc}</small>
+              <small>{t.create.venueDesc[v.id]}</small>
             </button>
           ))}
         </div>
         <div className="label fee-h" id="feeLbl">
-          Trading fee
+          {t.create.tradingFee}
         </div>
         <div className="feegrid" role="group" aria-labelledby="feeLbl">
           {FEE_TIERS.map((f) => (
             <button key={f.feeBps} className="ftile" aria-pressed={m.form.feeBps === f.feeBps} onClick={() => set({ feeBps: f.feeBps })}>
               <b>{feePct(f.feeBps)}</b>
               <small>
-                {f.desc}. Earns ${f.feeBps.toLocaleString('en-US')} per $10K traded
+                {t.create.feeDesc[f.feeBps] ?? f.desc}. {t.create.earns('$' + f.feeBps.toLocaleString('en-US'))}
               </small>
             </button>
           ))}
@@ -296,15 +335,16 @@ function VenueStep({ m }: { m: CreateModel }) {
   );
 }
 
-const LOCKS: { id: LockKind; title: string; desc: string; risky?: boolean }[] = [
-  { id: 'burn', title: 'Burn it', desc: 'Permanent. Nobody, including you, can withdraw the deposit. You still collect trading fees. Buyers trust this most.' },
-  { id: 'lock', title: 'Lock it for a set time', desc: 'You get the deposit back when the lock ends, and collect trading fees meanwhile.' },
-  { id: 'none', title: 'Keep it unlocked', desc: 'You can withdraw any time. Your pool is labeled Unlocked in Explore, so buyers know.', risky: true },
-];
-
 function LockStep({ m }: { m: CreateModel }) {
+  const t = useT();
+  const locale = useLocale();
   const set = useCreateForm((s) => s.set);
   const f = m.form;
+  const LOCKS: { id: LockKind; title: string; desc: string; risky?: boolean }[] = [
+    { id: 'burn', title: t.create.burn, desc: t.create.burnDesc },
+    { id: 'lock', title: t.create.lock, desc: t.create.lockDesc },
+    { id: 'none', title: t.create.none, desc: t.create.noneDesc, risky: true },
+  ];
   const move = (dir: 1 | -1) => {
     const i = LOCKS.findIndex((l) => l.id === f.lock);
     const next = LOCKS[(i + dir + LOCKS.length) % LOCKS.length]!;
@@ -338,21 +378,21 @@ function LockStep({ m }: { m: CreateModel }) {
     </button>
   );
   return (
-    <Step n={5} title="Liquidity lock" sub="Decide whether you can withdraw your deposit later. Buyers see this label on your pool." done={m.done[4]}>
-      <div className="body opts" role="radiogroup" aria-label="Liquidity lock">
+    <Step n={5} title={t.create.s5} sub={t.create.s5sub} done={m.done[4]}>
+      <div className="body opts" role="radiogroup" aria-label={t.create.lockAria}>
         {opt(LOCKS[0]!)}
         {opt(LOCKS[1]!)}
         {f.lock === 'lock' && (
           <div className="lockset">
-            <div className="chips" role="group" aria-label="Lock length">
+            <div className="chips" role="group" aria-label={t.create.lockLength}>
               {LOCK_DAY_OPTIONS.map((d) => (
                 <button key={d} className="chip" aria-pressed={f.days === d} onClick={() => set({ days: d })}>
-                  {d === 365 ? '1 YEAR' : d + ' DAYS'}
+                  {t.create.days(d)}
                 </button>
               ))}
             </div>
             <div className="row">
-              <span>Share of the deposit to lock</span>
+              <span>{t.create.lockShare}</span>
               <b>{f.lpct}%</b>
             </div>
             <input
@@ -362,13 +402,13 @@ function LockStep({ m }: { m: CreateModel }) {
               max={100}
               step={5}
               value={f.lpct}
-              aria-label="Share of the deposit to lock"
+              aria-label={t.create.lockShare}
               style={{ '--p': ((f.lpct - 10) / 90) * 100 + '%', marginTop: 12 } as CSSProperties}
               onChange={(e) => set({ lpct: +e.target.value })}
             />
             <div className="row">
-              <span>Unlocks on</span>
-              <b>{dateIn(f.days)}</b>
+              <span>{t.create.unlocksOn}</span>
+              <b>{dateInL(f.days, locale)}</b>
             </div>
           </div>
         )}
@@ -379,11 +419,12 @@ function LockStep({ m }: { m: CreateModel }) {
 }
 
 export function CreateSteps({ m }: { m: CreateModel }) {
+  const t = useT();
   return (
     <>
       {/* Visually hidden (and out of the grid flow): keeps h1 > h2 > h3 heading order for the step titles. */}
       <h2 id="flowTitle" className="sr-only">
-        Pool setup
+        {t.create.setup}
       </h2>
       <ol className="flow" aria-labelledby="flowTitle">
         <TokenStep m={m} />

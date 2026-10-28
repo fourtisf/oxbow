@@ -21,6 +21,37 @@ is the source of truth for look, layout, copy and interactions.
 Until M2, every number in the app is the prototype's sample data and every
 wallet action is simulated. Nothing touches a chain.
 
+### Added after M1 review (still on mock data)
+
+- **Trading**: buy and sell in the pool drawer, slippage setting (0.5 / 1 / 2%
+  or custom, warning above 5%), minimum received, MAX, line or candle chart
+  with volume, recent trades, Solscan links (DexScreener / Birdeye on mainnet
+  only), "Get <token>" link, search by pool or mint address.
+- **Trust**: token safety checks (mint / freeze authority, transfer fee,
+  hook, delegate, holder concentration, token age, duplicate ticker, creator
+  history) with a level on every pool; risk acknowledgement in Create for
+  tokens with live authorities; US market hours (NYSE holidays, early
+  closes) with closed-market and stale-feed notices; impermanent loss
+  explained in Docs with a calculator.
+- **Dashboard**: profit / loss vs. deposit, impermanent loss per position,
+  partial withdraw, activity history with transaction links.
+- **Legal**: Terms, Privacy and Risk pages (drafts, see below), one-time
+  terms confirmation before connecting a wallet, region notice by country
+  header (`GEO_BLOCKED_COUNTRIES`).
+- **Growth**: English and Indonesian (cookie, else browser language),
+  watchlist (this browser), share menu, Open Graph images per pool,
+  sitemap and robots, empty states for a launch with no pools.
+- **Ops**: optional Sentry and Plausible, `/status` page, error pages, a
+  lite mode for low-end phones (no blur, grain or city animation).
+
+### Needs the owner before launch
+
+- Legal pages are drafts written without a lawyer. Have them reviewed, then
+  set `LEGAL_*` and `GEO_BLOCKED_COUNTRIES`.
+- `NEXT_PUBLIC_BUY_TOKEN_URL`: the default Jupiter URL format was not
+  verified from this environment.
+- Price alerts and notifications need the worker (M5).
+
 ## Layout
 
 ```
@@ -98,11 +129,22 @@ Prototype comparison screenshots (1920 / 1440 / 390px): see
 
 ## Environment
 
-See [`.env.example`](.env.example). In M1 only these matter:
+See [`.env.example`](.env.example). On the mock data layer only these matter:
 
-- `NEXT_PUBLIC_SOLANA_CLUSTER`: network pill label (`devnet` or `mainnet-beta`).
+- `NEXT_PUBLIC_SOLANA_CLUSTER`: network pill label and explorer links (`devnet` or `mainnet-beta`).
 - `NEXT_PUBLIC_OXBOW_FEE_LAMPORTS`: Oxbow fee shown in the cost breakdown and docs (default 0.1 SOL).
 - `NEXT_PUBLIC_CONTRACT_ADDRESS`: hero CA box; hidden when empty.
 - `NEXT_PUBLIC_X_URL`, `NEXT_PUBLIC_TELEGRAM_URL`, `NEXT_PUBLIC_DISCORD_URL`: social links.
+- `NEXT_PUBLIC_SITE_URL`: canonical origin for share links, sitemap and OG images.
+- `NEXT_PUBLIC_BUY_TOKEN_URL`: "Get <token>" link, `{mint}` is replaced.
+- `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` (+ `NEXT_PUBLIC_PLAUSIBLE_SRC`), `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_DSN`: analytics and error reporting, off when empty.
+- `NEXT_PUBLIC_MOCK_EMPTY=1`: start the mock with no pools, to check launch-day empty states.
+- `GEO_BLOCKED_COUNTRIES`, `GEO_COUNTRY_HEADER`: region notice. The app trusts the
+  country header, so the proxy in front of it must set it and strip any copy
+  sent by the client: Cloudflare sends `CF-IPCountry`; with Nginx and GeoIP2,
+  `proxy_set_header CF-IPCountry $geoip2_data_country_code;` (or set
+  `GEO_COUNTRY_HEADER` to your own header name).
+- `LEGAL_ENTITY`, `LEGAL_CONTACT_EMAIL`, `LEGAL_GOVERNING_LAW`, `LEGAL_UPDATED`: filled into the legal pages.
 
-`NEXT_PUBLIC_*` values are inlined at build time, so rebuild after changing them.
+`NEXT_PUBLIC_*` values are inlined at build time, so rebuild after changing
+them. The server-only values are read at runtime.

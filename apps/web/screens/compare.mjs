@@ -26,6 +26,9 @@ const settle = async (page) => {
 
 const connectWallet = async (page) => {
   await page.getByRole('button', { name: 'Select Wallet' }).first().click();
+  // The app asks for the terms once per browser; the prototype doesn't.
+  const terms = page.locator('#termsOk');
+  if (await terms.isVisible().catch(() => false)) await terms.check();
   await page.getByRole('button', { name: /Phantom/ }).click();
   await page.waitForTimeout(1300);
 };

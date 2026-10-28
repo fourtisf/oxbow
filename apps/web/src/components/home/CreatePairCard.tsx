@@ -3,15 +3,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usd } from '@oxbow/shared';
+import { useT } from '@/i18n/client';
 import { useStocks } from '@/lib/api/queries';
 import { useCreateForm } from '@/lib/store/create';
 import { ArrowIcon, BoltIcon, ChevronIcon, ShieldLgIcon, SwapIcon } from '../ui/Icons';
 import { TokenAvatar } from '../ui/TokenAvatar';
-import { BracketCorners, Button, cx, Fmt, VerifiedChip } from '../ui/primitives';
+import { VerifiedChip } from '../ui/badges';
+import { BracketCorners, Button, cx, Fmt } from '../ui/primitives';
 
 /** Home "Create a stock-paired pool" card. Hands off to /create?mint=&quote=. */
 export function CreatePairCard() {
   const router = useRouter();
+  const t = useT();
   const { data: stocks = [] } = useStocks();
   const quote = useCreateForm((s) => s.quote);
   const setQuote = useCreateForm((s) => s.setQuote);
@@ -50,14 +53,14 @@ export function CreatePairCard() {
         <span className="ic">
           <BoltIcon />
         </span>
-        Create a stock-paired pool
+        {t.home.cardTitle}
       </div>
       <div className="cpair-grid">
         <div>
           <label className="fl" htmlFor="hMint">
-            Token
+            {t.home.token}
           </label>
-          <input className="inp" id="hMint" placeholder="Paste a token mint" autoComplete="off" spellCheck={false} value={mint} onChange={(e) => setMint(e.target.value)} />
+          <input className="inp" id="hMint" placeholder={t.home.pasteMint} autoComplete="off" spellCheck={false} value={mint} onChange={(e) => setMint(e.target.value)} />
         </div>
         <div className="swapic" aria-hidden="true">
           <span>
@@ -66,7 +69,7 @@ export function CreatePairCard() {
         </div>
         <div className={cx('ssel', open && 'open')} ref={sel}>
           <span className="fl" id="hSelLbl">
-            Stock / RWA
+            {t.home.stockRwa}
           </span>
           <button className="inp ssel-btn" aria-haspopup="listbox" aria-expanded={open} aria-labelledby="hSelLbl hSelPh" onClick={() => setOpen(!open)}>
             <span className="ph" id="hSelPh">
@@ -79,12 +82,12 @@ export function CreatePairCard() {
                   <span>{cur.name}</span>
                 </>
               ) : (
-                'Choose a stock'
+                t.home.chooseStock
               )}
             </span>
             <ChevronIcon className="chev" />
           </button>
-          <div className="pop" role="listbox" aria-label="Stocks" aria-hidden={!open}>
+          <div className="pop" role="listbox" aria-label={t.home.stocks} aria-hidden={!open}>
             {stocks.map((s) => (
               <button
                 key={s.symbol}
@@ -112,10 +115,10 @@ export function CreatePairCard() {
       </div>
       <p className="help">
         <ShieldLgIcon size={16} sw={2} />
-        Stock tokens come from their issuers. Oxbow checks each one&apos;s price feed and liquidity before you deposit anything.
+        {t.home.help}
       </p>
       <Button size="lg" block onClick={go}>
-        Create pair <ArrowIcon />
+        {t.home.createPair} <ArrowIcon />
       </Button>
     </div>
   );

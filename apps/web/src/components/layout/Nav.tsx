@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useT } from '@/i18n/client';
 import { networkLabel } from '@/lib/env';
 import { NAV, social } from '@/lib/site';
 import { BookIcon, DashIcon, PlusIcon, SearchIcon, XLogo } from '../ui/Icons';
@@ -17,23 +18,35 @@ const ICONS = {
 
 const isActive = (path: string, href: string) => path === href || path.startsWith(href + '/');
 
+function useNavLabels() {
+  const t = useT();
+  return {
+    '/explore': [t.nav.explore, t.nav.explore],
+    '/create': [t.nav.create, t.nav.createShort],
+    '/dashboard': [t.nav.dashboard, t.nav.dashboard],
+    '/docs': [t.nav.docs, t.nav.docs],
+  } as const;
+}
+
 export function Nav() {
   const path = usePathname();
+  const t = useT();
+  const labels = useNavLabels();
   return (
     <header className="nav">
       <div className="wrap">
-        <Link className="brand" href="/" aria-label="Oxbow home">
+        <Link className="brand" href="/" aria-label={t.nav.home}>
           <BrandMark />
           Oxbow
         </Link>
-        <nav className="navlinks" aria-label="Main">
+        <nav className="navlinks" aria-label={t.nav.main}>
           {NAV.map((n) => (
             <Link key={n.href} href={n.href} aria-current={isActive(path, n.href) ? 'page' : undefined}>
               {ICONS[n.href](false)}
-              {n.label}
+              {labels[n.href][0]}
             </Link>
           ))}
-          <a href={social.x} aria-label="Oxbow on X" target={social.x === '#' ? undefined : '_blank'} rel="noreferrer">
+          <a href={social.x} aria-label={t.nav.onX} target={social.x === '#' ? undefined : '_blank'} rel="noreferrer">
             <XLogo />
           </a>
         </nav>
@@ -52,12 +65,14 @@ export function Nav() {
 /** Fixed bottom tab bar on mobile (`.mtabs`, ≤900px). */
 export function MobileTabs() {
   const path = usePathname();
+  const t = useT();
+  const labels = useNavLabels();
   return (
-    <nav className="mtabs" aria-label="Main mobile">
+    <nav className="mtabs" aria-label={t.nav.mainMobile}>
       {NAV.map((n) => (
         <Link key={n.href} href={n.href} aria-current={isActive(path, n.href) ? 'page' : undefined}>
           {ICONS[n.href](true)}
-          {n.short}
+          {labels[n.href][1]}
         </Link>
       ))}
     </nav>

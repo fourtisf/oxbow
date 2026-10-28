@@ -77,3 +77,13 @@ export function poolLiquidityUsd(quoteReserve: number, quotePriceUsd: number): n
 export function feeAprPct(vol24hUsd: number, feeRate: number, tvlUsd: number): number {
   return tvlUsd > 0 ? ((vol24hUsd * feeRate * 365) / tvlUsd) * 100 : 0;
 }
+
+/**
+ * Impermanent loss of a 50/50 constant-product position versus holding both
+ * assets, for a change in the pool price by `priceRatio` (new / entry).
+ * Returns a percentage ≤ 0: 2x either way ≈ -5.72%.
+ */
+export function impermanentLossPct(priceRatio: number): number {
+  if (!(priceRatio > 0)) return 0;
+  return ((2 * Math.sqrt(priceRatio)) / (1 + priceRatio) - 1) * 100;
+}

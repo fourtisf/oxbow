@@ -157,6 +157,39 @@ export interface MockPool {
   /** Buy share of 24h trades, percent. */
   buys: number;
   creator: string;
+  /** Token facts behind the safety flags (not in the prototype; generated separately so its data is unchanged). */
+  token: MockTokenFacts;
+}
+
+export interface MockTokenFacts {
+  ageDays: number | null;
+  holders: number;
+  top10Pct: number;
+  mintAuthority: string | null;
+  freezeAuthority: string | null;
+  transferFee: boolean;
+  transferHook: boolean;
+  permanentDelegate: boolean;
+  creatorPools: number;
+  creatorPulled: number;
+}
+
+/** Deterministic token facts for a seeded pool, from its own PRNG stream. */
+function tokenFacts(i: number, ageH: number, lp: MockLp): MockTokenFacts {
+  const r = rng(hash('facts-' + i));
+  const poolDays = ageH / 24;
+  return {
+    ageDays: poolDays + 1 + r() * 300,
+    holders: Math.round(180 + r() * r() * 24000),
+    top10Pct: Math.round((14 + r() * 50) * 10) / 10,
+    mintAuthority: null,
+    freezeAuthority: null,
+    transferFee: false,
+    transferHook: false,
+    permanentDelegate: false,
+    creatorPools: 1 + Math.floor(r() * 4),
+    creatorPulled: lp.t === 'unlocked' && r() < 0.5 ? 1 : 0,
+  };
 }
 
 export function makePool(i: number): MockPool {
@@ -193,10 +226,12 @@ export function makePool(i: number): MockPool {
     addr,
     buys,
     creator: b58(rng(hash('creator-' + i)), 44),
+    token: tokenFacts(i, ageH, lp),
   };
 }
 
-export const SEED_POOLS = (): MockPool[] => BASES.map((_, i) => makePool(i));
+/** `NEXT_PUBLIC_MOCK_EMPTY=1` starts with no pools, to see the launch-day empty states. */
+export const SEED_POOLS = (): MockPool[] => (process.env.NEXT_PUBLIC_MOCK_EMPTY === '1' ? [] : BASES.map((_, i) => makePool(i)));
 
 const TF_POINTS = { '1H': 60, '1D': 96, '1W': 84 } as const;
 const TF_VOL = { '1H': 0.012, '1D': 0.035, '1W': 0.07 } as const;

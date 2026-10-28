@@ -109,3 +109,64 @@ export function PriceChart({ data, W = 520, H = 180, onHover }: { data: number[]
     </Sparkline>
   );
 }
+
+export interface CandleDatum {
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+}
+
+/**
+ * Candlestick chart with volume bars, same frame and hover behaviour as
+ * PriceChart. Colors follow the prototype's up/down tokens.
+ */
+export function CandleChart({ candles, W = 520, H = 180, onHover }: { candles: CandleDatum[]; W?: number; H?: number; onHover?: (i: number | null) => void }) {
+  const [hi, setHi] = useState<number | null>(null);
+  const box = { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', 'aria-hidden': true } as const;
+  if (candles.length < 2) return <svg {...box} />;
+  const volH = H * 0.2;
+  const top = 4;
+  const bottom = H - volH - 6;
+  const lo = Math.min(...candles.map((c) => c.l));
+  const hiP = Math.max(...candles.map((c) => c.h));
+  const maxV = Math.max(1e-12, ...candles.map((c) => c.v));
+  const step = W / candles.length;
+  const bw = Math.max(1, step * 0.62);
+  const y = (v: number) => top + (1 - (v - lo) / (hiP - lo || 1)) * (bottom - top);
+  const set = (i: number | null) => {
+    setHi(i);
+    onHover?.(i);
+  };
+  const cx = (i: number) => i * step + step / 2;
+  return (
+    <svg
+      {...box}
+      onPointerMove={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        set(Math.min(candles.length - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * candles.length))));
+      }}
+      onPointerLeave={() => set(null)}
+    >
+      {[0.25, 0.5, 0.75].map((f) => (
+        <line key={f} x1="0" x2={W} y1={top + (bottom - top) * f} y2={top + (bottom - top) * f} stroke="rgba(170,205,240,.07)" strokeDasharray="3 5" vectorEffect="non-scaling-stroke" />
+      ))}
+      {candles.map((c, i) => {
+        const up = c.c >= c.o;
+        const col = up ? '#3DDC97' : '#FF5A6E';
+        const yo = y(c.o);
+        const yc = y(c.c);
+        const vh = (c.v / maxV) * volH;
+        return (
+          <g key={i} className="cnd" opacity={hi == null || hi === i ? 1 : 0.55}>
+            <rect x={cx(i) - bw / 2} y={H - vh} width={bw} height={vh} fill={col} opacity=".28" />
+            <line x1={cx(i)} x2={cx(i)} y1={y(c.h)} y2={y(c.l)} stroke={col} strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            <rect x={cx(i) - bw / 2} y={Math.min(yo, yc)} width={bw} height={Math.max(1, Math.abs(yc - yo))} fill={col} />
+          </g>
+        );
+      })}
+      {hi != null && <line x1={cx(hi)} x2={cx(hi)} y1="0" y2={H} stroke="rgba(241,246,255,.35)" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />}
+    </svg>
+  );
+}

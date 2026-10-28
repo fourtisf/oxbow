@@ -15,10 +15,18 @@ export const test = base.extend<{ errors: string[] }>({
 
 export { expect };
 
-/** Connects the M1 mock wallet through the "Select wallet" dialog. */
+/** Ticks the one-time terms confirmation if this browser hasn't accepted it yet. */
+export async function acceptTermsIfAsked(page: Page) {
+  const box = page.getByRole('dialog', { name: 'Select wallet' }).locator('#termsOk');
+  if (await box.isVisible()) await box.check();
+}
+
+/** Connects the mock wallet through the "Select wallet" dialog. */
 export async function connectWallet(page: Page, name = 'Phantom') {
   await page.getByRole('button', { name: 'Select Wallet' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Select wallet' });
+  await expect(dialog).toBeVisible();
+  await acceptTermsIfAsked(page);
   await dialog.getByRole('button', { name: new RegExp(name) }).click();
   await expect(page.getByText('Connected ' + name)).toBeVisible();
   await expect(dialog).toBeHidden();

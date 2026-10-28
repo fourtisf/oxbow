@@ -42,12 +42,27 @@ export const AssetRefSchema = z.object({
 });
 export type AssetRef = z.infer<typeof AssetRefSchema>;
 
+export const MarketStateSchema = z.object({
+  status: z.enum(['OPEN', 'CLOSED']),
+  reason: z.enum(['WEEKEND', 'HOLIDAY', 'OVERNIGHT', 'EARLY_CLOSE', 'CLOSURE']).nullable(),
+  holiday: z.string().nullable(),
+  /** Next open (when closed) or close (when open). */
+  nextChange: z.string().datetime(),
+  earlyClose: z.boolean(),
+});
+
 export const QuoteAssetSchema = AssetRefSchema.extend({
   kind: QuoteKindSchema,
   priceUsd: z.number().nonnegative(),
   change24h: z.number(),
   /** Stock issuer, e.g. "xStocks". Null for SOL and USDC. */
   issuer: z.string().nullable(),
+  /** When the price feed last updated. */
+  priceUpdatedAt: z.string().datetime(),
+  /** Underlying stock market session. Null for SOL and USDC (they trade 24/7). */
+  market: MarketStateSchema.nullable(),
+  /** Issuer notice (split, dividend, halt…) shown on the stock and its pools. */
+  notice: z.string().max(280).nullable(),
 });
 export type QuoteAsset = z.infer<typeof QuoteAssetSchema>;
 
@@ -59,6 +74,40 @@ export const LpStateSchema = z.object({
   unlockAt: z.string().datetime().nullable(),
 });
 export type LpState = z.infer<typeof LpStateSchema>;
+
+export const SafetyFlagSchema = z.enum([
+  'FREEZABLE',
+  'TRANSFER_HOOK',
+  'PERMANENT_DELEGATE',
+  'CREATOR_PULLED_BEFORE',
+  'DUPLICATE_SYMBOL',
+  'MINTABLE',
+  'TRANSFER_FEE',
+  'LP_UNLOCKED',
+  'CONCENTRATED',
+  'NEW_TOKEN',
+  'LOW_LIQUIDITY',
+]);
+export type SafetyFlag = z.infer<typeof SafetyFlagSchema>;
+export const SafetyLevelSchema = z.enum(['OK', 'CAUTION', 'DANGER']);
+export type SafetyLevel = z.infer<typeof SafetyLevelSchema>;
+
+/** Checks a buyer should see before trading. See `safety.ts` for the rules. */
+export const TokenSafetySchema = z.object({
+  level: SafetyLevelSchema,
+  flags: z.array(SafetyFlagSchema),
+  holderCount: z.number().int().nonnegative(),
+  /** Share of supply held by the 10 largest holders (excluding pools and burn addresses), 0–100. */
+  top10Pct: z.number().min(0).max(100),
+  /** When the token's mint was created. */
+  tokenCreatedAt: z.string().datetime().nullable(),
+  mintAuthority: AddressSchema.nullable(),
+  freezeAuthority: AddressSchema.nullable(),
+  /** The pool creator's history on Oxbow. */
+  creatorPools: z.number().int().nonnegative(),
+  creatorPulled: z.number().int().nonnegative(),
+});
+export type TokenSafety = z.infer<typeof TokenSafetySchema>;
 
 export const PoolSummarySchema = z.object({
   address: AddressSchema,
@@ -80,6 +129,7 @@ export const PoolSummarySchema = z.object({
   sells24h: z.number().int().nonnegative(),
   /** 7-day price series for the table sparkline (oldest first). */
   spark7d: z.array(z.number()),
+  safety: TokenSafetySchema,
 });
 export type PoolSummary = z.infer<typeof PoolSummarySchema>;
 
@@ -90,6 +140,8 @@ export const HolderSliceSchema = z.object({
   kind: HolderKindSchema,
   pct: z.number().min(0).max(100),
   unlockAt: z.string().datetime().nullable(),
+  /** On-chain proof: the lock escrow / LP holder account, or the burn transaction. */
+  proof: z.object({ kind: z.enum(['account', 'tx']), id: z.string().min(32).max(90) }).nullable(),
 });
 export type HolderSlice = z.infer<typeof HolderSliceSchema>;
 
@@ -106,12 +158,32 @@ export const PoolDetailSchema = PoolSummarySchema.extend({
 export type PoolDetail = z.infer<typeof PoolDetailSchema>;
 
 export const ChartPointSchema = z.object({ t: z.number(), p: z.number() });
+/** OHLC in USD, volume in USD, one per `stepMs`. */
+export const CandleSchema = z.object({ t: z.number(), o: z.number(), h: z.number(), l: z.number(), c: z.number(), v: z.number().nonnegative() });
+export type Candle = z.infer<typeof CandleSchema>;
 export const ChartSeriesSchema = z.object({
   tf: TimeframeSchema,
   stepMs: z.number().int().positive(),
   points: z.array(ChartPointSchema),
+  candles: z.array(CandleSchema),
 });
 export type ChartSeries = z.infer<typeof ChartSeriesSchema>;
+
+export const TradeSideSchema = z.enum(['BUY', 'SELL']);
+export type TradeSide = z.infer<typeof TradeSideSchema>;
+
+/** `/api/pools/:address/trades` — most recent first. */
+export const TradeSchema = z.object({
+  sig: z.string(),
+  ts: z.number(),
+  side: TradeSideSchema,
+  wallet: AddressSchema,
+  amountUsd: z.number().nonnegative(),
+  baseAmount: z.number().nonnegative(),
+  quoteAmount: z.number().nonnegative(),
+  priceUsd: z.number().nonnegative(),
+});
+export type Trade = z.infer<typeof TradeSchema>;
 
 export const StatsSchema = z.object({
   vol24hUsd: z.number(),
@@ -166,6 +238,10 @@ export const TokenInfoSchema = z.object({
   /** Token-2022 extension names, e.g. "TransferFeeConfig". */
   extensions: z.array(z.string()),
   risk: TokenRiskSchema,
+  /** Another listed token already uses this symbol with a different mint. */
+  symbolTaken: z.boolean(),
+  /** When the mint was created, if known. */
+  createdAt: z.string().datetime().nullable(),
 });
 export type TokenInfo = z.infer<typeof TokenInfoSchema>;
 
@@ -191,6 +267,10 @@ export const PositionSchema = z.object({
   baseAmount: z.number().nonnegative(),
   quoteAmount: z.number().nonnegative(),
   unclaimedFeesUsd: z.number().nonnegative(),
+  /** USD value of everything deposited, at deposit time. */
+  depositedUsd: z.number().nonnegative(),
+  /** Pool price (quote per base) at deposit time, for impermanent loss. */
+  entryPriceQuote: z.number().nonnegative(),
   isCreator: z.boolean(),
   lock: z.object({ status: LpStatusSchema, unlockAt: z.string().datetime().nullable() }),
 });
@@ -213,6 +293,13 @@ export const PoolsQuerySchema = z.object({
   sort: PoolSortSchema.default('vol'),
   cursor: z.string().max(128).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
+  /** Comma-separated pool addresses (watchlist). */
+  addresses: z
+    .string()
+    .max(100 * 45)
+    .optional()
+    .transform((v) => (v ? v.split(',').filter(Boolean) : undefined))
+    .pipe(z.array(AddressSchema).max(100).optional()),
 });
 export type PoolsQueryInput = z.input<typeof PoolsQuerySchema>;
 export type PoolsQuery = z.output<typeof PoolsQuerySchema>;
@@ -230,3 +317,28 @@ export const RegisterPoolBodySchema = z.object({
   venue: VenueIdSchema,
 });
 export type RegisterPoolBody = z.infer<typeof RegisterPoolBodySchema>;
+
+/** `/api/wallet/:address/activity` — the wallet's Oxbow transactions, most recent first. */
+export const WalletActivitySchema = z.object({
+  sig: z.string(),
+  ts: z.number(),
+  kind: z.enum(['CREATE', 'ADD', 'REMOVE', 'CLAIM', 'SWAP']),
+  pool: z.object({ address: AddressSchema, base: AssetRefSchema, quote: AssetRefSchema }),
+  amountUsd: z.number().nonnegative(),
+});
+export type WalletActivity = z.infer<typeof WalletActivitySchema>;
+
+const Health = z.enum(['OK', 'DEGRADED', 'DOWN']);
+export type HealthState = z.infer<typeof Health>;
+
+/** `/api/status` — what the status page shows. */
+export const StatusSchema = z.object({
+  checkedAt: z.string().datetime(),
+  api: Health,
+  rpc: z.object({ state: Health, slot: z.number().int().nullable(), latencyMs: z.number().nullable() }),
+  indexer: z.object({ state: Health, lagSec: z.number().nullable() }),
+  prices: z.object({ state: Health, updatedAt: z.string().datetime().nullable() }),
+  /** Mock data in use (M1). */
+  sampleData: z.boolean(),
+});
+export type Status = z.infer<typeof StatusSchema>;

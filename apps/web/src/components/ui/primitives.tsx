@@ -1,11 +1,10 @@
 /**
  * Small presentational pieces from the prototype: Card, BracketCorners,
- * Button, ChangePill, LpBadge, VerifiedChip, Fmt. Server-safe (no hooks).
+ * Button, Fmt. Server-safe (no hooks). Translated badges live in badges.tsx.
  */
 import Link from 'next/link';
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
-import { daysUntil, fromSubscript, pct, type LpState } from '@oxbow/shared';
-import { FlameIcon, HalfIcon, LockIcon, ShieldIcon, UnlockIcon } from './Icons';
+import { fromSubscript } from '@oxbow/shared';
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -49,69 +48,6 @@ export function Fmt({ children }: { children: string }) {
       {parts.map((p, i) => (i % 2 ? <sub key={i}>{fromSubscript(p)}</sub> : p))}
     </>
   );
-}
-
-export function ChangePill({ value }: { value: number }) {
-  const up = value >= 0;
-  return (
-    <span className={cx('chg', up ? 'up' : 'down')}>
-      <i aria-hidden="true">{up ? '▲' : '▼'}</i>
-      <span className="sr-only">{up ? 'up ' : 'down '}</span>
-      {pct(Math.abs(value))}
-    </span>
-  );
-}
-
-export function VerifiedChip() {
-  return (
-    <span className="vchk">
-      <ShieldIcon />
-      VERIFIED
-    </span>
-  );
-}
-
-export interface LpBadgeInput {
-  status: LpState['status'];
-  lockedPct: number;
-  unlockAt?: string | null;
-  /** Days to show on LOCKED when there's no unlock time yet (create preview, docs legend). */
-  days?: number;
-}
-
-export function LpBadge({ lp }: { lp: LpBadgeInput }) {
-  switch (lp.status) {
-    case 'BURNED':
-      return (
-        <span className="lp burned">
-          <FlameIcon />
-          BURNED
-        </span>
-      );
-    case 'LOCKED': {
-      const d = lp.unlockAt ? daysUntil(lp.unlockAt) : lp.days ?? 0;
-      return (
-        <span className="lp locked" suppressHydrationWarning>
-          <LockIcon />
-          LOCKED {Math.round(d)}D
-        </span>
-      );
-    }
-    case 'PARTIAL':
-      return (
-        <span className="lp partial">
-          <HalfIcon />
-          {lp.lockedPct}% LOCKED
-        </span>
-      );
-    default:
-      return (
-        <span className="lp unlocked">
-          <UnlockIcon />
-          UNLOCKED
-        </span>
-      );
-  }
 }
 
 export function LiveDot() {

@@ -14,4 +14,7 @@ export const qk = {
   token: (mint: string) => ['token', mint] as const,
   positions: (wallet: string) => ['positions', wallet] as const,
   balances: (wallet: string) => ['balances', wallet] as const,
+  trades: (address: string) => ['trades', address] as const,
+  activity: (wallet: string) => ['activity', wallet] as const,
+  status: () => ['status'] as const,
 };

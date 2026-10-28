@@ -1,6 +1,10 @@
 import { connectWallet, expect, test } from './fixtures';
 
 const EXAMPLE_MINT = 'Pebb5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy';
+// The mock lookup keeps mint and freeze authority on mints starting with "Risk".
+const RISKY_MINT = 'RiskTkn5vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy';
+// Derives the ticker LUNE, which a listed pool already uses.
+const DUPE_MINT = 'Lune5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy';
 
 test.describe('create pool (mock wallet)', () => {
   test('validates the mint and explains what is missing', async ({ page }) => {
@@ -85,5 +89,22 @@ test.describe('create pool (mock wallet)', () => {
     await expect(page).toHaveURL(/\/create\?quote=COINx/);
     await expect(page.getByRole('button', { name: /^COINx/ })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('textbox', { name: 'Token mint address' })).toBeFocused();
+  });
+
+  test('a token with live authorities needs an explicit acknowledgement', async ({ page }) => {
+    await page.goto('/create');
+    const hint = page.locator('.pv-hint');
+    await page.getByRole('textbox', { name: 'Token mint address' }).fill(RISKY_MINT);
+    await expect(page.locator('.tcard')).toContainText('MINT AUTHORITY ACTIVE');
+    await expect(page.getByRole('alert').filter({ hasText: 'Someone can freeze holders of this token' })).toBeVisible();
+    await expect(hint).toHaveText('Confirm you understand the token warnings in step 1.');
+    await page.getByRole('checkbox', { name: 'I understand these risks and want to continue' }).check();
+    await expect(hint).toHaveText('Pick a stock or asset to pair with.');
+
+    // A new mint resets the acknowledgement.
+    await page.getByRole('textbox', { name: 'Token mint address' }).fill(DUPE_MINT);
+    await expect(page.getByText('Another token on Oxbow already uses the ticker LUNE.', { exact: false })).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: /I understand these risks/ })).toHaveCount(0);
+    await expect(hint).toHaveText('Pick a stock or asset to pair with.');
   });
 });

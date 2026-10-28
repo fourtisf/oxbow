@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { amt, compact, quoteBuy, signed, usd } from '@oxbow/shared';
+import { useT } from '@/i18n/client';
 import { prefersReducedMotion } from '@/lib/hooks';
 import { cx } from '../ui/primitives';
 
@@ -18,6 +19,7 @@ const WAVES = { L1: wavePath(24, 4, 0), L2: wavePath(24, 5, 1.6), R1: wavePath(2
 
 /** The Docs two-vessel constant-product demo (`heroUpdate` / `demoIntro`). */
 export function PricingDemo() {
+  const t = useT();
   const [v, setV] = useState(0);
   const touched = useRef(false);
 
@@ -53,7 +55,7 @@ export function PricingDemo() {
   return (
     <div className="demo">
       <div>
-        <svg viewBox="0 0 440 236" role="img" aria-label="Two pool reserves. Buying moves NVDAx in and MOCHI out.">
+        <svg viewBox="0 0 440 236" role="img" aria-label={t.docs.demoAria}>
           <defs>
             <linearGradient id="gT" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stopColor="#E2F0FF" />
@@ -99,18 +101,18 @@ export function PricingDemo() {
         </svg>
         <div className="reserves">
           <div>
-            <span>MOCHI in pool</span>
+            <span>{t.docs.inPool('MOCHI')}</span>
             <strong>{compact(x1, 1)}</strong>
           </div>
           <div>
-            <span>NVDAx in pool</span>
+            <span>{t.docs.inPool('NVDAx')}</span>
             <strong>{amt(y1)}</strong>
           </div>
         </div>
       </div>
       <div>
         <label htmlFor="heroRange">
-          <span>Buy MOCHI with NVDAx</span>
+          <span>{t.docs.buyWith}</span>
           <b>{amt(dy)} NVDAx</b>
         </label>
         <input
@@ -129,19 +131,19 @@ export function PricingDemo() {
         />
         <div className="readouts">
           <div>
-            <span>You get</span>
+            <span>{t.docs.youGet}</span>
             <strong>{amt(q.out)} MOCHI</strong>
           </div>
           <div>
-            <span>Price moves</span>
+            <span>{t.docs.priceMoves}</span>
             <strong className="up">{signed(q.impactPct)}</strong>
           </div>
           <div>
-            <span>Paid in</span>
+            <span>{t.docs.paidIn}</span>
             <strong>{usd(dy * H.nvdaUsd)}</strong>
           </div>
           <div>
-            <span>LPs earn</span>
+            <span>{t.docs.lpsEarn}</span>
             <strong>{amt(q.fee)} NVDAx</strong>
           </div>
         </div>

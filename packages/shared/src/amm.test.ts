@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   feeAprPct,
   feeRateFromBps,
+  impermanentLossPct,
   matchDeposit,
   poolLiquidityUsd,
   quoteBuy,
@@ -75,5 +76,21 @@ describe('feeAprPct', () => {
   });
   it('is zero for an empty pool', () => {
     expect(feeAprPct(100, 0.01, 0)).toBe(0);
+  });
+});
+
+describe('impermanentLossPct', () => {
+  it('is zero when the price is unchanged', () => {
+    expect(impermanentLossPct(1)).toBe(0);
+  });
+  it('matches the textbook values', () => {
+    expect(impermanentLossPct(2)).toBeCloseTo(-5.719, 3);
+    expect(impermanentLossPct(0.5)).toBeCloseTo(-5.719, 3);
+    expect(impermanentLossPct(4)).toBeCloseTo(-20, 6);
+    expect(impermanentLossPct(5)).toBeCloseTo(-25.464, 3);
+  });
+  it('ignores invalid ratios', () => {
+    expect(impermanentLossPct(0)).toBe(0);
+    expect(impermanentLossPct(-1)).toBe(0);
   });
 });

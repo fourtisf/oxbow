@@ -1,13 +1,16 @@
 'use client';
 
 import { usd, type StockInfo } from '@oxbow/shared';
+import { useT } from '@/i18n/client';
 import { useStocks } from '@/lib/api/queries';
+import { ChangePill, MarketChip, VerifiedChip } from '../ui/badges';
 import { ArrowIcon, PlusCircleIcon, ShieldLgIcon, SwapIcon, TrendIcon } from '../ui/Icons';
 import { Sparkline } from '../ui/Sparkline';
 import { TokenAvatar } from '../ui/TokenAvatar';
-import { ButtonLink, ChangePill, Fmt, VerifiedChip } from '../ui/primitives';
+import { ButtonLink, Fmt } from '../ui/primitives';
 
 export function VerifiedStockCard({ s }: { s: StockInfo }) {
+  const t = useT();
   return (
     <div className="vcard">
       <span className="orb" style={{ background: s.orb }} />
@@ -28,21 +31,26 @@ export function VerifiedStockCard({ s }: { s: StockInfo }) {
       <div className="spk">
         <Sparkline data={s.spark} W={240} H={40} op={0.22} sw={1.8} />
       </div>
+      {s.market && <MarketChip market={s.market} />}
+      {s.notice && (
+        <p className="vnotice">
+          <b>{t.market.notice}:</b> {s.notice}
+        </p>
+      )}
       <div className="meta">
-        <span>Issuer: {s.issuer}</span>
-        <span>
-          {s.poolCount} pool{s.poolCount === 1 ? '' : 's'}
-        </span>
+        <span>{t.home.issuer(s.issuer ?? '—')}</span>
+        <span>{t.common.pools(s.poolCount)}</span>
       </div>
       <ButtonLink variant="glass" href={`/create?quote=${encodeURIComponent(s.symbol)}`}>
-        Pair with {s.symbol}
+        {t.home.pairWith(s.symbol)}
       </ButtonLink>
     </div>
   );
 }
 
 export function VerifiedStocks() {
-  const { data = [] } = useStocks();
+  const t = useT();
+  const { data } = useStocks();
   return (
     <div className="card block">
       <div className="hd">
@@ -50,57 +58,45 @@ export function VerifiedStocks() {
           <span className="ic">
             <ShieldLgIcon />
           </span>
-          Verified stocks
+          {t.home.verifiedStocks}
         </h2>
-        <span className="lnk opt-sm">Price feed and liquidity checked</span>
+        <span className="lnk opt-sm">{t.home.checked}</span>
       </div>
-      <div className="vgrid">
-        {data.map((s) => (
-          <VerifiedStockCard key={s.mint} s={s} />
-        ))}
-      </div>
+      {data && !data.length ? (
+        <p className="state">{t.home.stocksEmpty}</p>
+      ) : (
+        <div className="vgrid">
+          {(data ?? []).map((s) => (
+            <VerifiedStockCard key={s.mint} s={s} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
+const HOW_ICONS = [<PlusCircleIcon key="a" />, <SwapIcon key="b" />, <TrendIcon key="c" size={18} sw={1.9} />];
+
 export function HowItWorks() {
+  const t = useT();
   return (
     <div className="how3">
-      <div className="card step">
-        <div className="sh">
-          <span className="ic">
-            <PlusCircleIcon />
-          </span>
-          <span className="n">STEP 01</span>
+      {t.home.how.map(([title, body], i) => (
+        <div className="card step" key={i}>
+          <div className="sh">
+            <span className="ic">{HOW_ICONS[i]}</span>
+            <span className="n">{t.home.step(String(i + 1).padStart(2, '0'))}</span>
+          </div>
+          <h3>{title}</h3>
+          <p>{body}</p>
         </div>
-        <h3>Bring your token</h3>
-        <p>Paste the mint of any token already live on Solana. You don&apos;t need to launch anything new.</p>
-      </div>
-      <div className="card step">
-        <div className="sh">
-          <span className="ic">
-            <SwapIcon />
-          </span>
-          <span className="n">STEP 02</span>
-        </div>
-        <h3>Pick a stock</h3>
-        <p>Choose Tesla, Nvidia, the S&amp;P 500 or another verified stock token, then deposit both sides in equal value.</p>
-      </div>
-      <div className="card step">
-        <div className="sh">
-          <span className="ic">
-            <TrendIcon size={18} sw={1.9} />
-          </span>
-          <span className="n">STEP 03</span>
-        </div>
-        <h3>Trade and earn</h3>
-        <p>Your pool goes live on Raydium, Meteora or Orca. Every swap pays a fee to whoever supplied the liquidity.</p>
-      </div>
+      ))}
     </div>
   );
 }
 
 export function CtaBand() {
+  const t = useT();
   const { data = [] } = useStocks();
   return (
     <div className="card ctaband">
@@ -110,15 +106,15 @@ export function CtaBand() {
             <TokenAvatar key={s.mint} asset={s} size={44} />
           ))}
         </div>
-        <h2>Give your meme something real to trade against.</h2>
-        <p>Pair it with a verified stock in about a minute. Burn or lock the liquidity so buyers can see you&apos;re in it for the long run.</p>
+        <h2>{t.home.ctaTitle}</h2>
+        <p>{t.home.ctaBody}</p>
       </div>
       <div className="cta" style={{ marginTop: 0 }}>
         <ButtonLink size="lg" href="/create">
-          Create a pool <ArrowIcon />
+          {t.home.createPool} <ArrowIcon />
         </ButtonLink>
         <ButtonLink variant="glass" size="lg" href="/docs">
-          Read the docs
+          {t.home.readDocs}
         </ButtonLink>
       </div>
     </div>

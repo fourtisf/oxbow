@@ -8,10 +8,13 @@ import type {
   Position,
   QuoteAsset,
   Stats,
+  Status,
   StockInfo,
   TickerItem,
   Timeframe,
   TokenInfo,
+  Trade,
+  WalletActivity,
 } from '@oxbow/shared';
 
 /**
@@ -30,8 +33,10 @@ export interface OxbowApi {
   pools(query: PoolsQueryInput): Promise<PoolsPage>;
   /** GET /api/pools/:address — null when the pool isn't listed. */
   pool(address: string): Promise<PoolDetail | null>;
-  /** GET /api/pools/:address/chart?tf= */
+  /** GET /api/pools/:address/chart?tf= (line points and OHLCV candles) */
   chart(address: string, tf: Timeframe): Promise<ChartSeries>;
+  /** GET /api/pools/:address/trades — recent swaps, newest first. */
+  trades(address: string): Promise<Trade[]>;
   /** GET /api/stocks */
   stocks(): Promise<StockInfo[]>;
   /**
@@ -44,6 +49,10 @@ export interface OxbowApi {
   token(mint: string): Promise<TokenInfo | null>;
   /** GET /api/wallet/:address/positions */
   positions(wallet: string): Promise<Position[]>;
+  /** GET /api/wallet/:address/activity — the wallet's Oxbow transactions, newest first. */
+  walletActivity(wallet: string): Promise<WalletActivity[]>;
+  /** GET /api/status — API, RPC, indexer and price-feed health. */
+  status(): Promise<Status>;
   /** Recent items for the live feed's first paint. */
   recentActivity(): Promise<ActivityItem[]>;
   /** GET /api/activity/stream (SSE). Returns an unsubscribe function. */

@@ -65,3 +65,11 @@ export const usePositions = (wallet: string | null | undefined) =>
 export function invalidateAfterTx(qc: QueryClient) {
   return qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'token' });
 }
+
+export const useTrades = (address: string | null | undefined) =>
+  useQuery({ queryKey: qk.trades(address ?? ''), queryFn: () => api.trades(address!), enabled: !!address });
+
+export const useWalletActivity = (wallet: string | null | undefined) =>
+  useQuery({ queryKey: qk.activity(wallet ?? ''), queryFn: () => api.walletActivity(wallet!), enabled: !!wallet });
+
+export const useStatus = () => useQuery({ queryKey: qk.status(), queryFn: () => api.status(), refetchInterval: 30_000 });
