@@ -17,11 +17,13 @@ for (const [path, heading] of ROUTES) {
   });
 }
 
-test('unknown routes 404', async ({ page }) => {
-  const res = await page.goto('/nope');
-  expect(res?.status()).toBe(404);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Nothing here');
-});
+for (const path of ['/nope', '/pool/not-an-address', '/pool/So11111111111111111111111111111111111111112']) {
+  test(`${path} is a 404`, async ({ page }) => {
+    const res = await page.goto(path);
+    expect(res?.status()).toBe(404);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Nothing here');
+  });
+}
 
 test('main navigation marks the current page', async ({ page, isMobile }) => {
   await page.goto('/');

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { Hydrate } from '@/lib/api/Hydrate';
 import { isAddress } from '@oxbow/shared';
 import { PoolPage } from '@/components/pool/PoolPage';
@@ -12,8 +13,9 @@ export async function generateMetadata({ params }: { params: { address: string }
 
 /** Direct visits and shared links to /pool/[address] get a full page. */
 export default async function PoolRoute({ params, searchParams }: { params: { address: string }; searchParams: { tab?: string } }) {
+  if (!isAddress(params.address) || !(await api.pool(params.address))) notFound();
   const pf = new Prefetch();
-  if (isAddress(params.address)) await Promise.all([pf.pool(params.address), pf.chart(params.address, '1D')]);
+  await Promise.all([pf.pool(params.address), pf.chart(params.address, '1D')]);
   return (
     <Hydrate state={pf.state()}>
       <PoolPage address={params.address} tab={searchParams.tab === 'add' ? 'add' : 'swap'} />
