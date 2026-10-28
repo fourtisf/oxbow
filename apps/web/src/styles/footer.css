@@ -1,0 +1,9 @@
+/* Ported verbatim from design/oxbow.html (footer). Keep in sync with the prototype; do not redesign. */
+footer{border-top:1px solid var(--stroke);padding:56px 0 36px;margin-top:20px;background:linear-gradient(180deg,rgba(255,255,255,.012),transparent)}
+.fgrid{display:grid;grid-template-columns:1.6fr repeat(3,1fr);gap:40px}
+.fgrid p{color:var(--text2);margin-top:14px;max-width:36ch;font-size:14.5px}
+.fgrid h5{font:500 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--text3);margin-bottom:14px}
+.fgrid a{display:block;color:var(--text2);text-decoration:none;padding:5px 0;font-size:14.5px}
+.fgrid a:hover{color:var(--text)}
+.fgrid a.brand{display:flex;color:var(--text)}
+.fbot{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:44px;padding-top:24px;border-top:1px solid var(--stroke);color:var(--text3);font-size:13.5px}

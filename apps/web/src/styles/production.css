@@ -1,0 +1,43 @@
+/*
+ * Additions the prototype didn't need. Each rule reuses existing tokens and
+ * matches neighbouring styles; nothing here changes a prototype rule.
+ */
+
+/* Visually hidden but available to screen readers. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* Avatar placeholder before the client has drawn the generated image. */
+span.av{background:rgba(158,207,255,.08)}
+
+/* Next.js <Link> replaces the prototype's <a href="#...">; ticker pool items are links. */
+a.tk{text-decoration:none}
+button.tk{font:600 13.5px var(--mono)}
+
+/* Token risk warnings in create step 1 (freeze authority, transfer hook/fee, mintable). */
+.tcard .checks span.warn{color:var(--amber)}
+.tcard + .note{margin-top:10px}
+
+/* Explore pagination. */
+.more{display:flex;justify-content:center;padding:16px;border-top:1px solid var(--stroke)}
+
+/* Skeleton rows while a query loads. */
+.skel{display:block;height:14px;border-radius:6px;background:linear-gradient(90deg,rgba(158,207,255,.05),rgba(158,207,255,.11),rgba(158,207,255,.05));background-size:200% 100%;animation:skel 1.4s linear infinite}
+@keyframes skel{to{background-position:-200% 0}}
+
+/* Full-page pool view (direct visits to /pool/[address]). */
+.poolpage{max-width:640px;margin:0 auto;padding:0;overflow:hidden}
+.poolpage .drawer-h{position:static;background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+.poolback{display:inline-flex;align-items:center;gap:8px;color:var(--text2);text-decoration:none;font:500 14.5px var(--sans);margin:28px 0 18px}
+.poolback:hover{color:var(--text)}
+
+/* Error and not-found states. */
+.state{text-align:center;padding:56px 24px;color:var(--text2)}
+.state h3{font:600 20px var(--sans);color:var(--text);margin-bottom:8px;letter-spacing:-.02em}
+
+@media (prefers-reduced-motion:reduce){.skel{animation:none}}
+
+/* Clickable items that are links in the port (were divs with click handlers). */
+a.fchip,a.fi,a.mv{text-decoration:none;color:inherit}
+
+/* Footer column titles are <h2> (were <h5>) for a valid heading order; same look as `.fgrid h5`. */
+.fgrid h2{font:500 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--text3);margin-bottom:14px}
