@@ -124,6 +124,16 @@ pnpm --filter @oxbow/web build
 pnpm e2e
 ```
 
+The same tests cover a mainnet build; they read the network from the page:
+
+```bash
+NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta pnpm --filter @oxbow/web build
+```
+
+```bash
+pnpm e2e
+```
+
 Prototype comparison screenshots (1920 / 1440 / 390px): see
 [`apps/web/screens/README.md`](apps/web/screens/README.md).
 
@@ -132,6 +142,9 @@ Prototype comparison screenshots (1920 / 1440 / 390px): see
 See [`.env.example`](.env.example). On the mock data layer only these matter:
 
 - `NEXT_PUBLIC_SOLANA_CLUSTER`: network pill label and explorer links (`devnet` or `mainnet-beta`).
+  On the mock data layer `mainnet-beta` changes only these: the pools,
+  addresses and wallet are still sample data, so a mainnet build should not
+  go public before M2 to M4. The default stays `devnet` (devnet first).
 - `NEXT_PUBLIC_OXBOW_FEE_LAMPORTS`: Oxbow fee shown in the cost breakdown and docs (default 0.1 SOL).
 - `NEXT_PUBLIC_CONTRACT_ADDRESS`: hero CA box; hidden when empty.
 - `NEXT_PUBLIC_X_URL`, `NEXT_PUBLIC_TELEGRAM_URL`, `NEXT_PUBLIC_DISCORD_URL`: social links.

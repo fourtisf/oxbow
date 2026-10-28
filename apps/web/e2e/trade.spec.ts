@@ -1,4 +1,4 @@
-import { connectWallet, expect, test } from './fixtures';
+import { connectWallet, expect, isMainnet, test } from './fixtures';
 
 async function openMochi(page: import('@playwright/test').Page) {
   await page.goto('/explore');
@@ -60,8 +60,14 @@ test.describe('trading (mock wallet)', () => {
     await expect(drawer.locator('svg .cnd').first()).toBeVisible();
 
     await expect(drawer.locator('.ttable tbody tr')).toHaveCount(12);
-    await expect(drawer.getByRole('link', { name: /Solscan · Pool/ })).toHaveAttribute('href', /^https:\/\/solscan\.io\/account\/\w+\?cluster=devnet$/);
-    // Market-data sites only list mainnet pools.
-    await expect(drawer.getByRole('link', { name: /DexScreener/ })).toHaveCount(0);
+    // Solscan points at the build's network; market-data sites only list mainnet pools.
+    const mainnet = await isMainnet(page);
+    await expect(drawer.getByRole('link', { name: /Solscan · Pool/ })).toHaveAttribute('href', new RegExp(`^https://solscan\\.io/account/\\w+${mainnet ? '' : '\\?cluster=devnet'}$`));
+    if (mainnet) {
+      await expect(drawer.getByRole('link', { name: /DexScreener/ })).toHaveAttribute('href', /^https:\/\/dexscreener\.com\/solana\/\w+$/);
+      await expect(drawer.getByRole('link', { name: /Birdeye/ })).toHaveAttribute('href', /^https:\/\/birdeye\.so\/token\/\w+\?chain=solana$/);
+    } else {
+      await expect(drawer.getByRole('link', { name: /DexScreener|Birdeye/ })).toHaveCount(0);
+    }
   });
 });

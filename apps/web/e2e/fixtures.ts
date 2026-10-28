@@ -31,3 +31,9 @@ export async function connectWallet(page: Page, name = 'Phantom') {
   await expect(page.getByText('Connected ' + name)).toBeVisible();
   await expect(dialog).toBeHidden();
 }
+
+/** True when the build under test targets mainnet (NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta), read from the network pill. */
+export async function isMainnet(page: Page): Promise<boolean> {
+  const label = await page.getByText(/^Solana (mainnet|devnet)$/).first().textContent();
+  return label === 'Solana mainnet';
+}
