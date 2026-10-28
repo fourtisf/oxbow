@@ -1,7 +1,7 @@
 import { daysUntil, isAddress, signed, usd, venueInfo } from '@oxbow/shared';
 import { getT } from '@/i18n/server';
 import { api } from '@/lib/api';
-import { OG_SIZE, poolOgImage, siteOgImage } from '@/lib/og';
+import { logoData, OG_SIZE, poolOgImage, siteOgImage } from '@/lib/og';
 
 export const runtime = 'nodejs';
 export const size = OG_SIZE;
@@ -22,8 +22,12 @@ export default async function Image({ params }: { params: { address: string } })
         : lp.status === 'PARTIAL'
           ? t.lp.partial(lp.lockedPct)
           : t.lp.unlocked;
+  const [baseLogo, quoteLogo] = await Promise.all([logoData(p.base.logoUri), logoData(p.quote.logoUri)]);
   return poolOgImage({
     pair: `${p.base.symbol}/${p.quote.symbol}`,
+    baseLogo,
+    quoteLogo,
+    quoteSquare: !!p.quote.brand?.stock,
     name: t.home.pairedWith(p.base.name, p.quote.name),
     price: usd(p.priceUsd),
     change: p.change24h,

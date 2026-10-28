@@ -33,4 +33,6 @@ up as intended differences too: token safety marks next to pair names,
 market-hours chips on stock cards, watchlist stars, the Buy / Sell toggle and
 slippage settings in the trade box, recent trades, on-chain links, the
 dashboard's profit / loss card and activity list, and the footer's legal links
-and language switch.
+and language switch. Token avatars are now logos instead of the prototype's
+pixel identicons and letter tiles, and a sample-data strip sits above the
+ticker.

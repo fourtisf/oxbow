@@ -1,4 +1,4 @@
-import { acceptTermsIfAsked, connectWallet, expect, isMainnet, test } from './fixtures';
+import { acceptTermsIfAsked, connectWallet, expect, isMainnet, isSampleData, test } from './fixtures';
 
 test.describe('dashboard (mock wallet)', () => {
   test('asks for a wallet, then lists positions with claim and withdraw', async ({ page }) => {
@@ -35,8 +35,13 @@ test.describe('dashboard (mock wallet)', () => {
     const activity = page.locator('.alist li');
     await expect(activity.filter({ hasText: 'Withdrew' })).toHaveCount(2);
     await expect(activity.filter({ hasText: 'Claimed fees' })).toHaveCount(1);
-    const devnet = (await isMainnet(page)) ? '' : '\\?cluster=devnet';
-    await expect(activity.first().getByRole('link').first()).toHaveAttribute('href', new RegExp(`^https://solscan\\.io/tx/\\w+${devnet}$`));
+    // On sample data the transactions don't exist, so there is no explorer link to show.
+    if (await isSampleData(page)) {
+      await expect(activity.first().getByRole('link')).toHaveCount(0);
+    } else {
+      const devnet = (await isMainnet(page)) ? '' : '\\?cluster=devnet';
+      await expect(activity.first().getByRole('link').first()).toHaveAttribute('href', new RegExp(`^https://solscan\\.io/tx/\\w+${devnet}$`));
+    }
   });
 
   test('shows profit or loss against what was deposited', async ({ page }) => {

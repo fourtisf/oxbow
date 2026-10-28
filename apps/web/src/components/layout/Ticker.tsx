@@ -10,7 +10,7 @@ import { Fmt } from '../ui/primitives';
 function Item({ t, dup }: { t: TickerItem; dup?: boolean }) {
   const body = (
     <>
-      <TokenAvatar asset={t.asset} size={22} />
+      <TokenAvatar asset={t.asset} size={22} eager />
       <b>{t.asset.symbol}</b>
       <span>
         <Fmt>{usd(t.priceUsd)}</Fmt>

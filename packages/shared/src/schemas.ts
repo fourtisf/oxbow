@@ -32,12 +32,22 @@ export const BrandSchema = z.object({
 });
 export type Brand = z.infer<typeof BrandSchema>;
 
+/**
+ * Token logo: an https URL or a path on this site ("/tokens/sol.svg"). Metadata
+ * images on ipfs:// or ar:// are rewritten to an https gateway by the API;
+ * anything else (http:, data:, javascript:, protocol-relative) is rejected.
+ */
+export const LogoUriSchema = z
+  .string()
+  .max(512)
+  .refine((v) => /^https:\/\/[^\s"'<>]+$/i.test(v) || /^\/(?!\/)[^\s"'<>]*$/.test(v), 'logo must be an https URL or a site path');
+
 /** Any token as the UI shows it. `symbol`/`name` come from metadata and are untrusted. */
 export const AssetRefSchema = z.object({
   mint: AddressSchema,
   symbol: z.string().max(32),
   name: z.string().max(64),
-  logoUri: z.string().url().nullable(),
+  logoUri: LogoUriSchema.nullable(),
   brand: BrandSchema.nullable(),
 });
 export type AssetRef = z.infer<typeof AssetRefSchema>;
@@ -234,7 +244,7 @@ export const TokenInfoSchema = z.object({
   tokenProgram: z.enum(['spl-token', 'token-2022']),
   mintAuthority: AddressSchema.nullable(),
   freezeAuthority: AddressSchema.nullable(),
-  logoUri: z.string().url().nullable(),
+  logoUri: LogoUriSchema.nullable(),
   /** Token-2022 extension names, e.g. "TransferFeeConfig". */
   extensions: z.array(z.string()),
   risk: TokenRiskSchema,

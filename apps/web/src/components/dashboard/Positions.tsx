@@ -11,10 +11,11 @@ import { invalidateAfterTx, usePositions, useWalletActivity } from '@/lib/api/qu
 import { chain } from '@/lib/chain/mock';
 import { useNow } from '@/lib/hooks';
 import { links } from '@/lib/links';
+import { ExtLink } from '../ui/ExtLink';
 import { poolHref } from '@/lib/nav';
 import { toast } from '@/lib/store/toast';
 import { useWallet } from '@/lib/store/wallet';
-import { BarsIcon, CloseIcon, DropIcon, ExternalIcon, LiquidIcon, TrendIcon, WalletIcon } from '../ui/Icons';
+import { BarsIcon, CloseIcon, DropIcon, LiquidIcon, TrendIcon, WalletIcon } from '../ui/Icons';
 import { Modal } from '../ui/overlay';
 import { PairAvatar } from '../ui/TokenAvatar';
 import { Button, ButtonLink, cx, Fmt } from '../ui/primitives';
@@ -150,9 +151,7 @@ function Activity() {
               <span className="when" suppressHydrationWarning>
                 {relTimeL(a.ts, t, now)}
               </span>
-              <a className="xlink" href={links.tx(a.sig)} target="_blank" rel="noopener noreferrer" aria-label={t.dash.viewTx}>
-                <ExternalIcon />
-              </a>
+              <ExtLink href={links.tx(a.sig)} label={t.dash.viewTx} />
             </li>
           ))}
         </ul>

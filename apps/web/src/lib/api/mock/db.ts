@@ -24,7 +24,7 @@ import {
   type TokenSafety,
   type WalletActivity,
 } from '@oxbow/shared';
-import { brandFor, fakeMint, Q, SEED_POOLS, series, type MockLp, type MockPool } from './seed';
+import { brandFor, fakeMint, logoFor, Q, SEED_POOLS, series, type MockLp, type MockPool } from './seed';
 
 export interface MockPosition {
   id: string;
@@ -73,7 +73,7 @@ export function quoteAsset(sym: string, now = Date.now()): QuoteAsset {
     mint: fakeMint(sym),
     symbol: q.sym,
     name: q.name,
-    logoUri: null,
+    logoUri: logoFor(sym),
     brand: stock ? brandFor(sym) : NATIVE_BRANDS[sym as 'SOL' | 'USDC'] ?? null,
     kind: q.kind,
     priceUsd: q.price,
@@ -87,7 +87,7 @@ export function quoteAsset(sym: string, now = Date.now()): QuoteAsset {
 }
 
 export function baseAsset(p: MockPool): AssetRef {
-  return { mint: p.base.mint, symbol: p.base.sym, name: p.base.name, logoUri: null, brand: null };
+  return { mint: p.base.mint, symbol: p.base.sym, name: p.base.name, logoUri: p.base.logo, brand: null };
 }
 
 function createdAtMs(p: MockPool, now: number): number {
@@ -216,7 +216,7 @@ export function toActivity(a: MockActivity): WalletActivity | null {
     ts: a.ts,
     kind: a.kind,
     amountUsd: a.amountUsd,
-    pool: { address: p.addr, base: baseAsset(p), quote: { mint: q.mint, symbol: q.symbol, name: q.name, logoUri: null, brand: q.brand } },
+    pool: { address: p.addr, base: baseAsset(p), quote: { mint: q.mint, symbol: q.symbol, name: q.name, logoUri: q.logoUri, brand: q.brand } },
   };
 }
 

@@ -34,6 +34,8 @@ export const id: Messages = {
     pools: (n: number) => `${n} pool`,
     markets: (n: number) => `${n} pasar`,
     somethingWrong: 'Terjadi kesalahan',
+    sampleLink: 'Alamat contoh: link ini aktif setelah data asli tersambung.',
+    sampleBanner: (network: string) => `Demo dengan data contoh. Pool, harga, wallet, dan transaksi masih simulasi, belum ada yang dikirim ke ${network}.`,
     rel: {
       justNow: 'baru saja',
       s: (n: number) => `${n} dtk lalu`,
@@ -285,6 +287,7 @@ export const id: Messages = {
     copyLink: 'Salin link',
     shareText: (pair: string, price: string) => `${pair} diperdagangkan di ${price} di Oxbow`,
     allMarkets: 'Semua pasar',
+    sampleLinks: 'Ini alamat contoh, jadi link explorer baru aktif setelah data asli tersambung.',
   },
   trade: {
     tabs: 'Trading',
@@ -355,6 +358,7 @@ export const id: Messages = {
       tail: 'Pembeli juga akan melihat peringatan ini.',
       ack: 'Saya memahami risiko ini dan ingin melanjutkan',
       dupe: (sym: string) => `Sudah ada token lain di Oxbow dengan ticker ${sym}. Pembeli akan melihat peringatan ticker ganda di pool Anda.`,
+      noLogo: 'Metadata token ini tidak punya logo, jadi Oxbow menampilkan avatar buatan. Tambahkan gambar ke metadata token dan logo Anda akan muncul di semua halaman.',
     },
     s2: 'Pasangkan dengan',
     s2sub: 'Trader membeli token Anda dengan aset ini. Harga, biaya, dan pendapatan Anda semua dihitung dalam aset ini.',

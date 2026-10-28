@@ -1,4 +1,4 @@
-import { connectWallet, expect, isMainnet, test } from './fixtures';
+import { connectWallet, expect, isMainnet, isSampleData, outboundUrl, test } from './fixtures';
 
 async function openMochi(page: import('@playwright/test').Page) {
   await page.goto('/explore');
@@ -61,13 +61,20 @@ test.describe('trading (mock wallet)', () => {
 
     await expect(drawer.locator('.ttable tbody tr')).toHaveCount(12);
     // Solscan points at the build's network; market-data sites only list mainnet pools.
+    // On sample data the links are shown disabled, since the addresses don't exist.
     const mainnet = await isMainnet(page);
-    await expect(drawer.getByRole('link', { name: /Solscan · Pool/ })).toHaveAttribute('href', new RegExp(`^https://solscan\\.io/account/\\w+${mainnet ? '' : '\\?cluster=devnet'}$`));
+    const sample = await isSampleData(page);
+    const ext = (name: string) => drawer.locator('.links .xlink', { hasText: name });
+    expect(await outboundUrl(ext('Solscan · Pool'))).toMatch(new RegExp(`^https://solscan\\.io/account/\\w+${mainnet ? '' : '\\?cluster=devnet'}$`));
+    if (sample) {
+      await expect(ext('Solscan · Pool')).toHaveAttribute('aria-disabled', 'true');
+      await expect(drawer.getByText('These are sample addresses', { exact: false })).toBeVisible();
+    }
     if (mainnet) {
-      await expect(drawer.getByRole('link', { name: /DexScreener/ })).toHaveAttribute('href', /^https:\/\/dexscreener\.com\/solana\/\w+$/);
-      await expect(drawer.getByRole('link', { name: /Birdeye/ })).toHaveAttribute('href', /^https:\/\/birdeye\.so\/token\/\w+\?chain=solana$/);
+      expect(await outboundUrl(ext('DexScreener'))).toMatch(/^https:\/\/dexscreener\.com\/solana\/\w+$/);
+      expect(await outboundUrl(ext('Birdeye'))).toMatch(/^https:\/\/birdeye\.so\/token\/\w+\?chain=solana$/);
     } else {
-      await expect(drawer.getByRole('link', { name: /DexScreener|Birdeye/ })).toHaveCount(0);
+      await expect(drawer.locator('.links .xlink', { hasText: /DexScreener|Birdeye/ })).toHaveCount(0);
     }
   });
 });

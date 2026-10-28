@@ -21,8 +21,32 @@ function loadFonts() {
 
 const C = { bg: '#03060C', text: '#F1F6FF', text2: '#A9B8CB', text3: '#6B7C92', ice: '#9ECFFF', up: '#3DDC97', down: '#FF5A6E', amber: '#FFB86B' };
 
+const publicDir = path.join(process.cwd(), 'public');
+const MIME: Record<string, string> = { '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
+
+/**
+ * A logo as a data URI for the image renderer. Only files under public/ are
+ * read; remote logos are skipped here (the M2 API serves them through its own
+ * image proxy).
+ */
+export async function logoData(uri: string | null): Promise<string | null> {
+  if (!uri?.startsWith('/')) return null;
+  const file = path.normalize(path.join(publicDir, uri));
+  const mime = MIME[path.extname(file).toLowerCase()];
+  if (!mime || !file.startsWith(publicDir + path.sep)) return null;
+  try {
+    return `data:${mime};base64,${(await readFile(file)).toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
 export interface OgPool {
   pair: string;
+  baseLogo: string | null;
+  quoteLogo: string | null;
+  /** Stock logos are rounded squares, others circles. */
+  quoteSquare: boolean;
   name: string;
   price: string;
   change: number;
@@ -104,7 +128,17 @@ export async function poolOgImage(p: OgPool) {
     (
       <Frame>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ fontFamily: 'Geist Mono', fontSize: 84, fontWeight: 600, letterSpacing: -2 }}>{p.pair}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+            {(p.baseLogo || p.quoteLogo) && (
+              <div style={{ display: 'flex', width: 96 + 62, height: 96, position: 'relative' }}>
+                {p.baseLogo && <img src={p.baseLogo} alt="" width={96} height={96} style={{ position: 'absolute', left: 0, top: 0, borderRadius: 48 }} />}
+                {p.quoteLogo && (
+                  <img src={p.quoteLogo} alt="" width={96} height={96} style={{ position: 'absolute', left: 62, top: 0, borderRadius: p.quoteSquare ? 27 : 48, border: `4px solid ${C.bg}` }} />
+                )}
+              </div>
+            )}
+            <div style={{ fontFamily: 'Geist Mono', fontSize: 84, fontWeight: 600, letterSpacing: -2 }}>{p.pair}</div>
+          </div>
           <div style={{ fontSize: 30, color: C.text2 }}>{p.name}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 24 }}>
             <Price text={p.price} />

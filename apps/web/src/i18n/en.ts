@@ -32,6 +32,8 @@ export const en = {
     pools: (n: number) => `${n} pool${n === 1 ? '' : 's'}`,
     markets: (n: number) => `${n} ${n === 1 ? 'market' : 'markets'}`,
     somethingWrong: 'Something went wrong',
+    sampleLink: 'Sample address: this link opens once live data is connected.',
+    sampleBanner: (network: string) => `Demo on sample data. Pools, prices, wallets and trades are simulated and nothing is sent to ${network} yet.`,
     rel: {
       justNow: 'just now',
       s: (n: number) => `${n}s ago`,
@@ -271,6 +273,7 @@ export const en = {
     copyLink: 'Copy link',
     shareText: (pair: string, price: string) => `${pair} is trading at ${price} on Oxbow`,
     allMarkets: 'All markets',
+    sampleLinks: 'These are sample addresses, so explorer links open once live data is connected.',
   },
   trade: {
     tabs: 'Trade',
@@ -341,6 +344,7 @@ export const en = {
       tail: 'Buyers will see these warnings too.',
       ack: 'I understand these risks and want to continue',
       dupe: (sym: string) => `Another token on Oxbow already uses the ticker ${sym}. Buyers will see a duplicate-ticker warning on your pool.`,
+      noLogo: "This token has no logo in its metadata, so Oxbow shows a generated avatar. Add an image to the token's metadata and your logo appears on every page.",
     },
     s2: 'Pair it with',
     s2sub: 'Traders buy your token with this asset. Prices, fees and your earnings are all counted in it.',

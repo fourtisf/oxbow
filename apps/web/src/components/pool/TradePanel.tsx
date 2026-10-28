@@ -11,10 +11,11 @@ import { useBalances } from '@/lib/chain/hooks';
 import { chain } from '@/lib/chain/mock';
 import { ChainError } from '@/lib/chain/types';
 import { links } from '@/lib/links';
+import { ExtLink } from '../ui/ExtLink';
 import { toast } from '@/lib/store/toast';
 import { HIGH_SLIPPAGE_BPS, SLIPPAGE_PRESETS_BPS, useTradeSettings } from '@/lib/store/trade';
 import { useWallet } from '@/lib/store/wallet';
-import { ExternalIcon, FlipIcon, GearIcon } from '../ui/Icons';
+import { FlipIcon, GearIcon } from '../ui/Icons';
 import { TokenAvatar } from '../ui/TokenAvatar';
 import { Button, cx, Fmt } from '../ui/primitives';
 
@@ -185,9 +186,9 @@ function Swap({ pool }: { pool: PoolDetail }) {
           </span>
         </div>
         {wallet && have === 0 && side === 'BUY' && (
-          <a className="getlink" href={links.buy(pay.mint)} target="_blank" rel="noopener noreferrer">
-            {t.trade.getToken(pay.symbol)} <ExternalIcon />
-          </a>
+          <ExtLink className="getlink" href={links.buy(pay.mint)}>
+            {t.trade.getToken(pay.symbol)}
+          </ExtLink>
         )}
       </div>
       <button className="flip" aria-label={t.trade.flip} onClick={() => switchSide(side === 'BUY' ? 'SELL' : 'BUY')}>

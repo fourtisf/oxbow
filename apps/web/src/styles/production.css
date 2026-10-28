@@ -202,3 +202,10 @@ a.fchip,a.fi,a.mv{text-decoration:none;color:inherit}
 html[lang=id] .hero h1{font-size:clamp(40px,3.4vw,68px)}
 /* Phones: drop the wallet column so recent trades fit without sideways scrolling (the time still links to the transaction). */
 @media (max-width:560px){.ttable .tw{display:none}}
+
+/* Sample-data strip and links that wait for live data. */
+.samplebar{display:flex;justify-content:center;align-items:center;gap:8px;padding:7px 16px;font:500 12.5px/1.45 var(--sans);color:#FFD9A8;text-align:center;background:linear-gradient(90deg,rgba(255,184,107,.06),rgba(255,184,107,.14),rgba(255,184,107,.06));border-bottom:1px solid rgba(255,184,107,.22);position:relative;z-index:2}
+.samplebar svg{width:14px;height:14px;flex:none;color:var(--amber,#FFB86B)}
+.xlink.off,.getlink.off{color:var(--text3);cursor:default}
+.xlink.off:hover,.getlink.off:hover{text-decoration:none}
+.links .xlink.off{opacity:.7}

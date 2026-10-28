@@ -7,9 +7,10 @@ import { useLocale, useT } from '@/i18n/client';
 import { dateInL } from '@/i18n/format';
 import { EXAMPLE_MINT } from '@/lib/api/mock/seed';
 import { links } from '@/lib/links';
+import { ExtLink } from '../ui/ExtLink';
 import { useCreateForm, type LockKind } from '@/lib/store/create';
 import { useWallet } from '@/lib/store/wallet';
-import { CheckIcon, CloseIcon, ExternalIcon, SearchSmIcon, WarnIcon } from '../ui/Icons';
+import { CheckIcon, CloseIcon, SearchSmIcon, WarnIcon } from '../ui/Icons';
 import { TokenAvatar } from '../ui/TokenAvatar';
 import { cx, Fmt } from '../ui/primitives';
 import type { CreateModel } from './model';
@@ -112,6 +113,7 @@ function TokenStep({ m }: { m: CreateModel }) {
                   <CloseIcon />
                 </button>
               </div>
+              {!tk.logoUri && <p className="fine">{t.create.risk.noLogo}</p>}
               {tk.symbolTaken && (
                 <div className="note mid">
                   <WarnIcon />
@@ -261,9 +263,9 @@ function DepositStep({ m }: { m: CreateModel }) {
                 ))}
             </div>
             {q && wallet && (m.quoteBal === 0 || m.quoteOver) && (
-              <a className="getlink" href={links.buy(q.mint)} target="_blank" rel="noopener noreferrer">
-                {t.create.getOn(q.symbol)} <ExternalIcon />
-              </a>
+              <ExtLink className="getlink" href={links.buy(q.mint)}>
+                {t.create.getOn(q.symbol)}
+              </ExtLink>
             )}
           </div>
         </div>

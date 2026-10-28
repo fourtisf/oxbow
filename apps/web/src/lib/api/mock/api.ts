@@ -16,7 +16,7 @@ import {
 } from '@oxbow/shared';
 import type { OxbowApi } from '../types';
 import { baseAsset, db, fakeSig, quoteAsset, symbolTaken, tickerOrder, toActivity, toDetail, toPosition, toSummary } from './db';
-import { EXAMPLE_MINT, ORB, Q, series, STOCKS, TF_STEP_MS, type MockPool } from './seed';
+import { EXAMPLE_MINT, logoFor, ORB, Q, series, STOCKS, TF_STEP_MS, type MockPool } from './seed';
 
 const isBrowser = typeof window !== 'undefined';
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -79,7 +79,7 @@ export const mockApi: OxbowApi = {
       items.splice(i * 3 + 1, 0, {
         kind: 'stock',
         address: null,
-        asset: { mint: q.mint, symbol: q.symbol, name: q.name, logoUri: null, brand: q.brand },
+        asset: { mint: q.mint, symbol: q.symbol, name: q.name, logoUri: q.logoUri, brand: q.brand },
         priceUsd: q.priceUsd,
         change24h: q.change24h,
       });
@@ -213,7 +213,8 @@ export const mockApi: OxbowApi = {
       tokenProgram: 'spl-token',
       mintAuthority: authority,
       freezeAuthority: authority,
-      logoUri: null,
+      // Only the example token has a logo; other pasted mints show what a token without one looks like.
+      logoUri: mint === EXAMPLE_MINT ? logoFor(sym) : null,
       extensions: [],
       risk: { mintable: !!authority, freezable: !!authority, transferFee: false, transferHook: false, permanentDelegate: false },
       symbolTaken: taken,

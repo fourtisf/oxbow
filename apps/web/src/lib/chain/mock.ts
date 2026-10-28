@@ -73,7 +73,7 @@ export const mockChain: Chain = {
     const tvl = p.quoteAmount * q.price * 2;
     const pool: MockPool = {
       id: 'n' + now,
-      base: { sym: p.token.symbol, name: p.token.name, mint: p.token.mint, supply: p.token.supply },
+      base: { sym: p.token.symbol, name: p.token.name, mint: p.token.mint, supply: p.token.supply, logo: p.token.logoUri },
       quote: q.sym,
       venue: p.venue,
       feeBps: p.feeBps,

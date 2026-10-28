@@ -19,12 +19,14 @@ import { useLocale, useT } from '@/i18n/client';
 import { fmtDateL, marketReason, marketWhen, relTimeL } from '@/i18n/format';
 import type { Messages } from '@/i18n/en';
 import { track } from '@/lib/analytics';
+import { SAMPLE_DATA } from '@/lib/api/mode';
 import { useChart, usePool, useTrades } from '@/lib/api/queries';
 import { copyText } from '@/lib/copy';
 import { useNow } from '@/lib/hooks';
 import { links, siteUrl } from '@/lib/links';
 import { WatchStar } from '../explore/ExploreView';
 import { ChangePill, SafetyPill } from '../ui/badges';
+import { ExtLink } from '../ui/ExtLink';
 import { CloseIcon, CopyIcon, ExternalIcon, FlameIcon, HalfIcon, LockIcon, ShareIcon, UnlockIcon, WarnIcon } from '../ui/Icons';
 import { CandleChart, PriceChart } from '../ui/Sparkline';
 import { PairAvatar } from '../ui/TokenAvatar';
@@ -39,14 +41,6 @@ const HOLDER_COLOR = { BURNED: '#9ECFFF', LOCKED: '#3DDC97', CREATOR: '#FF5A6E',
 function holderLabel(h: HolderSlice, t: Messages, locale: 'en' | 'id') {
   if (h.kind === 'LOCKED') return t.pool.holder.LOCKED(h.unlockAt ? fmtDateL(h.unlockAt, locale) : '—');
   return t.pool.holder[h.kind];
-}
-
-function Ext({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <a className="xlink" href={href} target="_blank" rel="noopener noreferrer">
-      {children} <ExternalIcon />
-    </a>
-  );
 }
 
 function LpNote({ p }: { p: PoolDetail }) {
@@ -286,14 +280,14 @@ function RecentTrades({ p }: { p: PoolDetail }) {
                     <Fmt>{amt(tr.baseAmount)}</Fmt>
                   </td>
                   <td className="tw">
-                    <a className="xlink" href={links.account(tr.wallet)} target="_blank" rel="noopener noreferrer">
+                    <ExtLink href={links.account(tr.wallet)} icon={false}>
                       {shortAddr(tr.wallet)}
-                    </a>
+                    </ExtLink>
                   </td>
                   <td suppressHydrationWarning>
-                    <a className="xlink" href={links.tx(tr.sig)} target="_blank" rel="noopener noreferrer">
+                    <ExtLink href={links.tx(tr.sig)} icon={false}>
                       {relTimeL(tr.ts, t, now)}
-                    </a>
+                    </ExtLink>
                   </td>
                 </tr>
               ))}
@@ -446,7 +440,7 @@ export function PoolDetails({ p, tab, onTab }: { p: PoolDetail; tab: TradeTab; o
                 {h.proof && (
                   <>
                     {' '}
-                    <Ext href={h.proof.kind === 'tx' ? links.tx(h.proof.id) : links.account(h.proof.id)}>{t.pool.proof}</Ext>
+                    <ExtLink href={h.proof.kind === 'tx' ? links.tx(h.proof.id) : links.account(h.proof.id)}>{t.pool.proof}</ExtLink>
                   </>
                 )}
               </span>
@@ -461,12 +455,13 @@ export function PoolDetails({ p, tab, onTab }: { p: PoolDetail; tab: TradeTab; o
       <div className="d-sec">
         <h4 className="label">{t.pool.links}</h4>
         <div className="links">
-          <Ext href={links.account(p.address)}>Solscan · {t.pool.linkPool}</Ext>
-          <Ext href={links.token(p.base.mint)}>Solscan · {t.pool.linkToken}</Ext>
-          <Ext href={links.account(p.creator)}>Solscan · {t.pool.linkCreator}</Ext>
-          {links.mainnetOnly && <Ext href={links.dexscreener(p.address)}>DexScreener</Ext>}
-          {links.mainnetOnly && <Ext href={links.birdeye(p.base.mint)}>Birdeye</Ext>}
+          <ExtLink href={links.account(p.address)}>Solscan · {t.pool.linkPool}</ExtLink>
+          <ExtLink href={links.token(p.base.mint)}>Solscan · {t.pool.linkToken}</ExtLink>
+          <ExtLink href={links.account(p.creator)}>Solscan · {t.pool.linkCreator}</ExtLink>
+          {links.mainnetOnly && <ExtLink href={links.dexscreener(p.address)}>DexScreener</ExtLink>}
+          {links.mainnetOnly && <ExtLink href={links.birdeye(p.base.mint)}>Birdeye</ExtLink>}
         </div>
+        {SAMPLE_DATA && <p className="fine">{t.pool.sampleLinks}</p>}
       </div>
       <div className="addr">
         {t.pool.poolLabel}

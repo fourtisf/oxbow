@@ -6,6 +6,7 @@ import { GeistSans } from 'geist/font/sans';
 import { Footer } from '@/components/layout/Footer';
 import { MobileTabs, Nav } from '@/components/layout/Nav';
 import { Providers } from '@/components/layout/Providers';
+import { SampleBanner } from '@/components/layout/SampleBanner';
 import { Ticker } from '@/components/layout/Ticker';
 import { WalletModal } from '@/components/layout/WalletButton';
 import { Toaster } from '@/components/ui/Toaster';
@@ -60,6 +61,7 @@ export default async function RootLayout({ children, drawer }: { children: React
         <div className="grain" aria-hidden="true" />
         <I18nProvider locale={locale}>
           <Providers>
+            <SampleBanner />
             <Hydrate state={pf.state()}>
               <Ticker />
             </Hydrate>

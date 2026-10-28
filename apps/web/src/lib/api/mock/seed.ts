@@ -57,6 +57,12 @@ export const ORB: Record<string, string> = {
 
 export const STOCKS = Object.keys(Q).filter((k) => Q[k]!.kind === 'STOCK');
 
+/**
+ * Logos for the sample tokens, served from public/tokens (built by
+ * scripts/token-logos.py). Real tokens get theirs from metadata in M2.
+ */
+export const logoFor = (sym: string): string => `/tokens/${sym.toLowerCase()}.${Q[sym] ? 'svg' : 'png'}`;
+
 /** Mock wallet balances by quote symbol. */
 export const BAL: Record<string, number> = {
   SOL: 24.6,
@@ -134,7 +140,7 @@ const LPSEQ: MockLp[] = [
 export interface MockPool {
   /** Seed id from the prototype ("p0".."p17", "n<timestamp>" for new pools). Drives the chart PRNG. */
   id: string;
-  base: { sym: string; name: string; mint: string; supply: number };
+  base: { sym: string; name: string; mint: string; supply: number; logo: string | null };
   quote: string;
   venue: VenueId;
   feeBps: number;
@@ -209,7 +215,7 @@ export function makePool(i: number): MockPool {
   const buys = Math.round(Math.min(84, Math.max(22, 50 + chg / 60 + (r() - 0.5) * 24)));
   return {
     id: 'p' + i,
-    base: { sym, name, mint: fakeMint(sym), supply: 1e9 },
+    base: { sym, name, mint: fakeMint(sym), supply: 1e9, logo: logoFor(sym) },
     quote: q.sym,
     venue: VENUES[i % 3]!.id,
     feeBps: Math.round(FSEQ[i]! * 100),
@@ -255,3 +261,4 @@ export function series(p: Pick<MockPool, 'id' | 'chg' | 'priceUSD'>, tf: '1H' | 
 
 /** Prototype example token for "Use an example token". Fake mint. */
 export const EXAMPLE_MINT = 'Pebb5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy';
+export const EXAMPLE_SYMBOL = 'PEBL';

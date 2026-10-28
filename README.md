@@ -44,6 +44,19 @@ wallet action is simulated. Nothing touches a chain.
 - **Ops**: optional Sentry and Plausible, `/status` page, error pages, a
   lite mode for low-end phones (no blur, grain or city animation).
 
+### Token logos and sample-data safeguards
+
+- Every token shows a logo. Real tokens use the image from their metadata
+  (`logoUri`, https or a site path only); tokens without one fall back to a
+  drawn avatar, and Create tells the creator their token has no logo.
+- The sample tokens' logos live in `apps/web/public/tokens/`, built by
+  `scripts/token-logos.py` from free sources (see
+  [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)).
+- While the app runs on sample data (`apps/web/src/lib/api/mode.ts`), a strip
+  above the ticker says so, and explorer and Jupiter links show as disabled,
+  since the sample addresses don't exist on any network. Both go away when
+  M2 connects the real API.
+
 ### Needs the owner before launch
 
 - Legal pages are drafts written without a lawyer. Have them reviewed, then

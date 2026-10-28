@@ -20,6 +20,8 @@ test.describe('create pool (mock wallet)', () => {
     await expect(page.getByText('Looking up the token')).toBeVisible();
     await expect(page.locator('.tcard')).toContainText('PEBL');
     await expect(page.locator('.tcard')).toContainText('MINT AUTHORITY REVOKED');
+    await expect(page.locator('.tcard img.av')).toHaveAttribute('src', '/tokens/pebl.png');
+    await expect(page.getByText('This token has no logo in its metadata', { exact: false })).toHaveCount(0);
     await expect(hint).toHaveText('Pick a stock or asset to pair with.');
 
     await page.getByRole('button', { name: /^SOL/ }).click();
@@ -96,6 +98,8 @@ test.describe('create pool (mock wallet)', () => {
     const hint = page.locator('.pv-hint');
     await page.getByRole('textbox', { name: 'Token mint address' }).fill(RISKY_MINT);
     await expect(page.locator('.tcard')).toContainText('MINT AUTHORITY ACTIVE');
+    // No logo in its metadata: the creator is told what buyers will see.
+    await expect(page.getByText('This token has no logo in its metadata', { exact: false })).toBeVisible();
     await expect(page.getByRole('alert').filter({ hasText: 'Someone can freeze holders of this token' })).toBeVisible();
     await expect(hint).toHaveText('Confirm you understand the token warnings in step 1.');
     await page.getByRole('checkbox', { name: 'I understand these risks and want to continue' }).check();
