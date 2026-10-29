@@ -352,3 +352,59 @@ export const StatusSchema = z.object({
   sampleData: z.boolean(),
 });
 export type Status = z.infer<typeof StatusSchema>;
+
+// ---------------------------------------------------------------- pool creation (M3)
+
+const Signature = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{64,90}$/);
+/** A decimal amount in UI units, as typed ("1500", "0.25"). Kept as a string so no precision is lost. */
+const UiAmount = z.string().regex(/^\d{1,30}(\.\d{1,18})?$/);
+
+/** `GET /api/venues` — where pools can be created right now, and what it costs. */
+export const VenuesSchema = z.object({
+  /** False until the treasury is configured on the server. */
+  createEnabled: z.boolean(),
+  oxbowFeeLamports: z.number().int().nonnegative(),
+  venues: z.array(
+    z.object({
+      id: VenueIdSchema,
+      enabled: z.boolean(),
+      feeTiers: z.array(z.object({ feeBps: z.number().int().positive(), createPoolFeeLamports: z.number().int().nonnegative() })),
+    }),
+  ),
+});
+export type Venues = z.infer<typeof VenuesSchema>;
+
+/** `POST /api/pools/build` — the unsigned create transaction for the creator's wallet. */
+export const BuildCreateBodySchema = z.object({
+  creator: AddressSchema,
+  baseMint: AddressSchema,
+  quoteMint: AddressSchema,
+  baseAmount: UiAmount,
+  quoteAmount: UiAmount,
+  feeBps: z.number().int().positive(),
+  venue: VenueIdSchema,
+});
+export type BuildCreateBody = z.infer<typeof BuildCreateBodySchema>;
+
+export const BuiltTxSchema = z.object({
+  /** Base64 of an unsigned v0 transaction. */
+  transaction: z.string().min(1),
+  pool: AddressSchema.optional(),
+});
+export type BuiltTx = z.infer<typeof BuiltTxSchema>;
+
+/** `POST /api/tx/send` — a signed transaction for wallets that sign but don't send. */
+export const SendTxBodySchema = z.object({ transaction: z.string().min(1).max(4096) });
+
+/** `GET /api/tx/:signature` */
+export const TxStatusSchema = z.object({ status: z.enum(['pending', 'confirmed', 'failed']) });
+export type TxStatus = z.infer<typeof TxStatusSchema>;
+
+/** `POST /api/pools/:address/lock` — the LP burn transaction to record. */
+export const LockPoolBodySchema = z.object({ signature: Signature });
+
+/** `POST /api/pools/:address/burn` — who burns (must be the pool's creator). */
+export const BurnBuildBodySchema = z.object({ creator: AddressSchema });
+
+/** `GET /api/wallet/:address/balances?mints=` — UI-unit balances by mint. */
+export const BalancesSchema = z.record(AddressSchema, z.number().nonnegative());

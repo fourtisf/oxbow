@@ -66,7 +66,10 @@ function mintAccount(decimals: number, supply: bigint, authority: PublicKey | nu
   return { owner: TOKEN_PROGRAM_ID, data, executable: false, lamports: 1, rentEpoch: 0 };
 }
 
-class FakeRpc implements ChainReader {
+class FakeRpc {
+  async getTransaction() {
+    return null;
+  }
   accounts = new Map<string, AccountInfo<Buffer>>();
   down = false;
   async getSlot() {
@@ -106,7 +109,7 @@ describe.skipIf(!ready)('Oxbow API', () => {
     await built?.app.close();
     prices = new FakePrices();
     rpc = new FakeRpc();
-    built = await buildApp({ db, redis, prices, rpc, now: () => NOW, fetchJson: async () => null });
+    built = await buildApp({ db, redis, prices, rpc: rpc as unknown as ChainReader, cluster: 'devnet', now: () => NOW, fetchJson: async () => null });
   });
 
   afterAll(async () => {
@@ -328,9 +331,9 @@ describe.skipIf(!ready)('Oxbow API', () => {
     });
   });
 
-  it('validates pool registration and answers 501 until on-chain verification ships', async () => {
+  it('validates pool registration and waits for the transaction to confirm', async () => {
     const post = (payload: Record<string, string>) => app().inject({ method: 'POST', url: '/api/pools/register', payload });
-    expect((await post({ signature: '5'.repeat(88), venue: 'RAYDIUM_CPMM' })).statusCode).toBe(501);
+    expect((await post({ signature: '5'.repeat(88), venue: 'RAYDIUM_CPMM' })).statusCode).toBe(409);
     expect((await post({ signature: 'short', venue: 'RAYDIUM_CPMM' })).statusCode).toBe(400);
     expect((await post({ signature: '5'.repeat(88), venue: 'UNISWAP' })).statusCode).toBe(400);
   });
@@ -368,7 +371,7 @@ describe.skipIf(!ready)('Oxbow API', () => {
 
   it('limits registration to 10 a minute', async () => {
     const post = () => app().inject({ method: 'POST', url: '/api/pools/register', payload: { signature: '5'.repeat(88), venue: 'RAYDIUM_CPMM' }, headers: { 'x-forwarded-for': '203.0.113.50' } });
-    for (let i = 0; i < 10; i++) expect((await post()).statusCode).toBe(501);
+    for (let i = 0; i < 10; i++) expect((await post()).statusCode).toBe(409);
     expect((await post()).statusCode).toBe(429);
   });
 
@@ -412,7 +415,7 @@ describe.skipIf(!ready)('Oxbow API', () => {
 
   it('caps open activity streams per IP', async () => {
     await built.app.close();
-    built = await buildApp({ db, redis, prices, rpc, now: () => NOW, streamsPerIp: 1 });
+    built = await buildApp({ db, redis, prices, rpc: rpc as unknown as ChainReader, cluster: 'devnet', now: () => NOW, streamsPerIp: 1 });
     await app().listen({ port: 0, host: '127.0.0.1' });
     const { port } = app().server.address() as { port: number };
     const ctrl = new AbortController();

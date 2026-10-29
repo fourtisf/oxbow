@@ -22,6 +22,8 @@ const { app } = await buildApp({
   db,
   redis,
   rpc: connect(config.RPC_URL, config.SOLANA_CLUSTER),
+  cluster: config.SOLANA_CLUSTER,
+  create: { treasury: config.OXBOW_TREASURY, feeLamports: config.OXBOW_FEE_LAMPORTS, priorityMicroLamports: config.PRIORITY_FEE_MICROLAMPORTS },
   prices: new LivePrices(config.JUPITER_API_BASE, config.PYTH_HERMES_URL, (m) => app.log.warn(m)),
   ipfsGateway: config.IPFS_GATEWAY,
   logger: { level: process.env.LOG_LEVEL ?? 'info' },

@@ -17,14 +17,17 @@
     "@oxbow/db": "workspace:*",
     "@oxbow/shared": "workspace:*",
     "@oxbow/solana": "workspace:*",
+    "@solana/spl-token": "0.4.15",
+    "@solana/web3.js": "1.99.0",
     "fastify": "5.12.7",
     "ioredis": "5.11.1",
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@solana/spl-token": "0.4.15",
-    "@solana/web3.js": "1.99.0",
+    "@raydium-io/raydium-sdk-v2": "0.2.74-alpha",
+    "@types/bn.js": "5.2.0",
     "@types/node": "22.20.5",
+    "bn.js": "5.2.1",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "3.2.7"

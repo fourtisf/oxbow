@@ -12,7 +12,6 @@ import { z, ZodError } from 'zod';
 import {
   AddressSchema,
   PoolsQuerySchema,
-  RegisterPoolBodySchema,
   TimeframeSchema,
   TokenInfoSchema,
   type ActivityItem,
@@ -23,24 +22,40 @@ import {
 import type { PrismaClient } from '@oxbow/db';
 import { lookupToken, type AccountReader } from '@oxbow/solana/token';
 import { fetchJsonSafely } from '@oxbow/solana/safe-fetch';
-import { SOL_MINT } from '@oxbow/solana/rpc';
+import { SOL_MINT, type Cluster } from '@oxbow/solana/rpc';
+import type { Connection } from '@solana/web3.js';
 import { ActivityHub } from './activity';
 import { Cache } from './cache';
+import { registerCreateRoutes, type CreateConfig } from './create';
+import { HttpError, priv, pub, withTimeout } from './http';
 import { Market } from './market';
 import type { PriceSource } from './prices';
 
-/** The RPC calls the API makes: account reads for token lookups, the slot for /status. */
-export interface ChainReader extends AccountReader {
-  getSlot(): Promise<number>;
-  /** SOL in lamports; wrapped SOL's mint account always reports a supply of 0. */
-  getSupply(config: { excludeNonCirculatingAccountsList: boolean }): Promise<{ value: { circulating: number } }>;
-}
+/** The RPC calls the API makes (a web3.js Connection in production). */
+export type ChainReader = AccountReader &
+  Pick<
+    Connection,
+    | 'getSlot'
+    | 'getSupply'
+    | 'getMultipleAccountsInfo'
+    | 'getLatestBlockhash'
+    | 'getTransaction'
+    | 'getSignatureStatuses'
+    | 'sendRawTransaction'
+    | 'simulateTransaction'
+    | 'getBalance'
+    | 'getTokenAccountBalance'
+    | 'getParsedTokenAccountsByOwner'
+  >;
 
 export interface Deps {
   db: PrismaClient;
   redis: Redis | null;
   prices: PriceSource;
   rpc: ChainReader;
+  cluster: Cluster;
+  /** Pool creation settings; creation stays off without a treasury. */
+  create?: CreateConfig;
   ipfsGateway?: string;
   /** Metadata JSON fetcher for token logos (SSRF-safe by default). */
   fetchJson?: (url: string) => Promise<unknown | null>;
@@ -55,26 +70,9 @@ const MAX_STREAMS = 5000;
 const HEARTBEAT_MS = 20_000;
 const RPC_TIMEOUT_MS = 5000;
 
-class HttpError extends Error {
-  constructor(
-    readonly statusCode: number,
-    readonly code: string,
-  ) {
-    super(code);
-  }
-}
-
 const Address = z.object({ address: AddressSchema });
 const Mint = z.object({ mint: AddressSchema });
 const ChartQuery = z.object({ tf: TimeframeSchema.default('1D') });
-
-/** Public caching for market data; nginx and browsers may reuse it briefly. */
-const pub = (reply: FastifyReply, sec: number) => reply.header('cache-control', `public, max-age=${sec}`);
-const priv = (reply: FastifyReply) => reply.header('cache-control', 'no-store');
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms).unref())]);
-}
 
 type TokenLookup = { status: 'found'; token: TokenInfo } | { status: 'not_found' | 'not_a_mint' } | { status: 'unreadable' };
 
@@ -107,7 +105,7 @@ export async function buildApp(deps: Deps) {
 
   app.setErrorHandler((err: unknown, _req, reply) => {
     if (err instanceof ZodError) return reply.code(400).send({ error: 'bad_request' });
-    if (err instanceof HttpError) return reply.code(err.statusCode).send({ error: err.code });
+    if (err instanceof HttpError) return reply.code(err.statusCode).send({ error: err.code, ...err.extra });
     const e = err as { statusCode?: number; error?: string };
     if (e.statusCode === 429) return reply.code(429).send({ error: 'rate_limited' });
     if (e.statusCode && e.statusCode >= 400 && e.statusCode < 500) return reply.code(e.statusCode).send({ error: 'bad_request' });
@@ -253,11 +251,7 @@ export async function buildApp(deps: Deps) {
 
   // ------------------------------------------------------------ register
 
-  app.post('/api/pools/register', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
-    RegisterPoolBodySchema.parse(req.body);
-    // On-chain verification of the creation transaction ships with pool creation (M3).
-    return reply.code(501).send({ error: 'not_implemented' });
-  });
+  registerCreateRoutes(app, { db: deps.db, rpc: deps.rpc, cluster: deps.cluster, cache, market, hub, now, config: deps.create, fetchJson, ipfsGateway: deps.ipfsGateway });
 
   // ------------------------------------------------------------ activity
 

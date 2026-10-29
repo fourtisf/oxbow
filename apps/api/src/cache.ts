@@ -27,4 +27,25 @@ export class Cache {
     }
     return value;
   }
+
+  /** Drops cached values: exact keys, or `prefix*` patterns. Best effort. */
+  async drop(...keys: string[]): Promise<void> {
+    if (!this.redis) return;
+    try {
+      for (const k of keys) {
+        if (!k.endsWith('*')) {
+          await this.redis.del(k);
+          continue;
+        }
+        let cursor = '0';
+        do {
+          const [next, found] = await this.redis.scan(cursor, 'MATCH', k, 'COUNT', 200);
+          cursor = next;
+          if (found.length) await this.redis.del(...found);
+        } while (cursor !== '0');
+      }
+    } catch {
+      // stale values expire on their own
+    }
+  }
 }
