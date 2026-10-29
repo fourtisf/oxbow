@@ -28,7 +28,8 @@ export const CREATE_STEPS = ['approve', 'verify', 'create', 'lock', 'publish'] a
 export type CreateStep = (typeof CREATE_STEPS)[number];
 
 /** Error codes the UI turns into readable messages. */
-export type ChainErrorCode = 'SLIPPAGE' | 'NOT_FOUND' | 'INSUFFICIENT';
+/** NOT_READY: live data, but on-chain actions haven't shipped yet. */
+export type ChainErrorCode = 'SLIPPAGE' | 'NOT_FOUND' | 'INSUFFICIENT' | 'NOT_READY';
 export class ChainError extends Error {
   constructor(readonly code: ChainErrorCode) {
     super(code);

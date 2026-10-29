@@ -8,7 +8,7 @@ import { useT } from '@/i18n/client';
 import { track } from '@/lib/analytics';
 import { invalidateAfterTx } from '@/lib/api/queries';
 import { useBalances } from '@/lib/chain/hooks';
-import { chain } from '@/lib/chain/mock';
+import { chain, CHAIN_READY } from '@/lib/chain';
 import { ChainError } from '@/lib/chain/types';
 import { links } from '@/lib/links';
 import { ExtLink } from '../ui/ExtLink';
@@ -229,8 +229,8 @@ function Swap({ pool }: { pool: PoolDetail }) {
           </b>
         </div>
       </div>
-      <Button block onClick={submit} disabled={busy} className={cx(side === 'SELL' && wallet && 'sellbtn')}>
-        {wallet ? `${side === 'BUY' ? t.trade.buy : t.trade.sell} ${pool.base.symbol}` : t.trade.selectToSwap}
+      <Button block onClick={submit} disabled={busy || (!!wallet && !CHAIN_READY)} className={cx(side === 'SELL' && wallet && CHAIN_READY && 'sellbtn')}>
+        {!wallet ? t.trade.selectToSwap : !CHAIN_READY ? t.trade.soon : `${side === 'BUY' ? t.trade.buy : t.trade.sell} ${pool.base.symbol}`}
       </Button>
     </>
   );
@@ -314,8 +314,8 @@ function AddLiquidity({ pool }: { pool: PoolDetail }) {
           {t.trade.ilLink}
         </Link>
       </p>
-      <Button block onClick={submit} disabled={busy}>
-        {wallet ? t.trade.addBtn : t.trade.selectToAdd}
+      <Button block onClick={submit} disabled={busy || (!!wallet && !CHAIN_READY)}>
+        {!wallet ? t.trade.selectToAdd : !CHAIN_READY ? t.trade.soon : t.trade.addBtn}
       </Button>
     </>
   );

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getLocale, getT } from '@/i18n/server';
+import { SAMPLE_DATA } from '@/lib/api/mode';
 import { social } from '@/lib/site';
 import { BrandMark } from './BrandMark';
 import { LanguageSwitch } from './LanguageSwitch';
@@ -42,8 +43,7 @@ export function Footer() {
           </div>
         </div>
         <div className="fbot">
-          {/* Remove once M2 wires real data (brief, ground rule 7). */}
-          <span>{t.footer.sample}</span>
+          {SAMPLE_DATA && <span>{t.footer.sample}</span>}
           <span>{t.footer.nfa}</span>
         </div>
       </div>

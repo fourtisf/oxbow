@@ -74,3 +74,10 @@ export function quoteChips(symbol: string, kind: 'STOCK' | 'SOL' | 'USDC'): numb
   if (kind === 'SOL' || symbol === 'SOL') return [2, 5, 10];
   return [1, 2, 5];
 }
+
+/** Chart resolution per timeframe: one point per `stepMs`, `points` of them. */
+export const CHART_TF = {
+  '1H': { stepMs: 60_000, points: 60 },
+  '1D': { stepMs: 15 * 60_000, points: 96 },
+  '1W': { stepMs: 2 * 3_600_000, points: 84 },
+} as const;

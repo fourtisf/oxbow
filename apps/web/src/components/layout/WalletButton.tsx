@@ -8,14 +8,17 @@ import { copyText } from '@/lib/copy';
 import { toast } from '@/lib/store/toast';
 import { SAMPLE_DATA } from '@/lib/api/mode';
 import { acceptTerms, termsAccepted, useWallet } from '@/lib/store/wallet';
-import { useInstalledWallets, WALLETS } from '@/lib/wallets';
+import { useInstalledWallets, WalletError, WALLETS } from '@/lib/wallets';
 import { CloseIcon, ExternalIcon } from '../ui/Icons';
 import { Modal } from '../ui/overlay';
 import { Button, cx } from '../ui/primitives';
 
 export function WalletButton() {
-  const { wallet, open } = useWallet();
+  const { wallet, open, restore } = useWallet();
   const t = useT();
+  useEffect(() => {
+    void restore();
+  }, [restore]);
   if (wallet)
     return (
       <Button variant="glass" style={{ height: 46 }} onClick={() => open()}>
@@ -45,10 +48,15 @@ export function WalletModal() {
 
   const pick = async (name: string) => {
     if (!accepted) acceptTerms();
-    const w = await connect(name);
-    if (w) {
-      toast(t.wallet.connected(w.name));
-      track('wallet_connected', { wallet: w.name });
+    try {
+      const w = await connect(name);
+      if (w) {
+        toast(t.wallet.connected(w.name));
+        track('wallet_connected', { wallet: w.name });
+      }
+    } catch (e) {
+      const code = e instanceof WalletError ? e.code : 'FAILED';
+      toast(code === 'NOT_INSTALLED' ? t.wallet.notInstalled(name) : code === 'REJECTED' ? t.wallet.rejected : code === 'HARDWARE' ? t.wallet.useLedger : t.wallet.failed(name));
     }
   };
 
@@ -118,7 +126,7 @@ export function WalletModal() {
               </label>
             </div>
           )}
-          {SAMPLE_DATA && <p className="fine wdemo">{t.wallet.demoNote}</p>}
+          <p className="fine wdemo">{SAMPLE_DATA ? t.wallet.demoNote : t.wallet.liveNote}</p>
           <div className="wlist" aria-disabled={gated || undefined}>
             {list.map((w) => (
               <div key={w.name} className={cx('witem', gated && 'off')}>

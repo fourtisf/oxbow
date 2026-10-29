@@ -228,4 +228,3 @@ export function seedMockPositions() {
   d.activity.sort((a, b) => b.ts - a.ts);
 }
 
-export const chain: Chain = mockChain;

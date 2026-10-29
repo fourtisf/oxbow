@@ -10,3 +10,5 @@ coverage/
 /apps/web/test-results/
 /apps/web/playwright-report/
 /apps/web/screens/out/
+/packages/db/src/generated/
+dump.rdb

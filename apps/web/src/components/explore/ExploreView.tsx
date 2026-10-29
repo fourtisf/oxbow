@@ -132,7 +132,8 @@ export function ExploreView() {
   const list = watchEmpty ? [] : pools.data?.pages.flatMap((pg) => pg.items) ?? [];
   const total = watchEmpty ? 0 : pools.data?.pages[0]?.total ?? 0;
   const maxT = Math.max(1, ...list.map((p) => p.tvlUsd));
-  const emptyMsg = watchEmpty ? t.explore.emptyWatch : isAddress(q.trim()) ? t.explore.emptyAddress : t.explore.empty;
+  const unfiltered = !q.trim() && f.quote === 'all' && !f.locked && !f.watch;
+  const emptyMsg = watchEmpty ? t.explore.emptyWatch : isAddress(q.trim()) ? t.explore.emptyAddress : unfiltered ? t.explore.emptyNone : t.explore.empty;
 
   return (
     <div className="card">

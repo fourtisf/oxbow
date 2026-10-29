@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useT } from '@/i18n/client';
 import { track } from '@/lib/analytics';
 import { invalidateAfterTx, useQuotes } from '@/lib/api/queries';
-import { chain } from '@/lib/chain/mock';
+import { chain, CHAIN_READY } from '@/lib/chain';
 import { CREATE_STEPS } from '@/lib/chain/types';
 import { copyText } from '@/lib/copy';
 import { prefersReducedMotion } from '@/lib/hooks';
@@ -56,7 +56,7 @@ export function CreateView({ initialMint, initialQuote }: { initialMint?: string
   }, [initialMint, initialQuote, quotes]);
 
   const start = async () => {
-    if (!wallet || m.msg || !m.token || !m.quote || run) return;
+    if (!CHAIN_READY || !wallet || m.msg || !m.token || !m.quote || run) return;
     const lp = m.lp;
     const labels = [
       t.create.stepApprove(wallet.name),

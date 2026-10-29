@@ -1,16 +1,42 @@
 /**
- * Oxbow API (Fastify). M1 ships only the server skeleton and a health check;
- * the routes from brief section 6, Redis caching, rate limits and the
- * register endpoint land in M2.
+ * Oxbow API entry point: reads config from the environment, connects to
+ * Postgres, Redis and the Solana RPC, and serves on 127.0.0.1 (nginx in front).
  */
-import Fastify from 'fastify';
+import { Redis } from 'ioredis';
+import { createDb } from '@oxbow/db';
+import { connect } from '@oxbow/solana/rpc';
+import { buildApp } from './app';
+import { loadConfig } from './config';
+import { loadEnvFile } from './env-file';
+import { LivePrices } from './prices';
 
-const port = Number(process.env.PORT ?? 4000);
-const app = Fastify({ logger: true, bodyLimit: 64 * 1024 });
+loadEnvFile();
+const config = loadConfig();
+const db = createDb(config.DATABASE_URL);
+const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 2, enableOfflineQueue: false, lazyConnect: false });
+redis.on('error', () => {
+  // Logged by status checks; the API keeps serving without the cache.
+});
 
-app.get('/health', async () => ({ ok: true }));
+const { app } = await buildApp({
+  db,
+  redis,
+  rpc: connect(config.RPC_URL, config.SOLANA_CLUSTER),
+  prices: new LivePrices(config.JUPITER_API_BASE, config.PYTH_HERMES_URL, (m) => app.log.warn(m)),
+  ipfsGateway: config.IPFS_GATEWAY,
+  logger: { level: process.env.LOG_LEVEL ?? 'info' },
+});
 
-app.listen({ port, host: '127.0.0.1' }).catch((err) => {
+const shutdown = async () => {
+  await app.close();
+  await db.$disconnect();
+  redis.disconnect();
+  process.exit(0);
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
+app.listen({ port: config.PORT, host: config.HOST }).catch((err) => {
   app.log.error(err);
   process.exit(1);
 });

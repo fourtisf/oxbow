@@ -6,6 +6,7 @@ import { amt, compactTrim, FEE_TIERS, feePct, LOCK_DAY_OPTIONS, num, quoteChips,
 import { useLocale, useT } from '@/i18n/client';
 import { dateInL } from '@/i18n/format';
 import { EXAMPLE_MINT } from '@/lib/api/mock/seed';
+import { SAMPLE_DATA } from '@/lib/api/mode';
 import { networkLabel } from '@/lib/env';
 import { links } from '@/lib/links';
 import { ExtLink } from '../ui/ExtLink';
@@ -60,7 +61,8 @@ function TokenStep({ m }: { m: CreateModel }) {
           />
         </label>
         <div id="tokenOut" aria-live="polite">
-          {m.lookup === 'empty' && (
+          {/* The example is a sample-data token; live data has no made-up mints to offer. */}
+          {m.lookup === 'empty' && SAMPLE_DATA && (
             <button className="link" onClick={() => set({ mint: EXAMPLE_MINT })}>
               {t.create.example}
             </button>

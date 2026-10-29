@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '../api/keys';
 import { useWallet } from '../store/wallet';
-import { chain } from './mock';
+import { chain } from './index';
 
 /** Connected wallet's balances for the given mints (UI units). Empty when disconnected. */
 export function useBalances(mints: (string | null | undefined)[]) {

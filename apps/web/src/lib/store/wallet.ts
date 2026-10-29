@@ -2,12 +2,15 @@
 
 import { create } from 'zustand';
 import { b58, hash, rng } from '@oxbow/shared';
+import { SAMPLE_DATA } from '../api/mode';
 import { seedMockPositions } from '../chain/mock';
+import { connectWallet, disconnectWallet, waitForWallet, watchWallet } from '../wallets';
 
 /**
- * Mock wallet for M1, with the prototype's "Select wallet" flow. M3 replaces
- * the internals with @solana/wallet-adapter while keeping this interface, so
- * the WalletButton and modal stay as they are.
+ * The connected wallet, with the prototype's "Select wallet" flow. On sample
+ * data the connection is simulated; with live data it asks the real wallet
+ * for its public address (read-only). M3 adds signing through
+ * @solana/wallet-adapter behind this same interface.
  */
 export interface ConnectedWallet {
   name: string;
@@ -16,6 +19,17 @@ export interface ConnectedWallet {
 
 /** Bump when the Terms or Risk disclosure change materially, to ask again. */
 const TERMS_KEY = 'oxbow_terms_v1';
+/** Last connected wallet, to reconnect silently on the next visit. */
+const LAST_KEY = 'oxbow_wallet';
+
+function remember(name: string | null) {
+  try {
+    if (name) localStorage.setItem(LAST_KEY, name);
+    else localStorage.removeItem(LAST_KEY);
+  } catch {
+    // Blocked storage: no silent reconnect.
+  }
+}
 
 export function termsAccepted(): boolean {
   try {
@@ -41,10 +55,14 @@ interface WalletState {
   /** Opens the picker, or the account view when already connected. `after` runs once connected. */
   open(after?: () => void): void;
   close(): void;
-  /** Resolves with the connected wallet, or null if a connection is already in progress. */
+  /** Resolves with the connected wallet, or null if a connection is already in progress. Throws WalletError. */
   connect(name: string): Promise<ConnectedWallet | null>;
   disconnect(): void;
+  /** Reconnects the last wallet without a prompt, if the site is still approved in it. */
+  restore(): Promise<void>;
 }
+
+let unwatch: () => void = () => {};
 
 export const useWallet = create<WalletState>((set, get) => ({
   wallet: null,
@@ -59,13 +77,63 @@ export const useWallet = create<WalletState>((set, get) => ({
   connect: async (name) => {
     if (get().connecting) return null;
     set({ connecting: name });
-    await new Promise((r) => setTimeout(r, 850));
-    seedMockPositions();
+    let address: string;
+    try {
+      if (SAMPLE_DATA) {
+        await new Promise((r) => setTimeout(r, 850));
+        seedMockPositions();
+        address = b58(rng(hash(name + Date.now())), 44);
+      } else {
+        address = await connectWallet(name);
+      }
+    } catch (e) {
+      set({ connecting: null });
+      throw e;
+    }
     const after = get().after;
-    const wallet = { name, address: b58(rng(hash(name + Date.now())), 44) };
+    const wallet = { name, address };
     set({ wallet, connecting: null, modal: null, after: null });
+    if (!SAMPLE_DATA) follow(name);
     after?.();
     return wallet;
   },
-  disconnect: () => set({ wallet: null, modal: null }),
+  disconnect: () => {
+    const w = get().wallet;
+    set({ wallet: null, modal: null });
+    if (!SAMPLE_DATA && w) {
+      unwatch();
+      remember(null);
+      void disconnectWallet(w.name);
+    }
+  },
+  restore: async () => {
+    if (SAMPLE_DATA || get().wallet || get().connecting || !termsAccepted()) return;
+    let name: string | null = null;
+    try {
+      name = localStorage.getItem(LAST_KEY);
+    } catch {
+      return;
+    }
+    if (!name || !(await waitForWallet(name))) return;
+    try {
+      const address = await connectWallet(name, true);
+      if (get().wallet) return;
+      set({ wallet: { name, address } });
+      follow(name);
+    } catch {
+      remember(null);
+    }
+  },
 }));
+
+/** Keeps the address in step with account switches in the wallet, and remembers it for next time. */
+function follow(name: string) {
+  remember(name);
+  unwatch();
+  unwatch = watchWallet(name, (address) => {
+    const s = useWallet.getState();
+    if (s.wallet?.name !== name) return;
+    if (address) useWallet.setState({ wallet: { name, address } });
+    else s.disconnect();
+  });
+}

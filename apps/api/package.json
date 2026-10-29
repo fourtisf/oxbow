@@ -8,15 +8,25 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "echo \"api: tests arrive with the endpoints in M2\""
+    "test": "vitest run",
+    "seed:stocks": "tsx scripts/seed-stocks.ts",
+    "e2e:fixtures": "tsx scripts/e2e-fixtures.ts"
   },
   "dependencies": {
+    "@fastify/rate-limit": "11.2.1",
+    "@oxbow/db": "workspace:*",
     "@oxbow/shared": "workspace:*",
-    "fastify": "5.12.7"
+    "@oxbow/solana": "workspace:*",
+    "fastify": "5.12.7",
+    "ioredis": "5.11.1",
+    "zod": "3.25.76"
   },
   "devDependencies": {
+    "@solana/spl-token": "0.4.15",
+    "@solana/web3.js": "1.99.0",
     "@types/node": "22.20.5",
     "tsx": "4.23.15",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
   }
 }

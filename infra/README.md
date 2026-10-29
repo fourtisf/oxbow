@@ -4,13 +4,18 @@ Deployment for the VPS (Ubuntu 24.04) serving **oxbowflow.com**. DNS: an `A`
 record for `@` pointing at the server and a `CNAME` for `www` pointing at
 `oxbowflow.com`.
 
-- `nginx/oxbowflow.conf`: public entry point. Forwards to the app on
-  `127.0.0.1:3000`, overwrites `X-Forwarded-For` (the token lookup rate limit
-  reads it) and drops any client-sent `CF-IPCountry` (the region notice trusts
-  it; set it here from GeoIP2 if you turn region blocking on). Certbot adds
-  HTTPS on top.
-- `ecosystem.config.cjs`: PM2 process `oxbow-web` (`next start` on localhost).
-- `deploy.sh`: update in one step: pull, install, build, reload, save.
+- `nginx/oxbowflow.conf`: public entry point. `/api/` goes to the API on
+  `127.0.0.1:4000` (the live activity stream unbuffered), everything else to
+  the web app on `127.0.0.1:3000`. Overwrites `X-Forwarded-For` (both apps
+  rate-limit by it) and drops any client-sent `CF-IPCountry` (the region
+  notice trusts it; set it here from GeoIP2 if you turn region blocking on).
+  Certbot adds HTTPS on top.
+- `ecosystem.config.cjs`: PM2 processes `oxbow-web` (`next start`) and, once
+  `apps/api/.env` exists, `oxbow-api` (Fastify through tsx), both on localhost.
+- `setup-data.sh`: one-time PostgreSQL + Redis install, `oxbow` database with
+  a generated password, `apps/api/.env`.
+- `deploy.sh`: update in one step: pull, install, database migrations, build,
+  reload, save.
 
 ## First install (summary)
 
@@ -25,11 +30,73 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
    on boot, install the Nginx site, then
    `certbot --nginx -d oxbowflow.com -d www.oxbowflow.com --redirect`.
 
+## Live data (M2)
+
+1. As root, the database and Redis:
+
+   ```bash
+   sudo bash /home/oxbow/oxbow/infra/setup-data.sh
+   ```
+
+2. As root, put the RPC provider URL (with its key) after `RPC_URL=`. The file
+   is readable only by the `oxbow` user:
+
+   ```bash
+   nano /home/oxbow/oxbow/apps/api/.env
+   ```
+
+3. As `oxbow`: deploy once (applies the migrations and starts `oxbow-api`):
+
+   ```bash
+   sudo -iu oxbow bash /home/oxbow/oxbow/infra/deploy.sh
+   ```
+
+4. As `oxbow`: copy `apps/api/stocks.example.json` to `apps/api/stocks.json`,
+   fill every `mint` and `source` from the issuer's official list (and the
+   USDC mint from Circle's), then check it and compare the table with the
+   official list:
+
+   ```bash
+   cd /home/oxbow/oxbow && pnpm --filter @oxbow/api seed:stocks
+   ```
+
+   When every mint matches, save it:
+
+   ```bash
+   cd /home/oxbow/oxbow && pnpm --filter @oxbow/api seed:stocks --write
+   ```
+
+5. As root: the new Nginx site (adds `/api`), then HTTPS again, since the copy
+   replaces certbot's edits:
+
+   ```bash
+   cp /home/oxbow/oxbow/infra/nginx/oxbowflow.conf /etc/nginx/sites-available/oxbowflow.conf
+   ```
+
+   ```bash
+   certbot --nginx -d oxbowflow.com -d www.oxbowflow.com --redirect --reinstall
+   ```
+
+   ```bash
+   nginx -t && systemctl reload nginx
+   ```
+
+6. As `oxbow`: switch the web app to live data and rebuild:
+
+   ```bash
+   echo 'NEXT_PUBLIC_LIVE_DATA=1' >> /home/oxbow/oxbow/apps/web/.env.production.local
+   ```
+
+   ```bash
+   sudo -iu oxbow bash /home/oxbow/oxbow/infra/deploy.sh
+   ```
+
+Check: `curl -s https://oxbowflow.com/api/status` shows `"sampleData":false`
+and the RPC slot; `pm2 ls` shows both processes online; `pm2 logs oxbow-api`
+shows price-source warnings, if any.
+
 ## Updates
 
 ```bash
 sudo -iu oxbow bash /home/oxbow/oxbow/infra/deploy.sh
 ```
-
-Later milestones add the API and worker processes to `ecosystem.config.cjs`
-and an `api.oxbowflow.com` server block.

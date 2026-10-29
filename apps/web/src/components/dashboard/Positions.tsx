@@ -8,7 +8,7 @@ import { fmtDateL, relTimeL } from '@/i18n/format';
 import type { Messages } from '@/i18n/en';
 import { track } from '@/lib/analytics';
 import { invalidateAfterTx, usePositions, useWalletActivity } from '@/lib/api/queries';
-import { chain } from '@/lib/chain/mock';
+import { chain } from '@/lib/chain';
 import { useNow } from '@/lib/hooks';
 import { links } from '@/lib/links';
 import { ExtLink } from '../ui/ExtLink';
