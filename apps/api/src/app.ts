@@ -211,11 +211,13 @@ export async function buildApp(deps: Deps) {
     if (isSol) {
       try {
         supply = await cache.wrap('sol-supply:v1', 3600, async () => {
-          const s = await withTimeout(deps.rpc.getSupply({ excludeNonCirculatingAccountsList: true }), RPC_TIMEOUT_MS);
+          // Slow on some providers (it totals the non-circulating accounts), hence the longer wait.
+          const s = await withTimeout(deps.rpc.getSupply({ excludeNonCirculatingAccountsList: true }), 15_000);
           return s.value.circulating / 1e9;
         });
-      } catch {
-        // keep the mint account's figure
+      } catch (e) {
+        // Keep the mint account's figure, and say why.
+        req.log.warn(`SOL supply unavailable: ${(e as Error).message}`);
       }
     }
     pub(reply, 120);
