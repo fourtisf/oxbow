@@ -61,7 +61,7 @@ export const STOCKS = Object.keys(Q).filter((k) => Q[k]!.kind === 'STOCK');
  * Logos for the sample tokens, served from public/tokens (built by
  * scripts/token-logos.py). Real tokens get theirs from metadata in M2.
  */
-export const logoFor = (sym: string): string => `/tokens/${sym.toLowerCase()}.${Q[sym] ? 'svg' : 'png'}`;
+export const logoFor = (sym: string): string => `/tokens/${sym.toLowerCase()}.svg`;
 
 /** Mock wallet balances by quote symbol. */
 export const BAL: Record<string, number> = {
@@ -276,8 +276,8 @@ export interface SampleToken {
  * warning and a token without a logo. Every other mint is looked up on Solana.
  */
 export const SAMPLE_TOKENS: Record<string, SampleToken> = {
-  [EXAMPLE_MINT]: { symbol: 'PEBL', name: 'Pebble', logo: '/tokens/pebl.png' },
-  RiskTkn5vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy: { symbol: 'RISK', name: 'Risk Token', logo: '/tokens/risk.png', authority: true },
-  Lune5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy: { symbol: 'LUNE', name: 'Lune Copy', logo: '/tokens/lune-copy.png' },
+  [EXAMPLE_MINT]: { symbol: 'PEBL', name: 'Pebble', logo: '/tokens/pebl.svg' },
+  RiskTkn5vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy: { symbol: 'RISK', name: 'Risk Token', logo: '/tokens/risk.svg', authority: true },
+  Lune5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy: { symbol: 'LUNE', name: 'Lune Copy', logo: '/tokens/lune-copy.svg' },
   P1ainTkn5vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy: { symbol: 'PLAIN', name: 'Plain Token', logo: null },
 };

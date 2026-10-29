@@ -5,8 +5,8 @@ import { expect, test } from './fixtures';
 // Any mint that isn't a sample token is read from the chain through /api/token. These
 // tests stand in for the chain so they don't depend on a live RPC.
 const REAL_MINT = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
-const LOGO_URL = 'https://logos.example/bonk.png';
-const LOGO = readFileSync(join(__dirname, '../public/tokens/mochi.png'));
+const LOGO_URL = 'https://logos.example/bonk.svg';
+const LOGO = readFileSync(join(__dirname, '../public/tokens/mochi.svg'));
 
 const token = {
   mint: REAL_MINT,
@@ -27,7 +27,7 @@ const token = {
 test.describe('token lookup', () => {
   test('a real token shows its own name, ticker and logo', async ({ page }) => {
     await page.route('**/api/token/*', (r) => r.fulfill({ json: token }));
-    await page.route(LOGO_URL, (r) => r.fulfill({ body: LOGO, contentType: 'image/png' }));
+    await page.route(LOGO_URL, (r) => r.fulfill({ body: LOGO, contentType: 'image/svg+xml' }));
     await page.goto('/create');
     await page.getByRole('textbox', { name: 'Token mint address' }).fill(REAL_MINT);
     const card = page.locator('.tcard');

@@ -19,7 +19,7 @@ test.describe('create pool (mock wallet)', () => {
     await expect(page.getByText('Looking up the token')).toBeVisible();
     await expect(page.locator('.tcard')).toContainText('PEBL');
     await expect(page.locator('.tcard')).toContainText('MINT AUTHORITY REVOKED');
-    await expect(page.locator('.tcard img.av')).toHaveAttribute('src', '/tokens/pebl.png');
+    await expect(page.locator('.tcard img.av')).toHaveAttribute('src', '/tokens/pebl.svg');
     await expect(page.getByText('This token has no logo in its metadata', { exact: false })).toHaveCount(0);
     await expect(hint).toHaveText('Pick a stock or asset to pair with.');
 

@@ -57,8 +57,10 @@ wallet action is simulated. Nothing touches a chain.
   it is fetched with public-address-only, https-only, size- and time-capped
   requests (`packages/solana/src/safe-fetch.ts`). Only the sample tokens
   (`SAMPLE_TOKENS` in `seed.ts`) skip the chain.
-- The sample tokens' logos live in `apps/web/public/tokens/`, built by
-  `scripts/token-logos.py` from free sources (see
+- The sample tokens' logos live in `apps/web/public/tokens/` as SVGs built by
+  `scripts/token-logos.py`, all in one style (gradient base, soft light, flat
+  white mark): original marks for the sample memecoins, and the companies'
+  own marks (simple-icons, CC0) for the stock tokens, SOL and USDC (see
   [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)).
 - While the app runs on sample data (`apps/web/src/lib/api/mode.ts`), a strip
   above the ticker says so, and explorer and Jupiter links show as disabled,
