@@ -23,6 +23,7 @@ import {
 import type { PrismaClient } from '@oxbow/db';
 import { lookupToken, type AccountReader } from '@oxbow/solana/token';
 import { fetchJsonSafely } from '@oxbow/solana/safe-fetch';
+import { SOL_MINT } from '@oxbow/solana/rpc';
 import { ActivityHub } from './activity';
 import { Cache } from './cache';
 import { Market } from './market';
@@ -31,6 +32,8 @@ import type { PriceSource } from './prices';
 /** The RPC calls the API makes: account reads for token lookups, the slot for /status. */
 export interface ChainReader extends AccountReader {
   getSlot(): Promise<number>;
+  /** SOL in lamports; wrapped SOL's mint account always reports a supply of 0. */
+  getSupply(config: { excludeNonCirculatingAccountsList: boolean }): Promise<{ value: { circulating: number } }>;
 }
 
 export interface Deps {
@@ -202,10 +205,25 @@ export async function buildApp(deps: Deps) {
       reply.header('cache-control', 'public, max-age=60');
       return reply.code(404).send({ error: found.status });
     }
-    const listed = await deps.db.token.findUnique({ where: { mint }, select: { mintCreatedAt: true } });
+    const [listed, book] = await Promise.all([deps.db.token.findUnique({ where: { mint }, select: { mintCreatedAt: true } }), market.quoteBook()]);
+    const isSol = mint === SOL_MINT;
+    let supply = found.token.supply;
+    if (isSol) {
+      try {
+        supply = await cache.wrap('sol-supply:v1', 3600, async () => {
+          const s = await withTimeout(deps.rpc.getSupply({ excludeNonCirculatingAccountsList: true }), RPC_TIMEOUT_MS);
+          return s.value.circulating / 1e9;
+        });
+      } catch {
+        // keep the mint account's figure
+      }
+    }
     pub(reply, 120);
     return {
       ...found.token,
+      supply,
+      // Pair assets and verified stocks keep their own logo when the token metadata has none (wrapped SOL has none).
+      logoUri: found.token.logoUri ?? book.assets[mint]?.logoUri ?? (isSol ? '/tokens/sol.svg' : null),
       symbolTaken: await market.symbolTaken(found.token.symbol, mint),
       createdAt: listed?.mintCreatedAt?.toISOString() ?? found.token.createdAt,
     } satisfies TokenInfo;

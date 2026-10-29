@@ -73,6 +73,10 @@ class FakeRpc implements ChainReader {
     if (this.down) throw new Error('down');
     return 123_456;
   }
+  async getSupply() {
+    if (this.down) throw new Error('down');
+    return { value: { circulating: 560_000_000 * 1e9 } };
+  }
   async getAccountInfo(k: PublicKey) {
     if (this.down) throw new Error('down');
     return this.accounts.get(k.toBase58()) ?? null;
@@ -283,6 +287,17 @@ describe.skipIf(!ready)('Oxbow API', () => {
       rpc.accounts.set(M.wif, mintAccount(6, 10n ** 14n, null));
       const t = TokenInfoSchema.parse((await get(`/api/tokens/${M.wif}`)).body);
       expect(t.createdAt).toBe(new Date(NOW - DAY).toISOString());
+    });
+
+    it('gives wrapped SOL its logo and the circulating SOL supply', async () => {
+      rpc.accounts.set(SOL_MINT, mintAccount(9, 0n, null));
+      const t = TokenInfoSchema.parse((await get(`/api/tokens/${SOL_MINT}`)).body);
+      expect(t).toMatchObject({ logoUri: '/tokens/sol.svg', supply: 560_000_000, decimals: 9 });
+    });
+
+    it('uses a verified stock’s logo when its metadata has none', async () => {
+      rpc.accounts.set(M.tsla, mintAccount(8, 10n ** 12n, null));
+      expect(TokenInfoSchema.parse((await get(`/api/tokens/${M.tsla}`)).body).logoUri).toBe('/tokens/tslax.svg');
     });
 
     it('answers 404 for missing mints and 502 when the RPC is down, without caching the failure', async () => {
