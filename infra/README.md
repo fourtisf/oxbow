@@ -28,7 +28,7 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
 ## Updates
 
 ```bash
-sudo -iu oxbow bash ~/oxbow/infra/deploy.sh
+sudo -iu oxbow bash /home/oxbow/oxbow/infra/deploy.sh
 ```
 
 Later milestones add the API and worker processes to `ecosystem.config.cjs`
