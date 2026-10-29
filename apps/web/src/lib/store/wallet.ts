@@ -14,12 +14,6 @@ export interface ConnectedWallet {
   address: string;
 }
 
-export const WALLETS: { name: string; bg: string }[] = [
-  { name: 'Phantom', bg: 'linear-gradient(135deg,#B8A8FF,#7A5CF0)' },
-  { name: 'Solflare', bg: 'linear-gradient(135deg,#FFC163,#F26B2A)' },
-  { name: 'Backpack', bg: 'linear-gradient(135deg,#FF6B6B,#C9262D)' },
-];
-
 /** Bump when the Terms or Risk disclosure change materially, to ask again. */
 const TERMS_KEY = 'oxbow_terms_v1';
 

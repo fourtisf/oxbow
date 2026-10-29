@@ -6,10 +6,12 @@ import { useT } from '@/i18n/client';
 import { track } from '@/lib/analytics';
 import { copyText } from '@/lib/copy';
 import { toast } from '@/lib/store/toast';
-import { acceptTerms, termsAccepted, useWallet, WALLETS } from '@/lib/store/wallet';
-import { CloseIcon } from '../ui/Icons';
+import { SAMPLE_DATA } from '@/lib/api/mode';
+import { acceptTerms, termsAccepted, useWallet } from '@/lib/store/wallet';
+import { useInstalledWallets, WALLETS } from '@/lib/wallets';
+import { CloseIcon, ExternalIcon } from '../ui/Icons';
 import { Modal } from '../ui/overlay';
-import { Button } from '../ui/primitives';
+import { Button, cx } from '../ui/primitives';
 
 export function WalletButton() {
   const { wallet, open } = useWallet();
@@ -51,6 +53,9 @@ export function WalletModal() {
   };
 
   const gated = !accepted && !checked;
+  const installed = useInstalledWallets();
+  // Installed wallets first, the rest in list order.
+  const list = [...WALLETS].sort((a, b) => Number(installed.has(b.name)) - Number(installed.has(a.name)));
 
   return (
     <Modal open={!!modal} onClose={close} label={account ? t.wallet.connectedAs : t.wallet.select} busy={!!connecting}>
@@ -113,15 +118,27 @@ export function WalletModal() {
               </label>
             </div>
           )}
+          {SAMPLE_DATA && <p className="fine wdemo">{t.wallet.demoNote}</p>}
           <div className="wlist" aria-disabled={gated || undefined}>
-            {WALLETS.map((w) => (
-              <button key={w.name} className="witem" onClick={() => pick(w.name)} aria-busy={connecting === w.name} disabled={gated}>
-                <span className="wlogo" style={{ background: w.bg }} aria-hidden="true">
-                  {w.name[0]}
-                </span>
-                <b>{w.name}</b>
-                <small>{connecting === w.name ? <span className="spin" aria-label={t.wallet.connecting} /> : t.wallet.detected}</small>
-              </button>
+            {list.map((w) => (
+              <div key={w.name} className={cx('witem', gated && 'off')}>
+                <button className="wpick" onClick={() => pick(w.name)} aria-busy={connecting === w.name} disabled={gated}>
+                  <span className={cx('wlogo', w.tile && 'pad')} style={w.tile ? { background: w.tile } : undefined} aria-hidden="true">
+                    <img src={w.icon} alt="" width={40} height={40} />
+                  </span>
+                  <b>{w.name}</b>
+                  {connecting === w.name && <span className="spin" aria-label={t.wallet.connecting} />}
+                </button>
+                {installed.has(w.name) ? (
+                  <small className="wstate">{t.wallet.detected}</small>
+                ) : w.hardware ? (
+                  <small className="wstate hw">{t.wallet.hardware}</small>
+                ) : (
+                  <a className="wget" href={w.url} target="_blank" rel="noopener noreferrer" aria-label={t.wallet.installAria(w.name)}>
+                    {t.wallet.install} <ExternalIcon />
+                  </a>
+                )}
+              </div>
             ))}
           </div>
         </>
