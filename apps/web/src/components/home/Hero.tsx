@@ -96,13 +96,19 @@ export function Hero() {
             {t.home.exploreMovers}
           </Button>
         </div>
-        {env.contractAddress && (
+        {env.contractAddress ? (
           <div className="ca">
             <span className="tag">CA</span>
             <span className="addr-t">{env.contractAddress}</span>
             <button className="icon-btn" onClick={() => copyText(env.contractAddress!, t.common.copied)} aria-label={t.home.copyCa}>
               <CopyIcon />
             </button>
+          </div>
+        ) : (
+          // No token address yet: say so rather than leave a gap people fill with fakes.
+          <div className="ca soon">
+            <span className="tag">CA</span>
+            <span className="addr-t">{t.home.caSoon}</span>
           </div>
         )}
         <div className="venues-row">

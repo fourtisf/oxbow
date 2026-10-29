@@ -254,7 +254,7 @@ See [`.env.example`](.env.example). Web:
 - `NEXT_PUBLIC_SOLANA_CLUSTER`: network pill label and explorer links (`devnet` or `mainnet-beta`).
   The code default stays `devnet` (devnet first).
 - `NEXT_PUBLIC_OXBOW_FEE_LAMPORTS`: Oxbow fee shown in the cost breakdown and docs (default 0.1 SOL).
-- `NEXT_PUBLIC_CONTRACT_ADDRESS`: hero CA box; hidden when empty.
+- `NEXT_PUBLIC_CONTRACT_ADDRESS`: hero CA box; "Coming soon" while empty.
 - `NEXT_PUBLIC_X_URL`, `NEXT_PUBLIC_TELEGRAM_URL`, `NEXT_PUBLIC_DISCORD_URL`: social links.
 - `NEXT_PUBLIC_SITE_URL`: canonical origin for share links, sitemap and OG images (defaults to `https://oxbowflow.com`).
 - `NEXT_PUBLIC_BUY_TOKEN_URL`: "Get <token>" link, `{mint}` is replaced.

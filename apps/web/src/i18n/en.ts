@@ -116,6 +116,7 @@ export const en = {
     createPool: 'Create a pool',
     exploreMovers: 'Explore movers',
     copyCa: 'Copy contract address',
+    caSoon: 'Coming soon',
     routes: 'Routes through',
     verifiedChip: (name: string) => `${name}, verified`,
     topMover: 'Top mover, 24h',

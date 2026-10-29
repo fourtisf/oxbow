@@ -118,6 +118,7 @@ export const id: Messages = {
     createPool: 'Buat pool',
     exploreMovers: 'Lihat yang bergerak',
     copyCa: 'Salin alamat kontrak',
+    caSoon: 'Segera hadir',
     routes: 'Lewat',
     verifiedChip: (name: string) => `${name}, terverifikasi`,
     topMover: 'Penggerak teratas, 24j',
