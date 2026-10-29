@@ -73,6 +73,7 @@ export const en = {
     faq: 'FAQ',
     status: 'Status',
     community: 'Community',
+    soon: 'Soon',
     legal: 'Legal',
     terms: 'Terms',
     privacy: 'Privacy',

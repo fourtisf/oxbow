@@ -1,6 +1,13 @@
 # scripts
 
-- `seed-stocks.ts` (M2): reads the owner-maintained `stocks.json` (symbol, name,
-  issuer, mint, price feed id, brand colors) from the issuer's official list,
-  prints a review table, verifies each mint and price feed, then writes
-  `StockAsset` rows. Mint addresses are never filled in by hand or from memory.
+- `brand-logo.py`: the Oxbow Lake logo, mark and app icon as SVG
+  (`apps/web/public/brand/`).
+- `brand-png.mjs [filter]`: renders the brand artwork to PNG: app icons,
+  profile picture, X header and the "coming soon" announcement cards
+  (`apps/web/public/brand/social/`). With a filter, only matching files.
+- `token-logos.py`: the sample tokens' logos (`apps/web/public/tokens/`).
+- `wallet-logos.py`: the wallets' official icons (`apps/web/public/wallets/`).
+
+The verified-stock seed lives with the API: `pnpm --filter @oxbow/api
+seed:stocks` (see the root README). The copy for the X and Telegram accounts
+is in [`design/social-kit.md`](../design/social-kit.md).

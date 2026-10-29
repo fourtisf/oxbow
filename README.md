@@ -255,7 +255,7 @@ See [`.env.example`](.env.example). Web:
   The code default stays `devnet` (devnet first).
 - `NEXT_PUBLIC_OXBOW_FEE_LAMPORTS`: Oxbow fee shown in the cost breakdown and docs (default 0.1 SOL).
 - `NEXT_PUBLIC_CONTRACT_ADDRESS`: hero CA box; "Coming soon" while empty.
-- `NEXT_PUBLIC_X_URL`, `NEXT_PUBLIC_TELEGRAM_URL`, `NEXT_PUBLIC_DISCORD_URL`: social links.
+- `NEXT_PUBLIC_X_URL`, `NEXT_PUBLIC_TELEGRAM_URL`: the official accounts (https only). Empty ones show as "Soon" in the footer; the nav's X icon appears once its URL is set.
 - `NEXT_PUBLIC_SITE_URL`: canonical origin for share links, sitemap and OG images (defaults to `https://oxbowflow.com`).
 - `NEXT_PUBLIC_BUY_TOKEN_URL`: "Get <token>" link, `{mint}` is replaced.
 - `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` (+ `NEXT_PUBLIC_PLAUSIBLE_SRC`), `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_DSN`: analytics and error reporting, off when empty.

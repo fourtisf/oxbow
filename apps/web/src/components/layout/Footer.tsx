@@ -37,9 +37,8 @@ export function Footer() {
           </div>
           <div>
             <h2>{t.footer.community}</h2>
-            <a href={social.x}>X</a>
-            <a href={social.telegram}>Telegram</a>
-            <a href={social.discord}>Discord</a>
+            <SocialLink href={social.x} label="X" soon={t.footer.soon} />
+            <SocialLink href={social.telegram} label="Telegram" soon={t.footer.soon} />
           </div>
         </div>
         <div className="fbot">
@@ -48,5 +47,20 @@ export function Footer() {
         </div>
       </div>
     </footer>
+  );
+}
+
+/** An official account, or its name with a "Soon" pill until the link is set. */
+function SocialLink({ href, label, soon }: { href: string | null; label: string; soon: string }) {
+  if (href)
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        {label}
+      </a>
+    );
+  return (
+    <span className="fsoon">
+      {label} <small>{soon}</small>
+    </span>
   );
 }

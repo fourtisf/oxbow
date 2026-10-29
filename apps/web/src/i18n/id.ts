@@ -75,6 +75,7 @@ export const id: Messages = {
     faq: 'FAQ',
     status: 'Status',
     community: 'Komunitas',
+    soon: 'Segera',
     legal: 'Hukum',
     terms: 'Ketentuan',
     privacy: 'Privasi',

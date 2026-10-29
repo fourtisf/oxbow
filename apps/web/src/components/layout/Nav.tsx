@@ -46,9 +46,11 @@ export function Nav() {
               {labels[n.href][0]}
             </Link>
           ))}
-          <a href={social.x} aria-label={t.nav.onX} target={social.x === '#' ? undefined : '_blank'} rel="noreferrer">
-            <XLogo />
-          </a>
+          {social.x && (
+            <a href={social.x} aria-label={t.nav.onX} target="_blank" rel="noopener noreferrer">
+              <XLogo />
+            </a>
+          )}
         </nav>
         <div className="nav-end">
           <span className="netpill">

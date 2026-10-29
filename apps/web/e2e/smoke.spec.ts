@@ -34,3 +34,12 @@ test('main navigation marks the current page', async ({ page, isMobile }) => {
   await expect(page).toHaveURL(/\/docs$/);
   await expect(nav.getByRole('link', { name: /Docs/ })).toHaveAttribute('aria-current', 'page');
 });
+
+test('footer lists X and Telegram as coming soon until their links are set', async ({ page }) => {
+  await page.goto('/docs');
+  const community = page.locator('footer .fgrid > div').filter({ has: page.getByRole('heading', { name: 'Community' }) });
+  await expect(community.locator('.fsoon')).toHaveText(['X Soon', 'Telegram Soon']);
+  await expect(community.getByRole('link')).toHaveCount(0);
+  await expect(page.locator('footer')).not.toContainText('Discord');
+  await expect(page.getByRole('link', { name: 'Oxbow on X' })).toHaveCount(0);
+});

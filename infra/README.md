@@ -16,6 +16,7 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
   a generated password, `apps/api/.env`.
 - `deploy.sh`: update in one step: pull, install, database migrations, build,
   reload, save.
+- `backup-db.sh` + `install-backup.sh`: daily database backups (below).
 
 ## First install (summary)
 
@@ -94,6 +95,34 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
 Check: `curl -s https://oxbowflow.com/api/status` shows `"sampleData":false`
 and the RPC slot; `pm2 ls` shows both processes online; `pm2 logs oxbow-api`
 shows price-source warnings, if any.
+
+## Backups
+
+A daily `pg_dump` at 03:17 server time into `/var/backups/oxbow`, each one
+read back before it is kept, 14 days kept. Install once as root (again after
+`backup-db.sh` changes):
+
+```bash
+sudo bash /home/oxbow/oxbow/infra/install-backup.sh
+```
+
+The dumps stay on the same server, so also copy the newest one off it now and
+then (SFTP, as root: `/var/backups/oxbow`), or turn on Hostinger's VPS backups.
+
+Restore one (stops the API meanwhile). The dumps are readable by root only,
+so the file goes in through `<`, which the root shell opens:
+
+```bash
+sudo -iu oxbow pm2 stop oxbow-api
+```
+
+```bash
+sudo -u postgres pg_restore --clean --if-exists --no-owner --role=oxbow -d oxbow < /var/backups/oxbow/oxbow-YYYYMMDD-HHMMSS.dump
+```
+
+```bash
+sudo -iu oxbow pm2 start oxbow-api
+```
 
 ## Updates
 

@@ -15,6 +15,7 @@ import { getLocale, getT } from '@/i18n/server';
 import { Hydrate } from '@/lib/api/Hydrate';
 import { Prefetch } from '@/lib/api/server';
 import { siteUrl } from '@/lib/links';
+import { xHandle } from '@/lib/site';
 import '@/styles/globals.css';
 
 export function generateMetadata(): Metadata {
@@ -24,7 +25,7 @@ export function generateMetadata(): Metadata {
     title: { default: t.meta.title, template: '%s | Oxbow' },
     description: t.meta.description,
     openGraph: { type: 'website', siteName: 'Oxbow', title: t.meta.title, description: t.meta.description },
-    twitter: { card: 'summary_large_image', title: t.meta.title, description: t.meta.description },
+    twitter: { card: 'summary_large_image', title: t.meta.title, description: t.meta.description, site: xHandle },
   };
 }
 
