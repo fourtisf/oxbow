@@ -33,8 +33,10 @@ function Item({ t, dup }: { t: TickerItem; dup?: boolean }) {
 
 /** Top marquee (`.ticker`). The second copy only exists for the seamless loop. */
 export function Ticker() {
-  const { data = [] } = useTicker();
+  const { data = [], isSuccess } = useTicker();
   const t = useT();
+  // Nothing listed yet (live data before the first pool or stock): no empty strip.
+  if (isSuccess && !data.length) return null;
   return (
     <div className="ticker" role="marquee" aria-label={t.nav.livePrices}>
       <div className="track">
