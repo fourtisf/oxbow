@@ -11,9 +11,11 @@ import {
   venueInfo,
   type QuoteAsset,
   type TokenInfo,
+  type Venues,
 } from '@oxbow/shared';
 import { useT } from '@/i18n/client';
-import { useQuotes, useToken } from '@/lib/api/queries';
+import { SAMPLE_DATA } from '@/lib/api/mode';
+import { useQuotes, useToken, useVenues } from '@/lib/api/queries';
 import { useBalances } from '@/lib/chain/hooks';
 import type { LockChoice } from '@/lib/chain/types';
 import { oxbowFeeSol } from '@/lib/env';
@@ -51,6 +53,10 @@ export interface CreateModel {
   lp: LpBadgeInput;
   lock: LockChoice;
   costs: { rent: number; setup: number; fee: number; total: number; venueLabel: string };
+  /** Pool creation is open (always on sample data; on live data once the API says so). */
+  createReady: boolean;
+  /** Venues and fee tiers on offer; undefined while loading. */
+  venues: Venues | undefined;
 }
 
 export function lockBadge(f: Pick<CreateForm, 'lock' | 'lpct' | 'days'>): LpBadgeInput {
@@ -89,6 +95,9 @@ export function useCreateModel(): CreateModel {
   const baseBal = bal.get(token?.mint);
   const quoteBal = bal.get(quote?.mint);
 
+  const { data: venues } = useVenues();
+  const venueRow = venues?.venues.find((x) => x.id === form.venue);
+  const tier = venueRow?.feeTiers.find((x) => x.feeBps === form.feeBps);
   const b = num(form.base);
   const qa = num(form.qamt);
   const sym = token?.symbol ?? 'TOKEN';
@@ -104,13 +113,19 @@ export function useCreateModel(): CreateModel {
   else if (wallet && b > baseBal) msg = t.create.msg.overBal(amt(baseBal), sym);
   else if (!(qa > 0)) msg = t.create.msg.quoteAmt(quote.symbol);
   else if (quoteOver) msg = t.create.msg.overBal(amt(quoteBal), quote.symbol);
+  else if (venues && !venueRow?.enabled) msg = t.create.msg.venue;
+  else if (venues && !tier) msg = t.create.msg.feeTier;
+  else if (!SAMPLE_DATA && form.lock === 'lock') msg = t.create.msg.lockLater;
 
   const tokenOk = !!token && (!risky || form.ack);
   const d3 = tokenOk && !!quote && b > 0 && qa > 0 && !baseOver && !quoteOver;
   const priceQ = startingPrice(b, qa);
   const priceU = quote ? priceQ * quote.priceUsd : 0;
   const v = venueInfo(form.venue);
-  const setup = v.setupSol;
+  // What the venue and Oxbow actually charge, from the API, once known.
+  const setup = tier ? tier.createPoolFeeLamports / 1e9 : v.setupSol;
+  const fee = venues ? venues.oxbowFeeLamports / 1e9 : oxbowFeeSol;
+  const d4 = d3 && (!venues || (!!venueRow?.enabled && !!tier));
 
   return {
     form,
@@ -124,7 +139,7 @@ export function useCreateModel(): CreateModel {
     b,
     qa,
     msg,
-    done: [tokenOk, tokenOk && !!quote, d3, d3, d3],
+    done: [tokenOk, tokenOk && !!quote, d3, d4, d4 && (SAMPLE_DATA || form.lock !== 'lock')],
     baseOver,
     quoteOver,
     priceQ,
@@ -133,6 +148,8 @@ export function useCreateModel(): CreateModel {
     mcap: token ? priceU * token.supply : 0,
     lp: lockBadge(form),
     lock: form.lock === 'lock' ? { kind: 'lock', days: form.days, pct: form.lpct } : { kind: form.lock },
-    costs: { rent: NETWORK_RENT_SOL, setup, fee: oxbowFeeSol, total: +(NETWORK_RENT_SOL + setup + oxbowFeeSol).toFixed(2), venueLabel: v.label },
+    costs: { rent: NETWORK_RENT_SOL, setup, fee, total: +(NETWORK_RENT_SOL + setup + fee).toFixed(2), venueLabel: v.label },
+    createReady: SAMPLE_DATA || !!venues?.createEnabled,
+    venues,
   };
 }

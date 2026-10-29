@@ -96,6 +96,27 @@ Check: `curl -s https://oxbowflow.com/api/status` shows `"sampleData":false`
 and the RPC slot; `pm2 ls` shows both processes online; `pm2 logs oxbow-api`
 shows price-source warnings, if any.
 
+## Pool creation (M3)
+
+Off until a treasury is set. First run the devnet test (see the root README),
+then, as root, put the wallet that receives the Oxbow fee in the API's env
+and restart the API:
+
+```bash
+sed -i 's|^OXBOW_TREASURY=.*|OXBOW_TREASURY=YOUR_WALLET_ADDRESS|' /home/oxbow/oxbow/apps/api/.env
+```
+
+```bash
+grep -q '^OXBOW_TREASURY=' /home/oxbow/oxbow/apps/api/.env || echo 'OXBOW_TREASURY=YOUR_WALLET_ADDRESS' >> /home/oxbow/oxbow/apps/api/.env
+```
+
+```bash
+sudo -iu oxbow pm2 restart oxbow-api --update-env
+```
+
+`curl -s https://oxbowflow.com/api/venues` then shows `"createEnabled":true`
+and Raydium's fee tiers. The fee is `OXBOW_FEE_LAMPORTS` (default 0.1 SOL).
+
 ## Backups
 
 A daily `pg_dump` at 03:17 server time into `/var/backups/oxbow`, each one

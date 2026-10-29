@@ -21,17 +21,39 @@ export interface SwapParams {
 }
 
 /**
- * Progress-modal steps, in order: approve in wallet, verify the quote's price
- * feed, create the pool, lock or burn, publish (register API call).
+ * Progress-modal steps, in order: verify (price feed, balances and a dry run
+ * on the server), approve in the wallet, create (confirmed and listed), lock
+ * or burn, publish.
  */
-export const CREATE_STEPS = ['approve', 'verify', 'create', 'lock', 'publish'] as const;
+export const CREATE_STEPS = ['verify', 'approve', 'create', 'lock', 'publish'] as const;
 export type CreateStep = (typeof CREATE_STEPS)[number];
 
 /** Error codes the UI turns into readable messages. */
-/** NOT_READY: live data, but on-chain actions haven't shipped yet. */
-export type ChainErrorCode = 'SLIPPAGE' | 'NOT_FOUND' | 'INSUFFICIENT' | 'NOT_READY';
+/**
+ * NOT_READY: live data, but this action hasn't shipped yet. The rest come from
+ * the wallet (REJECTED, CANT_SIGN) or the server's checks before signing.
+ */
+export type ChainErrorCode =
+  | 'SLIPPAGE'
+  | 'NOT_FOUND'
+  | 'INSUFFICIENT'
+  | 'NOT_READY'
+  | 'REJECTED'
+  | 'CANT_SIGN'
+  | 'INSUFFICIENT_SOL'
+  | 'INSUFFICIENT_TOKEN'
+  | 'POOL_EXISTS'
+  | 'MIN_LIQUIDITY'
+  | 'SIMULATION'
+  | 'TIMEOUT'
+  | 'TX_FAILED'
+  | 'FAILED';
 export class ChainError extends Error {
-  constructor(readonly code: ChainErrorCode) {
+  constructor(
+    readonly code: ChainErrorCode,
+    /** e.g. `needSol`, `minUsd`, `pool` from the server. */
+    readonly details: Record<string, unknown> = {},
+  ) {
     super(code);
   }
 }
@@ -43,8 +65,11 @@ export class ChainError extends Error {
 export interface Chain {
   /** UI-unit balances for the given mints. */
   balances(wallet: string, mints: string[]): Promise<Record<string, number>>;
-  /** Calls `onStep(i)` as step i becomes active, and `onStep(CREATE_STEPS.length)` when all are done. */
-  createPool(wallet: string, p: CreatePoolParams, onStep: (i: number) => void): Promise<{ address: string }>;
+  /**
+   * Calls `onStep(i)` as step i becomes active, and `onStep(CREATE_STEPS.length)` when all are done.
+   * `lockSkipped` is set when the pool was created but the LP burn was cancelled or failed.
+   */
+  createPool(wallet: string, p: CreatePoolParams, onStep: (i: number) => void): Promise<{ address: string; lockSkipped?: boolean }>;
   swap(wallet: string, pool: string, p: SwapParams): Promise<{ signature: string; out: number }>;
   addLiquidity(wallet: string, pool: string, baseIn: number): Promise<{ signature: string }>;
   claimFees(wallet: string, positionId: string): Promise<{ amountUsd: number }>;

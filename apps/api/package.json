@@ -10,7 +10,8 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "seed:stocks": "tsx scripts/seed-stocks.ts",
-    "e2e:fixtures": "tsx scripts/e2e-fixtures.ts"
+    "e2e:fixtures": "tsx scripts/e2e-fixtures.ts",
+    "devnet:create": "tsx scripts/devnet-create-test.ts"
   },
   "dependencies": {
     "@fastify/rate-limit": "11.2.1",

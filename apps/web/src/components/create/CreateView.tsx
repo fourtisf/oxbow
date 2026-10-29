@@ -6,8 +6,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useT } from '@/i18n/client';
 import { track } from '@/lib/analytics';
 import { invalidateAfterTx, useQuotes } from '@/lib/api/queries';
-import { chain, CHAIN_READY } from '@/lib/chain';
-import { CREATE_STEPS } from '@/lib/chain/types';
+import { usd } from '@oxbow/shared';
+import { chain } from '@/lib/chain';
+import { ChainError, CREATE_STEPS } from '@/lib/chain/types';
 import { copyText } from '@/lib/copy';
 import { prefersReducedMotion } from '@/lib/hooks';
 import { useCreateForm } from '@/lib/store/create';
@@ -56,11 +57,11 @@ export function CreateView({ initialMint, initialQuote }: { initialMint?: string
   }, [initialMint, initialQuote, quotes]);
 
   const start = async () => {
-    if (!CHAIN_READY || !wallet || m.msg || !m.token || !m.quote || run) return;
+    if (!m.createReady || !wallet || m.msg || !m.token || !m.quote || run) return;
     const lp = m.lp;
     const labels = [
-      t.create.stepApprove(wallet.name),
       t.create.stepVerify(m.quote.symbol),
+      t.create.stepApprove(wallet.name),
       t.create.stepCreate(m.costs.venueLabel),
       lp.status === 'BURNED' ? t.create.stepBurn : lp.status === 'UNLOCKED' ? t.create.stepSkip : t.create.stepLock(lp.lockedPct),
       t.create.stepPublish,
@@ -69,7 +70,7 @@ export function CreateView({ initialMint, initialQuote }: { initialMint?: string
     const base = { labels, pair: `${m.token.symbol}/${m.quote.symbol}`, venue: m.costs.venueLabel, address: null };
     setRun({ ...base, step: 0 });
     try {
-      const { address } = await chain.createPool(
+      const { address, lockSkipped } = await chain.createPool(
         wallet.address,
         { token: m.token, quote: m.quote, baseAmount: m.b, quoteAmount: m.qa, venue: form.venue, feeBps: form.feeBps, lock: m.lock },
         (step) => setRun((r) => r && { ...r, step }),
@@ -77,9 +78,38 @@ export function CreateView({ initialMint, initialQuote }: { initialMint?: string
       await invalidateAfterTx(qc);
       track('pool_created', { venue: form.venue });
       setRun((r) => r && { ...r, step: CREATE_STEPS.length, address });
-    } catch {
+      if (lockSkipped) toast(t.create.lockSkipped);
+    } catch (e) {
       setRun(null);
-      toast(t.create.failed);
+      toast(failMessage(e));
+    }
+  };
+
+  /** What went wrong, in words, for the errors the wallet or the server's checks give. */
+  const failMessage = (e: unknown): string => {
+    if (!(e instanceof ChainError)) return t.create.failed;
+    const d = e.details;
+    switch (e.code) {
+      case 'REJECTED':
+        return t.create.err.rejected;
+      case 'CANT_SIGN':
+        return t.create.err.cantSign;
+      case 'INSUFFICIENT_SOL':
+        return t.create.err.insufficientSol(typeof d.needSol === 'number' ? d.needSol.toFixed(2) : '?');
+      case 'INSUFFICIENT_TOKEN':
+        return t.create.err.insufficientToken;
+      case 'POOL_EXISTS':
+        return t.create.err.poolExists;
+      case 'MIN_LIQUIDITY':
+        return t.create.err.minLiquidity(usd(typeof d.minUsd === 'number' ? d.minUsd : 0));
+      case 'SIMULATION':
+        return t.create.err.simulation;
+      case 'TIMEOUT':
+        return t.create.err.timeout;
+      case 'TX_FAILED':
+        return t.create.err.txFailed;
+      default:
+        return t.create.failed;
     }
   };
 

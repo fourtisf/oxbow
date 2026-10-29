@@ -4,7 +4,6 @@ import type { CSSProperties } from 'react';
 import { amt, feePct, usd, venueInfo } from '@oxbow/shared';
 import { useLocale, useT } from '@/i18n/client';
 import { marketWhen } from '@/i18n/format';
-import { CHAIN_READY } from '@/lib/chain';
 import { networkLabel } from '@/lib/env';
 import { useWallet } from '@/lib/store/wallet';
 import { LpBadge } from '../ui/badges';
@@ -103,7 +102,7 @@ export function PoolPreview({ m, onCreate, busy }: { m: CreateModel; onCreate: (
             <b>{c.total} SOL</b>
           </div>
         </div>
-        {wallet && !CHAIN_READY ? (
+        {wallet && !m.createReady ? (
           <Button size="lg" block disabled>
             {t.create.soon}
           </Button>
@@ -117,7 +116,7 @@ export function PoolPreview({ m, onCreate, busy }: { m: CreateModel; onCreate: (
           </Button>
         )}
         <p className="pv-hint" aria-live="polite">
-          {m.msg || (!CHAIN_READY && t.create.soonHint(networkLabel))}
+          {m.msg || (!m.createReady && t.create.soonHint(networkLabel))}
         </p>
       </div>
     </aside>

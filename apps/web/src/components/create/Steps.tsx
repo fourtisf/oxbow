@@ -318,13 +318,20 @@ function DepositStep({ m }: { m: CreateModel }) {
 function VenueStep({ m }: { m: CreateModel }) {
   const t = useT();
   const set = useCreateForm((s) => s.set);
+  // What the API offers right now (all of it on sample data); everything while loading.
+  const row = (id: string) => m.venues?.venues.find((v) => v.id === id);
+  const venueOff = (id: string) => !!m.venues && !row(id)?.enabled;
+  const tiers = row(m.form.venue)?.feeTiers;
+  const tierOff = (bps: number) => !!m.venues && !!tiers && !tiers.some((x) => x.feeBps === bps);
   return (
     <Step n={4} title={t.create.s4} sub={t.create.s4sub} done={m.done[3]}>
       <div className="body">
         <div className="venues">
           {VENUES.map((v) => (
-            <button key={v.id} className="vtile" aria-pressed={m.form.venue === v.id} onClick={() => set({ venue: v.id })}>
-              <b>{v.label}</b>
+            <button key={v.id} className="vtile" aria-pressed={m.form.venue === v.id} disabled={venueOff(v.id)} onClick={() => set({ venue: v.id })}>
+              <b>
+                {v.label} {venueOff(v.id) && <span className="soon-tag">{t.create.soonTag}</span>}
+              </b>
               <small>{t.create.venueDesc[v.id]}</small>
             </button>
           ))}
@@ -334,7 +341,7 @@ function VenueStep({ m }: { m: CreateModel }) {
         </div>
         <div className="feegrid" role="group" aria-labelledby="feeLbl">
           {FEE_TIERS.map((f) => (
-            <button key={f.feeBps} className="ftile" aria-pressed={m.form.feeBps === f.feeBps} onClick={() => set({ feeBps: f.feeBps })}>
+            <button key={f.feeBps} className="ftile" aria-pressed={m.form.feeBps === f.feeBps} disabled={tierOff(f.feeBps)} onClick={() => set({ feeBps: f.feeBps })}>
               <b>{feePct(f.feeBps)}</b>
               <small>
                 {t.create.feeDesc[f.feeBps] ?? f.desc}. {t.create.earns('$' + f.feeBps.toLocaleString('en-US'))}
@@ -352,14 +359,16 @@ function LockStep({ m }: { m: CreateModel }) {
   const locale = useLocale();
   const set = useCreateForm((s) => s.set);
   const f = m.form;
-  const LOCKS: { id: LockKind; title: string; desc: string; risky?: boolean }[] = [
+  const LOCKS: { id: LockKind; title: string; desc: string; risky?: boolean; off?: boolean }[] = [
     { id: 'burn', title: t.create.burn, desc: t.create.burnDesc },
-    { id: 'lock', title: t.create.lock, desc: t.create.lockDesc },
+    // Timed locks need a locker program (M4); live data offers burn or keep for now.
+    { id: 'lock', title: t.create.lock, desc: t.create.lockDesc, off: !SAMPLE_DATA },
     { id: 'none', title: t.create.none, desc: t.create.noneDesc, risky: true },
   ];
+  const usable = LOCKS.filter((l) => !l.off);
   const move = (dir: 1 | -1) => {
-    const i = LOCKS.findIndex((l) => l.id === f.lock);
-    const next = LOCKS[(i + dir + LOCKS.length) % LOCKS.length]!;
+    const i = usable.findIndex((l) => l.id === f.lock);
+    const next = usable[(i + dir + usable.length) % usable.length]!;
     set({ lock: next.id });
     document.querySelector<HTMLElement>(`[data-lock="${next.id}"]`)?.focus();
   };
@@ -370,6 +379,8 @@ function LockStep({ m }: { m: CreateModel }) {
       role="radio"
       data-lock={l.id}
       aria-checked={f.lock === l.id}
+      aria-disabled={l.off || undefined}
+      disabled={l.off}
       tabIndex={f.lock === l.id ? 0 : -1}
       onClick={() => set({ lock: l.id })}
       onKeyDown={(e) => {
@@ -384,7 +395,9 @@ function LockStep({ m }: { m: CreateModel }) {
     >
       <span className="radio" aria-hidden="true" />
       <span>
-        <b>{l.title}</b>
+        <b>
+          {l.title} {l.off && <span className="soon-tag">{t.create.soonTag}</span>}
+        </b>
         <small>{l.desc}</small>
       </span>
     </button>

@@ -238,3 +238,7 @@ span.av.av-empty{background:rgba(3,6,12,.6);border:1.5px dashed rgba(158,207,255
 /* Footer social account that doesn't exist yet */
 .fgrid .fsoon{display:flex;align-items:center;gap:8px;color:var(--text3);padding:5px 0;font-size:14.5px}
 .fgrid .fsoon small{font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:#8FC3FF;background:rgba(111,178,255,.08);box-shadow:inset 0 0 0 1px rgba(111,178,255,.22)}
+
+/* Create: venues, fee tiers and lock options that aren't open yet */
+.vtile:disabled,.ftile:disabled,.opt:disabled{opacity:.45;cursor:not-allowed}
+.soon-tag{display:inline-block;vertical-align:middle;margin-left:6px;font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:#8FC3FF;background:rgba(111,178,255,.08);box-shadow:inset 0 0 0 1px rgba(111,178,255,.22)}

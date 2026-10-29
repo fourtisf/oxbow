@@ -13,6 +13,7 @@ import {
   TickerItemSchema,
   TokenInfoSchema,
   TradeSchema,
+  VenuesSchema,
   WalletActivitySchema,
   type PoolsQueryInput,
 } from '@oxbow/shared';
@@ -30,12 +31,13 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    readonly details: Record<string, unknown> = {},
   ) {
     super(`${status} ${code}`);
   }
 }
 
-async function get<S extends z.ZodTypeAny>(path: string, schema: S, opts: { nullOn404?: boolean } = {}): Promise<z.output<S>> {
+export async function get<S extends z.ZodTypeAny>(path: string, schema: S, opts: { nullOn404?: boolean } = {}): Promise<z.output<S>> {
   const res = await fetch(base() + path, {
     headers: { accept: 'application/json' },
     // Server renders always ask the API, which has its own Redis cache.
@@ -47,6 +49,14 @@ async function get<S extends z.ZodTypeAny>(path: string, schema: S, opts: { null
     throw new ApiError(res.status, body?.error ?? 'error');
   }
   return schema.parse(await res.json());
+}
+
+/** POST JSON; errors carry the API's `{ error, ...details }` body. */
+export async function post<S extends z.ZodTypeAny>(path: string, body: unknown, schema: S): Promise<z.output<S>> {
+  const res = await fetch(base() + path, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) });
+  const json = (await res.json().catch(() => null)) as ({ error?: string } & Record<string, unknown>) | null;
+  if (!res.ok) throw new ApiError(res.status, json?.error ?? 'error', json ?? {});
+  return schema.parse(json);
 }
 
 const enc = encodeURIComponent;
@@ -72,6 +82,7 @@ export const httpApi: OxbowApi = {
   trades: (address) => get(`/api/pools/${enc(address)}/trades`, z.array(TradeSchema)),
   stocks: () => get('/api/stocks', z.array(StockInfoSchema)),
   quotes: () => get('/api/quotes', z.array(QuoteAssetSchema)),
+  venues: () => get('/api/venues', VenuesSchema),
   token: (mint) => get(`/api/tokens/${enc(mint)}`, TokenInfoSchema.nullable(), { nullOn404: true }),
   positions: (wallet) => get(`/api/wallet/${enc(wallet)}/positions`, z.array(PositionSchema)),
   walletActivity: (wallet) => get(`/api/wallet/${enc(wallet)}/activity`, z.array(WalletActivitySchema)),

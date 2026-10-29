@@ -14,6 +14,7 @@ import type {
   Timeframe,
   TokenInfo,
   Trade,
+  Venues,
   WalletActivity,
 } from '@oxbow/shared';
 
@@ -45,6 +46,8 @@ export interface OxbowApi {
    * and the preview need SOL/USDC prices alongside the stocks.
    */
   quotes(): Promise<QuoteAsset[]>;
+  /** GET /api/venues — where pools can be created, fee tiers and the Oxbow fee. */
+  venues(): Promise<Venues>;
   /** GET /api/tokens/:mint — null when the mint doesn't exist. */
   token(mint: string): Promise<TokenInfo | null>;
   /** GET /api/wallet/:address/positions */

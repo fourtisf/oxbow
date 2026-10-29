@@ -17,6 +17,7 @@ export const useTicker = () => useQuery({ queryKey: qk.ticker(), queryFn: () => 
 export const useMovers = () => useQuery({ queryKey: qk.movers(), queryFn: () => api.movers() });
 export const useStocks = () => useQuery({ queryKey: qk.stocks(), queryFn: () => api.stocks() });
 export const useQuotes = () => useQuery({ queryKey: qk.quotes(), queryFn: () => api.quotes() });
+export const useVenues = () => useQuery({ queryKey: qk.venues(), queryFn: () => api.venues(), staleTime: 60_000 });
 
 export const usePools = (q: PoolsQueryInput) =>
   useQuery({ queryKey: qk.pools(q), queryFn: () => api.pools(q), placeholderData: keepPreviousData });

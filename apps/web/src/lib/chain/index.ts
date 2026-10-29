@@ -1,26 +1,13 @@
 import { SAMPLE_DATA } from '../api/mode';
+import { liveChain } from './live';
 import { mockChain } from './mock';
-import { ChainError, type Chain } from './types';
+import type { Chain } from './types';
 
 /**
- * Wallet-signed actions. Sample-data mode simulates them; with live data they
- * stay off until pool creation (M3) and liquidity management (M4) ship, and
- * the UI shows "opens soon" instead of a button that would fail.
+ * Wallet-signed actions: simulated on sample data, real with live data. Pool
+ * creation is live once the API says so (`/api/venues`); swaps and liquidity
+ * management stay off until M4/M5, and the UI says "opens soon" for them.
  */
 export const CHAIN_READY = SAMPLE_DATA;
-
-const notReady = async (): Promise<never> => {
-  throw new ChainError('NOT_READY');
-};
-
-const liveChain: Chain = {
-  // Balances arrive with the wallet adapter; nothing can be spent yet anyway.
-  balances: async (_wallet, mints) => Object.fromEntries(mints.map((m) => [m, 0])),
-  createPool: notReady,
-  swap: notReady,
-  addLiquidity: notReady,
-  claimFees: notReady,
-  withdraw: notReady,
-};
 
 export const chain: Chain = SAMPLE_DATA ? mockChain : liveChain;

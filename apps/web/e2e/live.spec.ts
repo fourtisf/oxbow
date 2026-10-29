@@ -24,6 +24,17 @@ async function fakePhantom(page: Page) {
         chains: ['solana:mainnet'],
         accounts: [] as unknown[],
         features: {
+          // Signs and "sends": counts calls; window.signMode = 'reject' refuses like a user would.
+          'solana:signAndSendTransaction': {
+            version: '1.0.0',
+            supportedTransactionVersions: [0],
+            signAndSendTransaction: async () => {
+              const w = window as unknown as { signs: number; signMode?: string };
+              w.signs = (w.signs ?? 0) + 1;
+              if (w.signMode === 'reject') throw Object.assign(new Error('User rejected the request.'), { code: 4001 });
+              return [{ signature: new Uint8Array(64).fill(w.signs) }];
+            },
+          },
           'standard:connect': {
             version: '1.0.0',
             connect: async (input?: { silent?: boolean }) => {
@@ -141,6 +152,68 @@ test.describe('live data', () => {
     await expect(page.locator('.create')).toContainText('NVDAx');
     await expect(page.getByRole('button', { name: /example/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Pool creation opens soon' })).toBeDisabled();
+  });
+
+  test('creates a pool through the wallet: checks, approval, listing, LP burn (chain answers mocked)', async ({ page, request }) => {
+    await fakePhantom(page);
+    // A listed pool stands in for the one the chain would create.
+    const listed = (await (await request.get('/api/pools')).json()) as { items: { address: string }[] };
+    const poolAddr = listed.items[0]!.address;
+    const detail = await (await request.get(`/api/pools/${poolAddr}`)).json();
+    const meme = ADDR2;
+    const calls: string[] = [];
+    await page.route('**/api/venues', (r) =>
+      r.fulfill({ json: { createEnabled: true, oxbowFeeLamports: 100_000_000, venues: [{ id: 'RAYDIUM_CPMM', enabled: true, feeTiers: [{ feeBps: 25, createPoolFeeLamports: 150_000_000 }, { feeBps: 100, createPoolFeeLamports: 150_000_000 }] }, { id: 'METEORA_DAMM_V2', enabled: false, feeTiers: [] }, { id: 'ORCA_WHIRLPOOL', enabled: false, feeTiers: [] }] } }),
+    );
+    await page.route(`**/api/tokens/${meme}`, (r) =>
+      r.fulfill({ json: { mint: meme, symbol: 'MEME', name: 'Meme Coin', decimals: 6, supply: 1_000_000_000, tokenProgram: 'spl-token', mintAuthority: null, freezeAuthority: null, logoUri: null, extensions: [], risk: { mintable: false, freezable: false, transferFee: false, transferHook: false, permanentDelegate: false }, symbolTaken: false, createdAt: null } }),
+    );
+    await page.route('**/api/wallet/*/balances*', (r) => {
+      const mints = new URL(r.request().url()).searchParams.get('mints')!.split(',');
+      return r.fulfill({ json: Object.fromEntries(mints.map((m) => [m, 1_000_000_000])) });
+    });
+    await page.route('**/api/pools/build', (r) => {
+      calls.push('build:' + (r.request().postDataJSON() as { feeBps: number; venue: string }).feeBps);
+      return r.fulfill({ json: { transaction: 'AAAA', pool: poolAddr } });
+    });
+    await page.route('**/api/tx/*', (r) => r.fulfill({ json: { status: 'confirmed' } }));
+    await page.route('**/api/pools/register', (r) => {
+      calls.push('register');
+      return r.fulfill({ json: detail });
+    });
+    await page.route(`**/api/pools/${poolAddr}/burn`, (r) => {
+      calls.push('burn');
+      return r.fulfill({ json: { transaction: 'AAAA', pool: poolAddr } });
+    });
+    await page.route(`**/api/pools/${poolAddr}/lock`, (r) => {
+      calls.push('lock');
+      return r.fulfill({ json: detail });
+    });
+
+    await page.goto('/create');
+    await pickWallet(page, 'Phantom');
+    await expect(page.getByText('Connected Phantom')).toBeVisible();
+    await page.getByRole('textbox', { name: 'Token mint address' }).fill(meme);
+    await expect(page.locator('.tcard')).toContainText('MEME');
+    await page.getByRole('button', { name: /^TSLAx/ }).click();
+    await page.getByRole('button', { name: '50% SUPPLY' }).click();
+    await page.getByRole('button', { name: /^1 TSLAx$/ }).click();
+    // Meteora and Orca are not open yet; neither are timed locks.
+    await expect(page.getByRole('button', { name: /Meteora DAMM v2/ })).toBeDisabled();
+    await expect(page.getByRole('radio', { name: /Lock it for a set time/ })).toBeDisabled();
+
+    // First try: the creator cancels in the wallet.
+    await page.evaluate(() => ((window as unknown as { signMode: string }).signMode = 'reject'));
+    await page.getByRole('button', { name: 'Create pool' }).click();
+    await expect(page.getByText('Cancelled in your wallet. Nothing was sent.')).toBeVisible();
+
+    await page.evaluate(() => ((window as unknown as { signMode: string }).signMode = 'ok'));
+    await page.getByRole('button', { name: 'Create pool' }).click();
+    const done = page.getByRole('dialog', { name: 'Pool created' });
+    await expect(done).toContainText('Your pool is live', { timeout: 15_000 });
+    expect(calls).toEqual(['build:100', 'build:100', 'register', 'burn', 'lock']);
+    // Create, then the LP burn: two approvals (plus the cancelled one).
+    expect(await page.evaluate(() => (window as unknown as { signs: number }).signs)).toBe(3);
   });
 
   test('status page reports real checks', async ({ page }) => {

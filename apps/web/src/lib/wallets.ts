@@ -1,15 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { isAddress } from '@oxbow/shared';
+import { bytesToBase58, isAddress } from '@oxbow/shared';
+import { env } from './env';
 
 /**
  * Solana wallets offered in "Select wallet", with their official icons
  * (public/wallets: each wallet's own adapter icon, copied by
  * scripts/wallet-logos.py), a check for whether this browser has the wallet
  * (its Wallet Standard registration or the provider it injects), and a
- * read-only connection that asks the wallet for its public address. Nothing
- * here signs; transactions arrive with the wallet adapter in M3.
+ * connection that asks the wallet for its public address, and signing through
+ * the Wallet Standard (every wallet listed supports it). Oxbow never sees a key.
  */
 export interface WalletInfo {
   name: string;
@@ -115,7 +116,7 @@ export function useInstalledWallets(): Set<string> {
 
 // ---------------------------------------------------------------- connecting
 
-export type WalletErrorCode = 'NOT_INSTALLED' | 'REJECTED' | 'HARDWARE' | 'FAILED';
+export type WalletErrorCode = 'NOT_INSTALLED' | 'REJECTED' | 'HARDWARE' | 'FAILED' | 'CANT_SIGN';
 export class WalletError extends Error {
   constructor(readonly code: WalletErrorCode) {
     super(code);
@@ -180,6 +181,33 @@ export function watchWallet(name: string, onChange: (address: string | null) => 
     if (!props.accounts) return;
     onChange(solanaAccount(props.accounts)?.address ?? null);
   });
+}
+
+/** Wallet Standard chain id for the network this build targets. */
+const CHAIN = env.cluster === 'mainnet-beta' ? 'solana:mainnet' : 'solana:devnet';
+
+/**
+ * Has the wallet sign `tx` (an unsigned v0 transaction) and send it. Wallets
+ * that only sign hand the signed bytes to `send`. Resolves with the signature.
+ */
+export async function signAndSend(name: string, address: string, tx: Uint8Array, send: (signed: Uint8Array) => Promise<string>): Promise<string> {
+  startRegistry();
+  const std = standardFor(name);
+  const account = std?.accounts?.find((a) => a.address === address);
+  const features = std?.features ?? {};
+  if (!account || !(features['solana:signAndSendTransaction'] || features['solana:signTransaction'])) throw new WalletError('CANT_SIGN');
+  let signed: Uint8Array;
+  try {
+    if (features['solana:signAndSendTransaction']) {
+      const [out] = (await features['solana:signAndSendTransaction'].signAndSendTransaction({ account, transaction: tx, chain: CHAIN })) as { signature: Uint8Array }[];
+      return bytesToBase58(out!.signature);
+    }
+    const [out] = (await features['solana:signTransaction'].signTransaction({ account, transaction: tx, chain: CHAIN })) as { signedTransaction: Uint8Array }[];
+    signed = out!.signedTransaction;
+  } catch (e) {
+    throw new WalletError(rejected(e) ? 'REJECTED' : 'FAILED');
+  }
+  return send(signed);
 }
 
 /** Waits up to `ms` for a wallet to register or inject (extensions load after the page). */

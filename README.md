@@ -13,7 +13,7 @@ is the source of truth for look, layout, copy and interactions.
 | --- | --- | --- |
 | M1 | Monorepo, full UI port on a mock API layer | Done |
 | **M2** | Prisma, Fastify endpoints, Redis, stock seed, token lookup | **Done, awaiting review** |
-| M3 | Wallet adapter, Raydium CPMM create flow on devnet, register endpoint | Not started |
+| **M3** | Wallet signing, Raydium CPMM create flow, register endpoint | **Built; devnet run pending network access** |
 | M4 | Meteora, Orca, locks, liquidity management, dashboard from chain | Not started |
 | M5 | Worker, webhooks, snapshots, SSE feed, Jupiter swap | Not started |
 | M6 | Hardening, rate limits, PM2 + Nginx + SSL, mainnet switch | Not started |
@@ -27,6 +27,30 @@ The app runs in one of two modes, chosen at build time:
   actions show "opens soon" until M3/M4, so nothing is ever signed.
 - **Sample data** (default): the prototype's mock data and a simulated wallet,
   with a strip above the ticker saying so.
+
+### M3: creating pools (Raydium CPMM)
+
+- The server builds the create transaction (`packages/solana/src/raydium-cpmm.ts`,
+  program ids and layouts from Raydium's SDK): Raydium's `initialize`, SOL
+  wrapped and unwrapped when SOL is a side, Raydium's support-mint accounts
+  for whitelisted Token-2022 stocks, and the Oxbow fee to the treasury, all
+  in one transaction. Before the wallet sees it, the API checks the pair
+  asset is listed and priced, the fee tier exists on chain, the pool doesn't
+  exist yet, the wallet holds enough of both sides and SOL for fees, and
+  runs a dry run.
+- The creator signs in their own wallet (Wallet Standard
+  `signAndSendTransaction`, or `signTransaction` plus `/api/tx/send`).
+- `POST /api/pools/register` takes only the signature and reads everything
+  else from the chain: Raydium's initialize in the transaction, the creator
+  signed and paid, the Oxbow fee reached the treasury, the pair asset is
+  listed, then the pool account and vault balances. The pool appears in
+  Explore and on the live feed at once.
+- "Burn" is a second approval that burns the creator's LP tokens; the burn
+  is verified the same way and the pool shows BURNED with the transaction
+  as proof. Timed locks, Meteora and Orca arrive with M4.
+- Creation is off until `OXBOW_TREASURY` is set in `apps/api/.env`.
+  `pnpm --filter @oxbow/api devnet:create` runs the whole flow on devnet
+  with a throwaway wallet; run it before switching creation on for mainnet.
 
 ### M2: live data
 

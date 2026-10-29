@@ -1,5 +1,7 @@
 import {
   b58,
+  FEE_TIERS,
+  VENUES,
   hash,
   isAddress,
   isLockedOrBurned,
@@ -16,6 +18,7 @@ import {
   type TokenInfo,
   type Trade,
 } from '@oxbow/shared';
+import { env } from '../../env';
 import type { OxbowApi } from '../types';
 import { baseAsset, db, fakeSig, quoteAsset, symbolTaken, tickerOrder, toActivity, toDetail, toPosition, toSummary } from './db';
 import { ORB, Q, SAMPLE_TOKENS, series, STOCKS, TF_STEP_MS, type MockPool } from './seed';
@@ -187,6 +190,16 @@ export const mockApi: OxbowApi = {
 
   async quotes() {
     return [...STOCKS, 'SOL', 'USDC'].map(quoteAsset);
+  },
+
+  async venues() {
+    // The simulated chain offers every venue and fee tier.
+    const feeTiers = FEE_TIERS.map((f) => ({ feeBps: f.feeBps, createPoolFeeLamports: 150_000_000 }));
+    return {
+      createEnabled: true,
+      oxbowFeeLamports: env.feeLamports,
+      venues: VENUES.map((v) => ({ id: v.id, enabled: true, feeTiers })),
+    };
   },
 
   async token(mint) {
