@@ -6,6 +6,7 @@ import { amt, compactTrim, FEE_TIERS, feePct, LOCK_DAY_OPTIONS, num, quoteChips,
 import { useLocale, useT } from '@/i18n/client';
 import { dateInL } from '@/i18n/format';
 import { EXAMPLE_MINT } from '@/lib/api/mock/seed';
+import { networkLabel } from '@/lib/env';
 import { links } from '@/lib/links';
 import { ExtLink } from '../ui/ExtLink';
 import { useCreateForm, type LockKind } from '@/lib/store/create';
@@ -71,7 +72,7 @@ function TokenStep({ m }: { m: CreateModel }) {
               {t.create.lookingUp}
             </div>
           )}
-          {m.lookup === 'missing' && <p className="err">{t.create.missing}</p>}
+          {m.lookup === 'missing' && <p className="err">{t.create.missing(networkLabel)}</p>}
           {m.lookup === 'error' && <p className="err">{t.create.lookupError}</p>}
           {tk && (
             <>

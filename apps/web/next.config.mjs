@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  transpilePackages: ['@oxbow/shared'],
+  transpilePackages: ['@oxbow/shared', '@oxbow/solana'],
   experimental: {
     // Next 14 needs this for src/instrumentation.ts (server error reporting).
     instrumentationHook: true,

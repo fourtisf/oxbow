@@ -6,17 +6,19 @@ import {
   PoolsQuerySchema,
   rng,
   rwalk,
+  TokenInfoSchema,
   type ActivityItem,
   type ActivityKind,
   type Candle,
   type PoolSummary,
   type TickerItem,
   type Timeframe,
+  type TokenInfo,
   type Trade,
 } from '@oxbow/shared';
 import type { OxbowApi } from '../types';
 import { baseAsset, db, fakeSig, quoteAsset, symbolTaken, tickerOrder, toActivity, toDetail, toPosition, toSummary } from './db';
-import { EXAMPLE_MINT, logoFor, ORB, Q, series, STOCKS, TF_STEP_MS, type MockPool } from './seed';
+import { ORB, Q, SAMPLE_TOKENS, series, STOCKS, TF_STEP_MS, type MockPool } from './seed';
 
 const isBrowser = typeof window !== 'undefined';
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -188,38 +190,37 @@ export const mockApi: OxbowApi = {
   },
 
   async token(mint) {
-    // The prototype's fake lookup: a short wait, then a token named after the mint's letters.
-    if (isBrowser) await delay(650);
-    let sym: string;
-    let name: string;
-    if (mint === EXAMPLE_MINT) {
-      sym = 'PEBL';
-      name = 'Pebble';
+    const sample = SAMPLE_TOKENS[mint];
+    let token: TokenInfo;
+    if (sample) {
+      if (isBrowser) await delay(650);
+      const authority = sample.authority ? mint : null;
+      token = {
+        mint,
+        symbol: sample.symbol,
+        name: sample.name,
+        decimals: 6,
+        supply: 1e9,
+        tokenProgram: 'spl-token',
+        mintAuthority: authority,
+        freezeAuthority: authority,
+        logoUri: sample.logo,
+        extensions: [],
+        risk: { mintable: !!authority, freezable: !!authority, transferFee: false, transferHook: false, permanentDelegate: false },
+        symbolTaken: false,
+        createdAt: new Date(Date.now() - 30 * 864e5).toISOString(),
+      };
     } else {
-      const letters = mint.replace(/[^A-Za-z]/g, '').toUpperCase();
-      sym = letters.slice(0, 4) || 'TKN';
-      name = sym.charAt(0) + sym.slice(1).toLowerCase() + ' token';
+      // Any other mint is read from the chain, so a real token shows its own name and logo.
+      if (!isBrowser) return null;
+      const res = await fetch(`/api/token/${encodeURIComponent(mint)}`);
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`token lookup failed: ${res.status}`);
+      token = TokenInfoSchema.parse(await res.json());
     }
-    db().held.set(mint, 1e9);
-    const taken = symbolTaken(sym, mint);
-    // Mints starting with "Risk" keep their mint and freeze authority, so the risk warning can be tried.
-    const authority = mint.startsWith('Risk') ? mint : null;
-    return {
-      mint,
-      symbol: sym,
-      name,
-      decimals: 6,
-      supply: 1e9,
-      tokenProgram: 'spl-token',
-      mintAuthority: authority,
-      freezeAuthority: authority,
-      // Only the example token has a logo; other pasted mints show what a token without one looks like.
-      logoUri: mint === EXAMPLE_MINT ? logoFor(sym) : null,
-      extensions: [],
-      risk: { mintable: !!authority, freezable: !!authority, transferFee: false, transferHook: false, permanentDelegate: false },
-      symbolTaken: taken,
-      createdAt: new Date(Date.now() - 30 * 864e5).toISOString(),
-    };
+    // The mock wallet holds the whole supply, so any deposit up to it can be tried.
+    db().held.set(mint, token.supply);
+    return { ...token, symbolTaken: symbolTaken(token.symbol, mint) };
   },
 
   async positions() {

@@ -261,4 +261,23 @@ export function series(p: Pick<MockPool, 'id' | 'chg' | 'priceUSD'>, tf: '1H' | 
 
 /** Prototype example token for "Use an example token". Fake mint. */
 export const EXAMPLE_MINT = 'Pebb5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy';
-export const EXAMPLE_SYMBOL = 'PEBL';
+
+export interface SampleToken {
+  symbol: string;
+  name: string;
+  logo: string | null;
+  /** Keeps mint and freeze authority, to show the risk warning. */
+  authority?: boolean;
+}
+
+/**
+ * Made-up mints that Create answers from sample data instead of the chain:
+ * the example token, plus fixtures for the risk warning, the duplicate-ticker
+ * warning and a token without a logo. Every other mint is looked up on Solana.
+ */
+export const SAMPLE_TOKENS: Record<string, SampleToken> = {
+  [EXAMPLE_MINT]: { symbol: 'PEBL', name: 'Pebble', logo: '/tokens/pebl.png' },
+  RiskTkn5vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy: { symbol: 'RISK', name: 'Risk Token', logo: '/tokens/risk.png', authority: true },
+  Lune5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy: { symbol: 'LUNE', name: 'Lune Copy', logo: '/tokens/lune-copy.png' },
+  P1ainTkn5vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy: { symbol: 'PLAIN', name: 'Plain Token', logo: null },
+};

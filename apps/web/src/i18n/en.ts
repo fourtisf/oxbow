@@ -324,7 +324,7 @@ export const en = {
     example: 'Use an example token',
     invalid: "That isn't a Solana mint address. It should be 32 to 44 letters and numbers, with no 0, O, I or l.",
     lookingUp: 'Looking up the token',
-    missing: "We couldn't find a token with that mint on Solana. Check the address and try again.",
+    missing: (network: string) => `There's no token with that mint on ${network}. Check the address and the network, then try again.`,
     lookupError: 'The token lookup failed. Check your connection and try again.',
     supply: (supply: string, dec: number) => `Supply ${supply}, ${dec} decimals`,
     check: {

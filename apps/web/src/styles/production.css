@@ -209,3 +209,5 @@ html[lang=id] .hero h1{font-size:clamp(40px,3.4vw,68px)}
 .xlink.off,.getlink.off{color:var(--text3);cursor:default}
 .xlink.off:hover,.getlink.off:hover{text-decoration:none}
 .links .xlink.off{opacity:.7}
+/* Avatar slot before a token is picked. */
+span.av.av-empty{background:rgba(3,6,12,.6);border:1.5px dashed rgba(158,207,255,.38);box-sizing:border-box}

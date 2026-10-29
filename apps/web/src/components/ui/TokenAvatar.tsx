@@ -20,7 +20,8 @@ export function TokenAvatar({ asset, size = 30, eager = false }: { asset: Avatar
   const [failed, setFailed] = useState<string | null>(null);
   const dim = { width: size, height: size };
 
-  if (!asset) return <span className="av" style={{ ...dim, background: '#16263D' }} />;
+  // No token picked yet: an empty slot, not a made-up token.
+  if (!asset) return <span className="av av-empty" style={dim} />;
   if (asset.logoUri && failed !== asset.logoUri) {
     const src = asset.logoUri;
     return (

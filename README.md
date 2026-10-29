@@ -49,6 +49,14 @@ wallet action is simulated. Nothing touches a chain.
 - Every token shows a logo. Real tokens use the image from their metadata
   (`logoUri`, https or a site path only); tokens without one fall back to a
   drawn avatar, and Create tells the creator their token has no logo.
+- Create looks up pasted mints on the chain (`/api/token/[mint]`, code in
+  `packages/solana/src/token-info.ts`): name, ticker, logo, supply, decimals,
+  authorities and Token-2022 extensions, from the Token-2022 metadata
+  extension or the Metaplex metadata account, then the logo from the
+  metadata's JSON file. That file's URL is chosen by the token's creator, so
+  it is fetched with public-address-only, https-only, size- and time-capped
+  requests (`packages/solana/src/safe-fetch.ts`). Only the sample tokens
+  (`SAMPLE_TOKENS` in `seed.ts`) skip the chain.
 - The sample tokens' logos live in `apps/web/public/tokens/`, built by
   `scripts/token-logos.py` from free sources (see
   [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)).
@@ -171,6 +179,9 @@ See [`.env.example`](.env.example). On the mock data layer only these matter:
   `proxy_set_header CF-IPCountry $geoip2_data_country_code;` (or set
   `GEO_COUNTRY_HEADER` to your own header name).
 - `LEGAL_ENTITY`, `LEGAL_CONTACT_EMAIL`, `LEGAL_GOVERNING_LAW`, `LEGAL_UPDATED`: filled into the legal pages.
+- `RPC_URL` (server only, so a keyed URL stays private): the RPC the token lookup reads from. Without it the
+  lookup uses Solana's public endpoint for `NEXT_PUBLIC_SOLANA_CLUSTER`, which is rate-limited.
+- `IPFS_GATEWAY`: gateway for `ipfs://` metadata and logos (default `https://ipfs.io/ipfs/`).
 
 `NEXT_PUBLIC_*` values are inlined at build time, so rebuild after changing
 them. The server-only values are read at runtime.

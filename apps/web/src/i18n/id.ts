@@ -338,7 +338,7 @@ export const id: Messages = {
     example: 'Pakai token contoh',
     invalid: 'Itu bukan alamat mint Solana. Panjangnya 32 sampai 44 huruf dan angka, tanpa 0, O, I, atau l.',
     lookingUp: 'Mencari token',
-    missing: 'Token dengan mint itu tidak ditemukan di Solana. Cek alamatnya lalu coba lagi.',
+    missing: (network: string) => `Token dengan mint itu tidak ada di ${network}. Cek alamat dan jaringannya, lalu coba lagi.`,
     lookupError: 'Pencarian token gagal. Cek koneksi Anda lalu coba lagi.',
     supply: (supply: string, dec: number) => `Suplai ${supply}, ${dec} desimal`,
     check: {

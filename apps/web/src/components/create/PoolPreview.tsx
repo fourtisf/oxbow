@@ -11,7 +11,6 @@ import { PairAvatar } from '../ui/TokenAvatar';
 import { BracketCorners, Button, Fmt } from '../ui/primitives';
 import type { CreateModel } from './model';
 
-const UNKNOWN = { symbol: '?', brand: null, logoUri: null };
 
 /** Sticky "Pool preview" card beside the create steps. */
 export function PoolPreview({ m, onCreate, busy }: { m: CreateModel; onCreate: () => void; busy: boolean }) {
@@ -31,7 +30,7 @@ export function PoolPreview({ m, onCreate, busy }: { m: CreateModel; onCreate: (
         <div className="pv-top">
           {/* The prototype wraps this in an inline span; keeping it keeps the line box (and layout) identical. */}
           <span>
-            <PairAvatar base={tk ?? UNKNOWN} quote={q} size={40} />
+            <PairAvatar base={tk ?? null} quote={q} size={40} />
           </span>
           <div>
             <b>

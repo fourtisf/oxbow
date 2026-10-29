@@ -1,10 +1,9 @@
 import { connectWallet, expect, test } from './fixtures';
 
 const EXAMPLE_MINT = 'Pebb5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy';
-// The mock lookup keeps mint and freeze authority on mints starting with "Risk".
-const RISKY_MINT = 'RiskTkn5vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy';
-// Derives the ticker LUNE, which a listed pool already uses.
-const DUPE_MINT = 'Lune5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy';
+// Sample tokens Create answers without the chain (seed.ts SAMPLE_TOKENS).
+const RISKY_MINT = 'RiskTkn5vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy'; // keeps mint and freeze authority
+const DUPE_MINT = 'Lune5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy'; // ticker LUNE, already listed
 
 test.describe('create pool (mock wallet)', () => {
   test('validates the mint and explains what is missing', async ({ page }) => {
@@ -67,7 +66,8 @@ test.describe('create pool (mock wallet)', () => {
     await expect(page).toHaveURL(/\/pool\//);
     const drawer = page.getByRole('dialog', { name: 'Pool details' });
     await expect(drawer).toContainText('PEBL/NVDAx');
-    await expect(drawer.locator('.note')).toContainText("40% of this liquidity isn't locked");
+    // (A market-hours note can sit next to it when the US market is closed.)
+    await expect(drawer.locator('.note', { hasText: "40% of this liquidity isn't locked" })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page).toHaveURL(/\/explore$/);
     await expect(page.locator('table.ex tr.fresh')).toContainText('PEBL/NVDAx');
@@ -98,8 +98,6 @@ test.describe('create pool (mock wallet)', () => {
     const hint = page.locator('.pv-hint');
     await page.getByRole('textbox', { name: 'Token mint address' }).fill(RISKY_MINT);
     await expect(page.locator('.tcard')).toContainText('MINT AUTHORITY ACTIVE');
-    // No logo in its metadata: the creator is told what buyers will see.
-    await expect(page.getByText('This token has no logo in its metadata', { exact: false })).toBeVisible();
     await expect(page.getByRole('alert').filter({ hasText: 'Someone can freeze holders of this token' })).toBeVisible();
     await expect(hint).toHaveText('Confirm you understand the token warnings in step 1.');
     await page.getByRole('checkbox', { name: 'I understand these risks and want to continue' }).check();

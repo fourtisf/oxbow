@@ -67,6 +67,9 @@ MEMES = {
     'volt': ('1f438', '#FFD43B', '#8A6400'),
     'chad': ('1f402', '#E8453C', '#5C0A0A'),
     'pebl': ('1faa8', '#4DB6AC', '#0E3B37'),
+    # Create's sample fixtures: a token with live authorities and a duplicate ticker.
+    'risk': ('1f9e8', '#5C6B80', '#1B2533'),
+    'lune-copy': ('1f31a', '#6B4BB0', '#1E1240'),
 }
 
 LIGHT_TEXT = '#1A222D'
