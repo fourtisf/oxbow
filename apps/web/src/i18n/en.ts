@@ -363,6 +363,7 @@ export const en = {
     s2sub: 'Traders buy your token with this asset. Prices, fees and your earnings are all counted in it.',
     stocksGroup: 'Verified stocks',
     cryptoGroup: 'Crypto and dollars',
+    quotesEmpty: 'Pair assets appear here once the verified stock list is published. Check back soon.',
     s3: 'Deposit',
     s3sub: "How much of each goes in. The ratio sets your token's starting price.",
     yourToken: 'Your token',

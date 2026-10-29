@@ -377,6 +377,7 @@ export const id: Messages = {
     s2sub: 'Trader membeli token Anda dengan aset ini. Harga, biaya, dan pendapatan Anda semua dihitung dalam aset ini.',
     stocksGroup: 'Saham terverifikasi',
     cryptoGroup: 'Kripto dan dolar',
+    quotesEmpty: 'Aset pasangan muncul di sini setelah daftar saham terverifikasi diterbitkan. Cek lagi nanti.',
     s3: 'Setoran',
     s3sub: 'Berapa banyak masing-masing yang disetor. Rasionya menentukan harga awal token Anda.',
     yourToken: 'Token Anda',

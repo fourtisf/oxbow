@@ -6,6 +6,7 @@ import { amt, compactTrim, FEE_TIERS, feePct, LOCK_DAY_OPTIONS, num, quoteChips,
 import { useLocale, useT } from '@/i18n/client';
 import { dateInL } from '@/i18n/format';
 import { EXAMPLE_MINT } from '@/lib/api/mock/seed';
+import { useQuotes } from '@/lib/api/queries';
 import { SAMPLE_DATA } from '@/lib/api/mode';
 import { networkLabel } from '@/lib/env';
 import { links } from '@/lib/links';
@@ -167,27 +168,33 @@ function QuoteTile({ q, pressed }: { q: QuoteAsset; pressed: boolean }) {
 
 function QuoteStep({ m }: { m: CreateModel }) {
   const t = useT();
+  const { isSuccess } = useQuotes();
   const stocks = m.quotes.filter((q) => q.kind === 'STOCK');
   const other = m.quotes.filter((q) => q.kind !== 'STOCK');
+  const groups: [string, QuoteAsset[]][] = [
+    [t.create.stocksGroup, stocks],
+    [t.create.cryptoGroup, other],
+  ];
   return (
     <Step n={2} title={t.create.s2} sub={t.create.s2sub} done={m.done[1]}>
       <div className="body">
-        <div className="qgroup">
-          <h4 className="label">{t.create.stocksGroup}</h4>
-          <div className="qgrid">
-            {stocks.map((q) => (
-              <QuoteTile key={q.symbol} q={q} pressed={m.form.quote === q.symbol} />
-            ))}
-          </div>
-        </div>
-        <div className="qgroup">
-          <h4 className="label">{t.create.cryptoGroup}</h4>
-          <div className="qgrid">
-            {other.map((q) => (
-              <QuoteTile key={q.symbol} q={q} pressed={m.form.quote === q.symbol} />
-            ))}
-          </div>
-        </div>
+        {isSuccess && !m.quotes.length ? (
+          // Live data before the verified list is published.
+          <p className="fine">{t.create.quotesEmpty}</p>
+        ) : (
+          groups
+            .filter(([, list]) => list.length || !isSuccess)
+            .map(([label, list]) => (
+              <div className="qgroup" key={label}>
+                <h4 className="label">{label}</h4>
+                <div className="qgrid">
+                  {list.map((q) => (
+                    <QuoteTile key={q.symbol} q={q} pressed={m.form.quote === q.symbol} />
+                  ))}
+                </div>
+              </div>
+            ))
+        )}
       </div>
     </Step>
   );
