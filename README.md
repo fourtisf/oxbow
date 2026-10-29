@@ -74,7 +74,8 @@ wallet action is simulated. Nothing touches a chain.
 - Logo: "Oxbow Lake", an O whose hole sits off-center like the crescent lake
   a river bend leaves behind, in a frost-to-electric-blue gradient with a
   lowercase Geist SemiBold wordmark. Files in `apps/web/public/brand/`
-  (app icon, mark and logo for dark and light backgrounds, PNG 192/512),
+  (app icon, mark and logo for dark and light backgrounds, PNG 192/512,
+  and `social/` with a circle-safe profile picture and an X header),
   built by `scripts/brand-logo.py` and `scripts/brand-png.mjs`; the favicon,
   Apple touch icon and web manifest use them.
 
@@ -115,6 +116,11 @@ Inside `apps/web/src`:
   generator, unchanged). M2 adds an HTTP client behind the same interface.
 - `lib/chain/` wallet-signed actions behind a `Chain` interface; M1 ships a
   mock with the prototype's timings.
+
+## Deploy
+
+See [`infra/README.md`](infra/README.md): Nginx, PM2 and `infra/deploy.sh`
+for the VPS behind oxbowflow.com.
 
 ## Setup
 
@@ -176,9 +182,10 @@ Prototype comparison screenshots (1920 / 1440 / 390px): see
 See [`.env.example`](.env.example). On the mock data layer only these matter:
 
 - `NEXT_PUBLIC_SOLANA_CLUSTER`: network pill label and explorer links (`devnet` or `mainnet-beta`).
-  On the mock data layer `mainnet-beta` changes only these: the pools,
-  addresses and wallet are still sample data, so a mainnet build should not
-  go public before M2 to M4. The default stays `devnet` (devnet first).
+  On the mock data layer `mainnet-beta` changes only these and the network
+  Create's token lookup reads: pools, addresses and the wallet are still
+  sample data (the strip above the ticker says so), and real trading needs
+  M2 to M4. The code default stays `devnet` (devnet first).
 - `NEXT_PUBLIC_OXBOW_FEE_LAMPORTS`: Oxbow fee shown in the cost breakdown and docs (default 0.1 SOL).
 - `NEXT_PUBLIC_CONTRACT_ADDRESS`: hero CA box; hidden when empty.
 - `NEXT_PUBLIC_X_URL`, `NEXT_PUBLIC_TELEGRAM_URL`, `NEXT_PUBLIC_DISCORD_URL`: social links.
