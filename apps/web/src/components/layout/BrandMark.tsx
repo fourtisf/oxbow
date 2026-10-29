@@ -1,36 +1,36 @@
-/** Oxbow logo marks from the prototype nav and footer. */
-export function BrandMark() {
+/**
+ * The Oxbow app icon ("Oxbow Lake": an O whose hole sits off-center, like the
+ * crescent lake a river bend leaves behind). Same artwork as
+ * public/brand/oxbow-icon.svg, built by scripts/brand-logo.py. `id` keeps the
+ * gradient ids unique when the mark appears twice on a page.
+ */
+export function BrandMark({ size = 38, id = 'ox' }: { size?: number; id?: string }) {
   return (
-    <svg width="38" height="38" viewBox="0 0 40 40" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 128 128" aria-hidden="true">
       <defs>
-        <linearGradient id="lgA" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#EAF5FF" />
-          <stop offset="1" stopColor="#6FB2FF" />
+        <linearGradient id={`${id}m`} x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#EAF6FF" />
+          <stop offset=".45" stopColor="#8FCBFF" />
+          <stop offset="1" stopColor="#3B7BFF" />
         </linearGradient>
-        <linearGradient id="lgB" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#16263D" />
-          <stop offset="1" stopColor="#0A1422" />
+        <linearGradient id={`${id}t`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#132845" />
+          <stop offset="1" stopColor="#060D19" />
         </linearGradient>
-        <clipPath id="lgc">
-          <rect x="2" y="2" width="36" height="36" rx="11" />
-        </clipPath>
+        <radialGradient id={`${id}l`} cx=".3" cy=".1" r=".8">
+          <stop offset="0" stopColor="#9FD2FF" stopOpacity=".22" />
+          <stop offset="1" stopColor="#9FD2FF" stopOpacity="0" />
+        </radialGradient>
       </defs>
-      <rect x="2" y="2" width="36" height="36" rx="11" fill="url(#lgB)" stroke="rgba(170,215,255,.35)" />
-      <g clipPath="url(#lgc)">
-        <path d="M2 25 C9 20 14 29 20 24 S31 19 38 24 V38 H2Z" fill="url(#lgA)" opacity=".95" />
-        <rect x="10" y="12" width="4.5" height="10" rx="1.2" fill="#9ECFFF" />
-        <rect x="17.75" y="8" width="4.5" height="14" rx="1.2" fill="#D6EBFF" />
-        <rect x="25.5" y="14" width="4.5" height="8" rx="1.2" fill="#6FB2FF" />
-      </g>
-    </svg>
-  );
-}
-
-export function FooterMark() {
-  return (
-    <svg width="32" height="32" viewBox="0 0 40 40" aria-hidden="true">
-      <rect x="2" y="2" width="36" height="36" rx="11" fill="#0E1C2D" stroke="rgba(170,215,255,.35)" />
-      <path d="M8 26 C13 22 16 29 20 25 S28 21 32 25" fill="none" stroke="#9ECFFF" strokeWidth="2.5" strokeLinecap="round" />
+      <rect width="128" height="128" rx="30" fill={`url(#${id}t)`} />
+      <rect width="128" height="128" rx="30" fill={`url(#${id}l)`} />
+      <path
+        transform="translate(13.44 13.44) scale(.79)"
+        fillRule="evenodd"
+        fill={`url(#${id}m)`}
+        d="M106 64A42 42 0 1 1 22 64A42 42 0 1 1 106 64ZM97 56A25 25 0 1 0 47 56A25 25 0 1 0 97 56Z"
+      />
+      <rect x=".75" y=".75" width="126.5" height="126.5" rx="29.25" fill="none" stroke="#AAD7FF" strokeOpacity=".28" strokeWidth="1.5" />
     </svg>
   );
 }

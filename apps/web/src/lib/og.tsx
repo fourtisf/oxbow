@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ImageResponse } from 'next/og';
 import { fromSubscript } from '@oxbow/shared';
+import { siteUrl } from './links';
 
 /** Social preview images (1200×630), drawn with the site's Geist fonts. */
 export const OG_SIZE = { width: 1200, height: 630 };
@@ -56,7 +57,10 @@ export interface OgPool {
   venue: string;
 }
 
-function Frame({ children }: { children: React.ReactNode }) {
+/** The site's host for the corner of the card, e.g. "oxbowflow.com". */
+const host = () => new URL(siteUrl()).host.replace(/^www\./, '');
+
+function Frame({ brand, children }: { brand: string | null; children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -72,18 +76,19 @@ function Frame({ children }: { children: React.ReactNode }) {
         backgroundImage: 'radial-gradient(circle at 85% 0%, rgba(110,170,255,.30), rgba(3,6,12,0) 55%), radial-gradient(circle at 0% 100%, rgba(169,155,255,.16), rgba(3,6,12,0) 50%)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-        <div style={{ width: 56, height: 56, borderRadius: 16, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 6, padding: 12, background: 'linear-gradient(180deg,#16263D,#0A1422)', border: '1px solid rgba(170,215,255,.35)' }}>
-          <div style={{ width: 7, height: 16, borderRadius: 2, background: '#9ECFFF' }} />
-          <div style={{ width: 7, height: 24, borderRadius: 2, background: '#D6EBFF' }} />
-          <div style={{ width: 7, height: 12, borderRadius: 2, background: '#6FB2FF' }} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+          {brand && <img src={brand} alt="" width={60} height={60} />}
+          <div style={{ fontSize: 44, fontWeight: 600, letterSpacing: -2 }}>oxbow</div>
         </div>
-        <div style={{ fontSize: 40, fontWeight: 700, letterSpacing: -1.5 }}>Oxbow</div>
+        <div style={{ display: 'flex', fontFamily: 'Geist Mono', fontSize: 22, color: C.text3, letterSpacing: 1 }}>{host()}</div>
       </div>
       {children}
     </div>
   );
 }
+
+const brandIcon = () => logoData('/brand/oxbow-icon.svg');
 
 /** "$0.0₅228" with the zero count drawn as a small lowered number, like the site's <sub>. */
 function Price({ text }: { text: string }) {
@@ -106,7 +111,7 @@ function Price({ text }: { text: string }) {
 export async function siteOgImage(title: string, sub: string) {
   return new ImageResponse(
     (
-      <Frame>
+      <Frame brand={await brandIcon()}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div style={{ display: 'flex', flexDirection: 'column', fontSize: 92, fontWeight: 700, lineHeight: 1, letterSpacing: -4 }}>
             <span>Pick a meme.</span>
@@ -126,7 +131,7 @@ export async function poolOgImage(p: OgPool) {
   const chg = p.change >= 0 ? C.up : C.down;
   return new ImageResponse(
     (
-      <Frame>
+      <Frame brand={await brandIcon()}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
             {(p.baseLogo || p.quoteLogo) && (

@@ -63,3 +63,23 @@ test.describe('restricted regions', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Terms of Service');
   });
 });
+
+test('brand icons and the web manifest are served', async ({ page, request }) => {
+  const files: [string, string][] = [
+    ['/icon.svg', 'image/svg+xml'],
+    ['/apple-icon.png', 'image/png'],
+    ['/brand/oxbow-icon-512.png', 'image/png'],
+  ];
+  for (const [path, type] of files) {
+    const r = await request.get(path);
+    expect(r.status(), path).toBe(200);
+    expect(r.headers()['content-type'], path).toContain(type);
+  }
+  const manifest = await (await request.get('/manifest.webmanifest')).json();
+  expect(manifest.name).toBe('Oxbow');
+  expect(manifest.icons.map((i: { src: string }) => i.src)).toContain('/brand/oxbow-icon-512.png');
+
+  await page.goto('/');
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest');
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);
+});

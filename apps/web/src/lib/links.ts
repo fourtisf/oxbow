@@ -20,8 +20,11 @@ export const links = {
   shareOnX: (text: string, url: string) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
 };
 
+/** The production domain, used when NEXT_PUBLIC_SITE_URL isn't set (server side). */
+export const DEFAULT_SITE_URL = 'https://oxbowflow.com';
+
 /** Absolute site URL for share links and metadata. */
 export function siteUrl(path = ''): string {
-  const base = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+  const base = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : DEFAULT_SITE_URL);
   return base.replace(/\/$/, '') + path;
 }

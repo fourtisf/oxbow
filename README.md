@@ -67,6 +67,17 @@ wallet action is simulated. Nothing touches a chain.
   since the sample addresses don't exist on any network. Both go away when
   M2 connects the real API.
 
+### Brand and domain
+
+- Domain: **oxbowflow.com** (`NEXT_PUBLIC_SITE_URL`, also the default for
+  share links, the sitemap and Open Graph images).
+- Logo: "Oxbow Lake", an O whose hole sits off-center like the crescent lake
+  a river bend leaves behind, in a frost-to-electric-blue gradient with a
+  lowercase Geist SemiBold wordmark. Files in `apps/web/public/brand/`
+  (app icon, mark and logo for dark and light backgrounds, PNG 192/512),
+  built by `scripts/brand-logo.py` and `scripts/brand-png.mjs`; the favicon,
+  Apple touch icon and web manifest use them.
+
 ### Needs the owner before launch
 
 - Legal pages are drafts written without a lawyer. Have them reviewed, then
@@ -171,7 +182,7 @@ See [`.env.example`](.env.example). On the mock data layer only these matter:
 - `NEXT_PUBLIC_OXBOW_FEE_LAMPORTS`: Oxbow fee shown in the cost breakdown and docs (default 0.1 SOL).
 - `NEXT_PUBLIC_CONTRACT_ADDRESS`: hero CA box; hidden when empty.
 - `NEXT_PUBLIC_X_URL`, `NEXT_PUBLIC_TELEGRAM_URL`, `NEXT_PUBLIC_DISCORD_URL`: social links.
-- `NEXT_PUBLIC_SITE_URL`: canonical origin for share links, sitemap and OG images.
+- `NEXT_PUBLIC_SITE_URL`: canonical origin for share links, sitemap and OG images (defaults to `https://oxbowflow.com`).
 - `NEXT_PUBLIC_BUY_TOKEN_URL`: "Get <token>" link, `{mint}` is replaced.
 - `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` (+ `NEXT_PUBLIC_PLAUSIBLE_SRC`), `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_DSN`: analytics and error reporting, off when empty.
 - `NEXT_PUBLIC_MOCK_EMPTY=1`: start the mock with no pools, to check launch-day empty states.

@@ -211,3 +211,5 @@ html[lang=id] .hero h1{font-size:clamp(40px,3.4vw,68px)}
 .links .xlink.off{opacity:.7}
 /* Avatar slot before a token is picked. */
 span.av.av-empty{background:rgba(3,6,12,.6);border:1.5px dashed rgba(158,207,255,.38);box-sizing:border-box}
+/* Wordmark next to the brand mark: lowercase Geist SemiBold, tight tracking. */
+.brand{font-weight:600;letter-spacing:-.045em}

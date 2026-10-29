@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getLocale, getT } from '@/i18n/server';
 import { social } from '@/lib/site';
-import { FooterMark } from './BrandMark';
+import { BrandMark } from './BrandMark';
 import { LanguageSwitch } from './LanguageSwitch';
 
 export function Footer() {
@@ -12,8 +12,8 @@ export function Footer() {
         <div className="fgrid">
           <div>
             <Link className="brand" href="/">
-              <FooterMark />
-              Oxbow
+              <BrandMark size={32} id="oxf" />
+              oxbow
             </Link>
             <p>{t.footer.tagline}</p>
             <LanguageSwitch locale={getLocale()} label={t.footer.language} />

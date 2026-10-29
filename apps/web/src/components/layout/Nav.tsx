@@ -37,7 +37,7 @@ export function Nav() {
       <div className="wrap">
         <Link className="brand" href="/" aria-label={t.nav.home}>
           <BrandMark />
-          Oxbow
+          oxbow
         </Link>
         <nav className="navlinks" aria-label={t.nav.main}>
           {NAV.map((n) => (
