@@ -23,7 +23,8 @@ import type { PrismaClient } from '@oxbow/db';
 import { lookupToken, type AccountReader } from '@oxbow/solana/token';
 import { fetchJsonSafely } from '@oxbow/solana/safe-fetch';
 import { SOL_MINT, type Cluster } from '@oxbow/solana/rpc';
-import type { Connection } from '@solana/web3.js';
+import { PublicKey, type Connection } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID, unpackMint } from '@solana/spl-token';
 import { ActivityHub } from './activity';
 import { Cache } from './cache';
 import { registerCreateRoutes, type CreateConfig } from './create';
@@ -184,7 +185,32 @@ export async function buildApp(deps: Deps) {
   // ------------------------------------------------------------ tokens
 
   /** Jupiter's most-traded verified tokens, cached half an hour (two minutes when the list came back empty). */
-  const popularList = () => (deps.popular ? cache.wrap('popular:v1', (v: unknown[]) => (v.length ? 1800 : 120), deps.popular) : Promise.resolve([]));
+  const popularList = () => (deps.popular ? cache.wrap('popular:v2', (v: unknown[]) => (v.length ? 1800 : 120), () => solanaNative(deps.popular!)) : Promise.resolve([]));
+
+  /**
+   * Keeps tokens that are Solana's own: a classic SPL mint whose mint and freeze authorities are
+   * revoked. That drops bridged coins (their bridge keeps minting), tokenized stocks (the issuer
+   * mints, often on Token-2022) and anything that can still be frozen. One RPC call for the lot.
+   */
+  async function solanaNative(source: PopularSource) {
+    const list = await source();
+    if (!list.length) return [];
+    try {
+      const infos = await withTimeout(deps.rpc.getMultipleAccountsInfo(list.map((p) => new PublicKey(p.mint))), RPC_TIMEOUT_MS);
+      return list.filter((p, i) => {
+        const a = infos[i];
+        if (!a || !a.owner.equals(TOKEN_PROGRAM_ID)) return false;
+        try {
+          const m = unpackMint(new PublicKey(p.mint), a, TOKEN_PROGRAM_ID);
+          return !m.mintAuthority && !m.freezeAuthority;
+        } catch {
+          return false;
+        }
+      });
+    } catch {
+      return [];
+    }
+  }
 
   async function token(req: FastifyRequest, reply: FastifyReply) {
     const { mint } = Mint.parse(req.params);

@@ -32,7 +32,8 @@ const NOT_A_PICK = /^(usd|usdc|usdt|pyusd|usds|eurc|sol|wsol|jitosol|msol|bsol|j
 
 export function jupiterPopular(base: string, log: (m: string) => void = () => {}): PopularSource {
   return async () => {
-    const url = `${base.replace(/\/$/, '')}/tokens/v2/toptraded/24h?limit=50`;
+    // A wide net: the server keeps only Solana-native tokens after checking each mint on chain.
+    const url = `${base.replace(/\/$/, '')}/tokens/v2/toptraded/24h?limit=100`;
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(6000), headers: { accept: 'application/json' } });
       if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);

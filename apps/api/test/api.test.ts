@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 import { Keypair, PublicKey, type AccountInfo } from '@solana/web3.js';
-import { MINT_SIZE, MintLayout, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { MINT_SIZE, MintLayout, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Redis } from 'ioredis';
 import { z } from 'zod';
 import {
@@ -84,6 +84,10 @@ class FakeRpc {
   async getAccountInfo(k: PublicKey) {
     if (this.down) throw new Error('down');
     return this.accounts.get(k.toBase58()) ?? null;
+  }
+  async getMultipleAccountsInfo(ks: PublicKey[]) {
+    if (this.down) throw new Error('down');
+    return ks.map((k) => this.accounts.get(k.toBase58()) ?? null);
   }
 }
 
@@ -339,8 +343,15 @@ describe.skipIf(!ready)('Oxbow API', () => {
     expect((await post({ signature: '5'.repeat(88), venue: 'UNISWAP' })).statusCode).toBe(400);
   });
 
-  it('serves popular token picks without the pair assets', async () => {
-    const other = addr();
+  it('serves popular token picks: Solana-native mints only, without the pair assets', async () => {
+    const other = Keypair.generate().publicKey.toBase58();
+    const bridged = Keypair.generate().publicKey;
+    const stock2022 = Keypair.generate().publicKey;
+    rpc.accounts.set(other, mintAccount(5, 10n ** 14n, null));
+    // A bridge keeps the mint authority; a tokenized stock lives on Token-2022.
+    rpc.accounts.set(bridged.toBase58(), mintAccount(8, 10n ** 12n, bridged));
+    rpc.accounts.set(stock2022.toBase58(), { ...mintAccount(8, 10n ** 12n, null), owner: TOKEN_2022_PROGRAM_ID });
+    rpc.accounts.set(M.tsla, mintAccount(8, 10n ** 12n, null));
     await built.app.close();
     built = await buildApp({
       db,
@@ -352,6 +363,8 @@ describe.skipIf(!ready)('Oxbow API', () => {
       popular: async () => [
         { mint: M.tsla, symbol: 'TSLAx', name: 'Tesla xStock', logoUri: null },
         { mint: other, symbol: 'BONK', name: 'Bonk', logoUri: 'https://arweave.net/b.png' },
+        { mint: bridged.toBase58(), symbol: 'HYPE', name: 'Hyperliquid (bridged)', logoUri: null },
+        { mint: stock2022.toBase58(), symbol: 'SPCX', name: 'Stock token', logoUri: null },
       ],
     });
     const list = z.array(PopularTokenSchema).parse((await get('/api/tokens/popular')).body);

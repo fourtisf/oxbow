@@ -335,7 +335,7 @@ export const en = {
     mintAria: 'Token mint address',
     example: 'Use an example token',
     popular: 'Popular on Solana',
-    popularNote: "The most traded verified tokens on Jupiter in the last 24 hours. Tap one to see how the lookup works; to create a pool you need to hold the token.",
+    popularNote: "The most traded Solana-native tokens on Jupiter in the last 24 hours, mint and freeze authority revoked. Tap one to see how the lookup works; to create a pool you need to hold the token.",
     invalid: "That isn't a Solana mint address. It should be 32 to 44 letters and numbers, with no 0, O, I or l.",
     lookingUp: 'Looking up the token',
     missing: (network: string) => `There's no token with that mint on ${network}. Check the address and the network, then try again.`,

@@ -21,7 +21,7 @@ describe('jupiterPopular', () => {
     const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify(rows), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     const got = await jupiterPopular('https://lite-api.jup.ag/')();
-    expect(fetchMock.mock.calls[0]![0]).toBe('https://lite-api.jup.ag/tokens/v2/toptraded/24h?limit=50');
+    expect(fetchMock.mock.calls[0]![0]).toBe('https://lite-api.jup.ag/tokens/v2/toptraded/24h?limit=100');
     expect(got).toEqual([
       { mint: bonk, symbol: 'Bonk', name: 'Bonk', logoUri: 'https://arweave.net/bonk.png' },
       // An icon that isn't https is dropped, the token kept.
