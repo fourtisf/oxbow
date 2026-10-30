@@ -417,3 +417,10 @@ export const PopularTokenSchema = z.object({
   logoUri: LogoUriSchema.nullable(),
 });
 export type PopularToken = z.infer<typeof PopularTokenSchema>;
+
+/** `GET /api/tokens/search?q=` — tokens matching a name or ticker (Jupiter's token search). */
+export const TokenSearchResultSchema = PopularTokenSchema.extend({
+  /** On Jupiter's verified list. Unverified tokens are shown, marked. */
+  verified: z.boolean(),
+});
+export type TokenSearchResult = z.infer<typeof TokenSearchResultSchema>;

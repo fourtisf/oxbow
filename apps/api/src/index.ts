@@ -8,7 +8,7 @@ import { connect } from '@oxbow/solana/rpc';
 import { buildApp } from './app';
 import { loadConfig } from './config';
 import { loadEnvFile } from './env-file';
-import { jupiterPopular } from './popular';
+import { jupiterPopular, jupiterSearch } from './popular';
 import { LivePrices } from './prices';
 
 loadEnvFile();
@@ -28,6 +28,7 @@ const { app } = await buildApp({
   prices: new LivePrices(config.JUPITER_API_BASE, config.PYTH_HERMES_URL, (m) => app.log.warn(m)),
   ipfsGateway: config.IPFS_GATEWAY,
   popular: jupiterPopular(config.JUPITER_API_BASE, (m) => app.log.warn(m)),
+  search: jupiterSearch(config.JUPITER_API_BASE, (m) => app.log.warn(m)),
   logger: { level: process.env.LOG_LEVEL ?? 'info' },
 });
 

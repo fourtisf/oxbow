@@ -30,7 +30,7 @@ import { Cache } from './cache';
 import { registerCreateRoutes, type CreateConfig } from './create';
 import { HttpError, priv, pub, withTimeout } from './http';
 import { Market } from './market';
-import type { PopularSource } from './popular';
+import type { PopularSource, SearchSource } from './popular';
 import type { PriceSource } from './prices';
 
 /** The RPC calls the API makes (a web3.js Connection in production). */
@@ -67,6 +67,8 @@ export interface Deps {
   streamsPerIp?: number;
   /** Most-traded tokens for create step 1 (Jupiter in production). */
   popular?: PopularSource;
+  /** Token search by name or ticker for create step 1 (Jupiter in production). */
+  search?: SearchSource;
 }
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
@@ -270,6 +272,19 @@ export async function buildApp(deps: Deps) {
     const book = await market.quoteBook();
     pub(reply, 300);
     return list.filter((p) => !book.assets[p.mint]).slice(0, 8);
+  });
+  // Search by name or ticker. Typing fires it, so it gets a higher limit than other reads.
+  app.get('/api/tokens/search', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const { q } = z.object({ q: z.string().trim().min(2).max(40) }).parse(req.query);
+    if (!deps.search) return [];
+    let results: Awaited<ReturnType<SearchSource>>;
+    try {
+      results = await cache.wrap(`search:v1:${q.toLowerCase()}`, 300, () => deps.search!(q));
+    } catch {
+      throw new HttpError(502, 'search_unavailable');
+    }
+    pub(reply, 120);
+    return results.slice(0, 8);
   });
   app.get('/api/tokens/:mint', tokenOpts, token);
   // The web app's sample-data mode calls the old path.

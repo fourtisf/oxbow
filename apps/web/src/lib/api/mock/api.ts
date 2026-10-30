@@ -192,6 +192,13 @@ export const mockApi: OxbowApi = {
     return [...STOCKS, 'SOL', 'USDC'].map(quoteAsset);
   },
 
+  async searchTokens(query) {
+    const q = query.trim().toLowerCase();
+    return Object.entries(SAMPLE_TOKENS)
+      .filter(([, t]) => t.symbol.toLowerCase().includes(q) || t.name.toLowerCase().includes(q))
+      .map(([mint, t]) => ({ mint, symbol: t.symbol, name: t.name, logoUri: t.logo, verified: true }));
+  },
+
   async popularTokens() {
     // Sample data offers its example token instead (a button under the field).
     return [];

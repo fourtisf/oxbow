@@ -1,8 +1,8 @@
 /**
- * "Popular on Solana" picks for create step 1: Jupiter's most-traded verified
- * tokens. Every mint comes from Jupiter's token data (nothing is typed in by
- * hand), the response is parsed strictly, and anything unexpected means no
- * picks rather than wrong ones.
+ * Token discovery for create step 1, from Jupiter's token data: "Popular on
+ * Solana" picks (most traded, verified) and search by name or ticker. Every
+ * mint comes from Jupiter (nothing is typed in by hand), responses are parsed
+ * strictly, and anything unexpected means no results rather than wrong ones.
  */
 import { z } from 'zod';
 import { AddressSchema, LogoUriSchema } from '@oxbow/shared';
@@ -15,6 +15,11 @@ export interface PopularToken {
 }
 
 export type PopularSource = () => Promise<PopularToken[]>;
+
+export interface SearchResult extends PopularToken {
+  verified: boolean;
+}
+export type SearchSource = (query: string) => Promise<SearchResult[]>;
 
 const JupiterToken = z
   .object({
@@ -50,6 +55,31 @@ export function jupiterPopular(base: string, log: (m: string) => void = () => {}
     } catch (e) {
       log(`Popular tokens unavailable: ${(e as Error).message}`);
       return [];
+    }
+  };
+}
+
+const logoOf = (icon: string | null | undefined) => (icon && LogoUriSchema.safeParse(icon).success ? icon : null);
+
+/** Jupiter token search: name, ticker or mint. Verified tokens first, then the rest, marked. */
+export function jupiterSearch(base: string, log: (m: string) => void = () => {}): SearchSource {
+  return async (query) => {
+    const url = `${base.replace(/\/$/, '')}/tokens/v2/search?query=${encodeURIComponent(query)}`;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000), headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);
+      const rows = z.array(z.unknown()).parse(await res.json());
+      const out: SearchResult[] = [];
+      for (const row of rows) {
+        const t = JupiterToken.safeParse(row);
+        if (!t.success) continue;
+        out.push({ mint: t.data.id, symbol: t.data.symbol, name: t.data.name, logoUri: logoOf(t.data.icon), verified: t.data.isVerified === true });
+      }
+      // Stable: Jupiter's own ranking within each group.
+      return [...out.filter((r) => r.verified), ...out.filter((r) => !r.verified)];
+    } catch (e) {
+      log(`Token search unavailable: ${(e as Error).message}`);
+      throw e;
     }
   };
 }

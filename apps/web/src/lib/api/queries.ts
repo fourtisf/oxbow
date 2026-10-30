@@ -17,6 +17,8 @@ export const useTicker = () => useQuery({ queryKey: qk.ticker(), queryFn: () => 
 export const useMovers = () => useQuery({ queryKey: qk.movers(), queryFn: () => api.movers() });
 export const useStocks = () => useQuery({ queryKey: qk.stocks(), queryFn: () => api.stocks() });
 export const useQuotes = () => useQuery({ queryKey: qk.quotes(), queryFn: () => api.quotes() });
+export const useTokenSearch = (q: string) =>
+  useQuery({ queryKey: qk.search(q), queryFn: () => api.searchTokens(q), enabled: q.trim().length >= 2, staleTime: 5 * 60_000, retry: false });
 export const usePopularTokens = () => useQuery({ queryKey: qk.popular(), queryFn: () => api.popularTokens(), staleTime: 10 * 60_000 });
 export const useVenues = () => useQuery({ queryKey: qk.venues(), queryFn: () => api.venues(), staleTime: 60_000 });
 

@@ -2,11 +2,11 @@
 
 import Link from 'next/link';
 import type { CSSProperties, ReactNode } from 'react';
-import { amt, compactTrim, FEE_TIERS, feePct, LOCK_DAY_OPTIONS, num, quoteChips, tiny, usd, VENUES, type QuoteAsset } from '@oxbow/shared';
+import { amt, compactTrim, FEE_TIERS, feePct, LOCK_DAY_OPTIONS, num, quoteChips, shortAddr, tiny, usd, VENUES, type QuoteAsset } from '@oxbow/shared';
 import { useLocale, useT } from '@/i18n/client';
 import { dateInL } from '@/i18n/format';
 import { EXAMPLE_MINT } from '@/lib/api/mock/seed';
-import { usePopularTokens, useQuotes } from '@/lib/api/queries';
+import { usePopularTokens, useQuotes, useTokenSearch } from '@/lib/api/queries';
 import { SAMPLE_DATA } from '@/lib/api/mode';
 import { networkLabel } from '@/lib/env';
 import { links } from '@/lib/links';
@@ -36,6 +36,39 @@ function Step({ n, title, sub, done, children }: { n: number; title: string; sub
       <p className="sub">{sub}</p>
       {children}
     </li>
+  );
+}
+
+/** Tokens matching what was typed (a name or ticker), to pick instead of pasting an address. */
+function SearchResults({ query, onPick }: { query: string; onPick: (mint: string) => void }) {
+  const t = useT();
+  const q = useTokenSearch(query);
+  if (query.length < 2) return <p className="fine">{t.create.searchMore}</p>;
+  if (q.isError) return <p className="err">{t.create.searchDown}</p>;
+  if (!q.data)
+    return (
+      <div className="loading">
+        <span className="spin" aria-hidden="true" />
+        {t.create.searching}
+      </div>
+    );
+  if (!q.data.length) return <p className="err">{t.create.searchNone(query)}</p>;
+  return (
+    <ul className="tsearch" aria-label={t.create.searchResults}>
+      {q.data.map((r) => (
+        <li key={r.mint}>
+          <button className="trow" onClick={() => onPick(r.mint)}>
+            <TokenAvatar asset={{ ...r, brand: null }} size={30} />
+            <span className="tr-main">
+              <b>{r.symbol}</b>
+              <small>{r.name}</small>
+            </span>
+            {!r.verified && <span className="tr-unv">{t.create.unverified}</span>}
+            <code className="tr-mint">{shortAddr(r.mint)}</code>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -74,7 +107,7 @@ function TokenStep({ m }: { m: CreateModel }) {
           <SearchSmIcon />
           <input
             id="mint"
-            placeholder={t.create.mintAria}
+            placeholder={t.create.mintPlaceholder}
             aria-label={t.create.mintAria}
             aria-invalid={m.lookup === 'invalid' || undefined}
             aria-describedby="tokenOut"
@@ -92,6 +125,7 @@ function TokenStep({ m }: { m: CreateModel }) {
             </button>
           )}
           {m.lookup === 'empty' && <PopularPicks onPick={(mint) => set({ mint })} />}
+          {m.lookup === 'search' && <SearchResults query={m.searchQuery} onPick={(mint) => set({ mint })} />}
           {m.lookup === 'invalid' && <p className="err">{t.create.invalid}</p>}
           {m.lookup === 'loading' && (
             <div className="loading">

@@ -14,6 +14,7 @@ import type {
   Timeframe,
   TokenInfo,
   PopularToken,
+  TokenSearchResult,
   Trade,
   Venues,
   WalletActivity,
@@ -51,6 +52,8 @@ export interface OxbowApi {
   venues(): Promise<Venues>;
   /** GET /api/tokens/popular — most-traded verified tokens, as quick picks in create step 1. */
   popularTokens(): Promise<PopularToken[]>;
+  /** GET /api/tokens/search?q= — tokens matching a name or ticker. */
+  searchTokens(query: string): Promise<TokenSearchResult[]>;
   /** GET /api/tokens/:mint — null when the mint doesn't exist. */
   token(mint: string): Promise<TokenInfo | null>;
   /** GET /api/wallet/:address/positions */

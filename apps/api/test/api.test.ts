@@ -11,6 +11,7 @@ import {
   PoolSummarySchema,
   PopularTokenSchema,
   QuoteAssetSchema,
+  TokenSearchResultSchema,
   StatsSchema,
   StatusSchema,
   StockInfoSchema,
@@ -369,6 +370,33 @@ describe.skipIf(!ready)('Oxbow API', () => {
     });
     const list = z.array(PopularTokenSchema).parse((await get('/api/tokens/popular')).body);
     expect(list).toEqual([{ mint: other, symbol: 'BONK', name: 'Bonk', logoUri: 'https://arweave.net/b.png' }]);
+  });
+
+  it('searches tokens by name or ticker, caches the answer and says when search is down', async () => {
+    const sol = Keypair.generate().publicKey.toBase58();
+    let calls = 0;
+    let down = false;
+    await built.app.close();
+    built = await buildApp({
+      db,
+      redis,
+      prices,
+      rpc: rpc as unknown as ChainReader,
+      cluster: 'devnet',
+      now: () => NOW,
+      search: async (q) => {
+        calls++;
+        if (down) throw new Error('down');
+        return q.toLowerCase() === 'sol' ? [{ mint: sol, symbol: 'SOL', name: 'Wrapped SOL', logoUri: null, verified: true }] : [];
+      },
+    });
+    const list = z.array(TokenSearchResultSchema).parse((await get('/api/tokens/search?q=SOL')).body);
+    expect(list).toEqual([{ mint: sol, symbol: 'SOL', name: 'Wrapped SOL', logoUri: null, verified: true }]);
+    await get('/api/tokens/search?q=sol');
+    expect(calls).toBe(1);
+    expect((await get('/api/tokens/search?q=s')).status).toBe(400);
+    down = true;
+    expect((await get('/api/tokens/search?q=bonk')).body).toEqual({ error: 'search_unavailable' });
   });
 
   it('falls back to the project logo Jupiter lists when the metadata has no image', async () => {

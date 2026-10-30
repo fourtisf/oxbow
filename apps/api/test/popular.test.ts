@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Keypair } from '@solana/web3.js';
-import { jupiterPopular } from '../src/popular';
+import { jupiterPopular, jupiterSearch } from '../src/popular';
 
 const mint = () => Keypair.generate().publicKey.toBase58();
 
@@ -34,5 +34,25 @@ describe('jupiterPopular', () => {
     expect(await jupiterPopular('https://lite-api.jup.ag')()).toEqual([]);
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ tokens: [] }), { status: 200 })));
     expect(await jupiterPopular('https://lite-api.jup.ag')()).toEqual([]);
+  });
+
+  it('searches by name or ticker, verified tokens first', async () => {
+    const sol = mint();
+    const fake = mint();
+    const rows = [
+      { id: fake, symbol: 'SOL', name: 'Sol Copy', isVerified: false },
+      { id: sol, symbol: 'SOL', name: 'Wrapped SOL', icon: 'https://raw.example/sol.png', isVerified: true },
+      { id: 'bad', symbol: 'X', name: 'X' },
+    ];
+    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify(rows), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const got = await jupiterSearch('https://lite-api.jup.ag')('wrapped sol');
+    expect(fetchMock.mock.calls[0]![0]).toBe('https://lite-api.jup.ag/tokens/v2/search?query=wrapped%20sol');
+    expect(got).toEqual([
+      { mint: sol, symbol: 'SOL', name: 'Wrapped SOL', logoUri: 'https://raw.example/sol.png', verified: true },
+      { mint: fake, symbol: 'SOL', name: 'Sol Copy', logoUri: null, verified: false },
+    ]);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 500 })));
+    await expect(jupiterSearch('https://lite-api.jup.ag')('sol')).rejects.toThrow();
   });
 });

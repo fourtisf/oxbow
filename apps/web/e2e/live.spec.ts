@@ -233,6 +233,19 @@ test.describe('live data', () => {
     await expect(picks).toHaveCount(0);
   });
 
+  test('searches tokens by name, unverified ones marked', async ({ page }) => {
+    await page.route('**/api/tokens/search?q=*', (r) => {
+      const q = new URL(r.request().url()).searchParams.get('q');
+      return r.fulfill({ json: q === 'sol' ? [{ mint: ADDR, symbol: 'SOL', name: 'Wrapped SOL', logoUri: null, verified: true }, { mint: ADDR2, symbol: 'SOL', name: 'Sol Copy', logoUri: null, verified: false }] : [] });
+    });
+    await page.goto('/create');
+    await page.getByRole('textbox', { name: 'Token mint address' }).fill('sol');
+    const results = page.getByRole('list', { name: 'Matching tokens' });
+    await expect(results.getByRole('button')).toHaveCount(2);
+    await expect(results.getByRole('listitem').nth(1)).toContainText('UNVERIFIED');
+    await expect(results.getByRole('listitem').nth(0)).not.toContainText('UNVERIFIED');
+  });
+
   test('status page reports real checks', async ({ page }) => {
     await page.goto('/status');
     await expect(page.getByText('Running on sample data', { exact: false })).toHaveCount(0);

@@ -24,11 +24,14 @@ import { useCreateForm, type CreateForm } from '@/lib/store/create';
 import { useWallet } from '@/lib/store/wallet';
 import type { LpBadgeInput } from '../ui/badges';
 
-export type LookupState = 'empty' | 'invalid' | 'loading' | 'missing' | 'error' | 'ok';
+/** `search`: the text is a name or ticker, not an address. */
+export type LookupState = 'empty' | 'invalid' | 'search' | 'loading' | 'missing' | 'error' | 'ok';
 
 export interface CreateModel {
   form: CreateForm;
   lookup: LookupState;
+  /** What to search for while `lookup` is `search` (debounced). */
+  searchQuery: string;
   token: TokenInfo | null;
   /** Token has authorities or extensions the creator must acknowledge. */
   risky: boolean;
@@ -76,10 +79,14 @@ export function useCreateModel(): CreateModel {
   const valid = isAddress(mint);
   const settled = useDebounced(mint, 250);
   const tq = useToken(valid && settled === mint ? mint : '');
+  // Long and without spaces: a mistyped address, not a name.
+  const addressLike = mint.length >= 30 && !/\s/.test(mint);
   const lookup: LookupState = !mint
     ? 'empty'
     : !valid
-      ? 'invalid'
+      ? addressLike
+        ? 'invalid'
+        : 'search'
       : settled !== mint || tq.isPending || tq.isFetching
         ? 'loading'
         : tq.isError
@@ -130,6 +137,7 @@ export function useCreateModel(): CreateModel {
   return {
     form,
     lookup,
+    searchQuery: lookup === 'search' ? settled.trim() : '',
     token,
     risky,
     quotes,

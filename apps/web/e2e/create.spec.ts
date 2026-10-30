@@ -12,7 +12,8 @@ test.describe('create pool (mock wallet)', () => {
     await expect(page.getByRole('button', { name: 'Select wallet to create' })).toBeEnabled();
     await expect(hint).toHaveText('Add your token to continue.');
 
-    await page.getByRole('textbox', { name: 'Token mint address' }).fill('not-a-mint-0OIl');
+    // Long and spaceless reads as a mistyped address (0 and O aren't base58).
+    await page.getByRole('textbox', { name: 'Token mint address' }).fill('Pebb5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVw0O');
     await expect(page.getByText("That isn't a Solana mint address.", { exact: false })).toBeVisible();
 
     await page.getByRole('textbox', { name: 'Token mint address' }).fill(EXAMPLE_MINT);
@@ -27,6 +28,21 @@ test.describe('create pool (mock wallet)', () => {
     await expect(hint).toHaveText('Enter how much PEBL to deposit.');
     await page.getByRole('textbox', { name: 'Amount of your token' }).fill('2000000000');
     await expect(hint).toHaveText("That's more PEBL than exists. Total supply is 1B.");
+  });
+
+  test('finds a token by name or ticker', async ({ page }) => {
+    await page.goto('/create');
+    const field = page.getByRole('textbox', { name: 'Token mint address' });
+    await field.fill('p');
+    await expect(page.getByText('Keep typing to search', { exact: false })).toBeVisible();
+    await field.fill('pebble');
+    const results = page.getByRole('list', { name: 'Matching tokens' });
+    await expect(results.getByRole('button')).toHaveCount(1);
+    await results.getByRole('button', { name: /PEBL/ }).click();
+    await expect(field).toHaveValue(EXAMPLE_MINT);
+    await expect(page.locator('.tcard')).toContainText('PEBL');
+    await field.fill('zzzz');
+    await expect(page.getByText('No token matches "zzzz".', { exact: false })).toBeVisible();
   });
 
   test('creates a pool end to end and lands on it in Explore', async ({ page }) => {
