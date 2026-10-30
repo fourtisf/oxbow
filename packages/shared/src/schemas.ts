@@ -408,3 +408,12 @@ export const BurnBuildBodySchema = z.object({ creator: AddressSchema });
 
 /** `GET /api/wallet/:address/balances?mints=` — UI-unit balances by mint. */
 export const BalancesSchema = z.record(AddressSchema, z.number().nonnegative());
+
+/** `GET /api/tokens/popular` — quick picks for create step 1 (most traded on Jupiter, verified). */
+export const PopularTokenSchema = z.object({
+  mint: AddressSchema,
+  symbol: z.string().max(32),
+  name: z.string().max(64),
+  logoUri: LogoUriSchema.nullable(),
+});
+export type PopularToken = z.infer<typeof PopularTokenSchema>;

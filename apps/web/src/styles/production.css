@@ -242,3 +242,8 @@ span.av.av-empty{background:rgba(3,6,12,.6);border:1.5px dashed rgba(158,207,255
 /* Create: venues, fee tiers and lock options that aren't open yet */
 .vtile:disabled,.ftile:disabled,.opt:disabled{opacity:.45;cursor:not-allowed}
 .soon-tag{display:inline-block;vertical-align:middle;margin-left:6px;font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:#8FC3FF;background:rgba(111,178,255,.08);box-shadow:inset 0 0 0 1px rgba(111,178,255,.22)}
+
+/* Create step 1: popular token quick picks */
+.picks{margin-top:14px}
+.picks .chips{margin:8px 0 10px}
+.chip.pick{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px 0 8px;font-size:13px;color:var(--text)}

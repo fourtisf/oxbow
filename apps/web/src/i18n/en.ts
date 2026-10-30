@@ -334,6 +334,8 @@ export const en = {
     s1sub: 'Paste the mint address of the token you want to pair.',
     mintAria: 'Token mint address',
     example: 'Use an example token',
+    popular: 'Popular on Solana',
+    popularNote: "The most traded verified tokens on Jupiter in the last 24 hours. Tap one to see how the lookup works; to create a pool you need to hold the token.",
     invalid: "That isn't a Solana mint address. It should be 32 to 44 letters and numbers, with no 0, O, I or l.",
     lookingUp: 'Looking up the token',
     missing: (network: string) => `There's no token with that mint on ${network}. Check the address and the network, then try again.`,

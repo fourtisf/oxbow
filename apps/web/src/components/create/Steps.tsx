@@ -6,7 +6,7 @@ import { amt, compactTrim, FEE_TIERS, feePct, LOCK_DAY_OPTIONS, num, quoteChips,
 import { useLocale, useT } from '@/i18n/client';
 import { dateInL } from '@/i18n/format';
 import { EXAMPLE_MINT } from '@/lib/api/mock/seed';
-import { useQuotes } from '@/lib/api/queries';
+import { usePopularTokens, useQuotes } from '@/lib/api/queries';
 import { SAMPLE_DATA } from '@/lib/api/mode';
 import { networkLabel } from '@/lib/env';
 import { links } from '@/lib/links';
@@ -39,6 +39,29 @@ function Step({ n, title, sub, done, children }: { n: number; title: string; sub
   );
 }
 
+/** Quick picks under the empty mint field: well-known tokens, so the step makes sense at a glance. */
+function PopularPicks({ onPick }: { onPick: (mint: string) => void }) {
+  const t = useT();
+  const { data = [] } = usePopularTokens();
+  if (!data.length) return null;
+  return (
+    <div className="picks">
+      <span className="label" id="picksLbl">
+        {t.create.popular}
+      </span>
+      <div className="chips" role="group" aria-labelledby="picksLbl">
+        {data.map((p) => (
+          <button key={p.mint} className="chip pick" onClick={() => onPick(p.mint)}>
+            <TokenAvatar asset={{ ...p, brand: null }} size={20} />
+            {p.symbol}
+          </button>
+        ))}
+      </div>
+      <p className="fine">{t.create.popularNote}</p>
+    </div>
+  );
+}
+
 function TokenStep({ m }: { m: CreateModel }) {
   const t = useT();
   const set = useCreateForm((s) => s.set);
@@ -68,6 +91,7 @@ function TokenStep({ m }: { m: CreateModel }) {
               {t.create.example}
             </button>
           )}
+          {m.lookup === 'empty' && <PopularPicks onPick={(mint) => set({ mint })} />}
           {m.lookup === 'invalid' && <p className="err">{t.create.invalid}</p>}
           {m.lookup === 'loading' && (
             <div className="loading">

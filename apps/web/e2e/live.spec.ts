@@ -216,6 +216,23 @@ test.describe('live data', () => {
     expect(await page.evaluate(() => (window as unknown as { signs: number }).signs)).toBe(3);
   });
 
+  test('offers popular tokens as quick picks in create step 1', async ({ page }) => {
+    await page.route('**/api/tokens/popular', (r) =>
+      r.fulfill({ json: [{ mint: ADDR, symbol: 'BONK', name: 'Bonk', logoUri: null }, { mint: ADDR2, symbol: 'WIF', name: 'dogwifhat', logoUri: null }] }),
+    );
+    await page.route(`**/api/tokens/${ADDR2}`, (r) =>
+      r.fulfill({ json: { mint: ADDR2, symbol: 'WIF', name: 'dogwifhat', decimals: 6, supply: 998_900_000, tokenProgram: 'spl-token', mintAuthority: null, freezeAuthority: null, logoUri: null, extensions: [], risk: { mintable: false, freezable: false, transferFee: false, transferHook: false, permanentDelegate: false }, symbolTaken: false, createdAt: null } }),
+    );
+    await page.goto('/create');
+    const picks = page.getByRole('group', { name: 'Popular on Solana' });
+    await expect(picks.getByRole('button')).toHaveText(['BONK', 'WIF']);
+    await picks.getByRole('button', { name: 'WIF' }).click();
+    await expect(page.getByRole('textbox', { name: 'Token mint address' })).toHaveValue(ADDR2);
+    await expect(page.locator('.tcard')).toContainText('dogwifhat');
+    // The picks step aside once a token is chosen.
+    await expect(picks).toHaveCount(0);
+  });
+
   test('status page reports real checks', async ({ page }) => {
     await page.goto('/status');
     await expect(page.getByText('Running on sample data', { exact: false })).toHaveCount(0);

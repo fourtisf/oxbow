@@ -9,6 +9,7 @@ import {
   PoolDetailSchema,
   PoolsPageSchema,
   PoolSummarySchema,
+  PopularTokenSchema,
   QuoteAssetSchema,
   StatsSchema,
   StatusSchema,
@@ -336,6 +337,25 @@ describe.skipIf(!ready)('Oxbow API', () => {
     expect((await post({ signature: '5'.repeat(88), venue: 'RAYDIUM_CPMM' })).statusCode).toBe(409);
     expect((await post({ signature: 'short', venue: 'RAYDIUM_CPMM' })).statusCode).toBe(400);
     expect((await post({ signature: '5'.repeat(88), venue: 'UNISWAP' })).statusCode).toBe(400);
+  });
+
+  it('serves popular token picks without the pair assets', async () => {
+    const other = addr();
+    await built.app.close();
+    built = await buildApp({
+      db,
+      redis,
+      prices,
+      rpc: rpc as unknown as ChainReader,
+      cluster: 'devnet',
+      now: () => NOW,
+      popular: async () => [
+        { mint: M.tsla, symbol: 'TSLAx', name: 'Tesla xStock', logoUri: null },
+        { mint: other, symbol: 'BONK', name: 'Bonk', logoUri: 'https://arweave.net/b.png' },
+      ],
+    });
+    const list = z.array(PopularTokenSchema).parse((await get('/api/tokens/popular')).body);
+    expect(list).toEqual([{ mint: other, symbol: 'BONK', name: 'Bonk', logoUri: 'https://arweave.net/b.png' }]);
   });
 
   it('reports service health on /api/status', async () => {

@@ -8,6 +8,7 @@ export const qk = {
   stocks: () => ['stocks'] as const,
   quotes: () => ['quotes'] as const,
   venues: () => ['venues'] as const,
+  popular: () => ['popular'] as const,
   pools: (q: PoolsQueryInput) => ['pools', q] as const,
   poolsInfinite: (q: Omit<PoolsQueryInput, 'cursor'>) => ['pools', 'infinite', q] as const,
   pool: (address: string) => ['pool', address] as const,

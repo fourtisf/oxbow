@@ -192,6 +192,11 @@ export const mockApi: OxbowApi = {
     return [...STOCKS, 'SOL', 'USDC'].map(quoteAsset);
   },
 
+  async popularTokens() {
+    // Sample data offers its example token instead (a button under the field).
+    return [];
+  },
+
   async venues() {
     // The simulated chain offers every venue and fee tier.
     const feeTiers = FEE_TIERS.map((f) => ({ feeBps: f.feeBps, createPoolFeeLamports: 150_000_000 }));
