@@ -47,6 +47,15 @@ describe('average-cost PnL', () => {
     expect(summarize(positions([t(0, 'BUY', 'A', 1, 1)]).values(), () => null).winRate).toBeNull();
   });
 
+  it('counts only the window, but knows what older buys cost', () => {
+    // Bought 40 days ago for $10k, sold 10 days ago for $50k: a $40k win inside a 30-day window.
+    const pos = positions([t(-40 * 1440, 'BUY', 'A', 100, 10_000), t(-10 * 1440, 'SELL', 'A', 100, 50_000)], new Date(1_793_000_000_000 - 30 * 864e5));
+    const s = summarize(pos.values(), () => null);
+    expect(s.realizedPnlUsd).toBeCloseTo(40_000);
+    expect(s).toMatchObject({ wins: 1, buys: 0, sells: 1, trades: 1 });
+    expect(s.volumeUsd).toBeCloseTo(50_000);
+  });
+
   it('caps holdings at the on-chain balance', () => {
     const p = positions([t(0, 'BUY', 'A', 100, 40)]).get('A')!;
     expect(openPart(p, null)).toEqual({ qty: 100, cost: 40 });

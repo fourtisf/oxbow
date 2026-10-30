@@ -189,6 +189,24 @@ describe.skipIf(!ready)('Oxbow tracker API', () => {
       rpc.sigs.delete(W.quiet);
     });
 
+    it('waits out a Jupiter outage instead of misreading tokens or giving up on them', async () => {
+      const coin = addr();
+      const stable = addr();
+      const down = new TokenBook(db, { ...jup, tokens: async () => { throw new Error('down'); } } as unknown as Jupiter, { now: () => NOW });
+      const ing = new Ingestor({ db, rpc, tokens: down, now: () => NOW });
+      const s1 = sig();
+      // Paid with a token Jupiter would call a stablecoin, while Jupiter is down.
+      rpc.add({ wallet: W.quiet, signature: s1, blockTime: T(3), mint: coin, tokenDelta: 5n * TOK, quoteDelta: -100n * TOK, quoteMint: stable });
+      const before = (await wallet(W.quiet)).lastSignature;
+      for (let i = 0; i < 7; i++) await ing.catchUp(await wallet(W.quiet));
+      // Never passed over, never stored as a token-for-token swap.
+      expect((await wallet(W.quiet)).lastSignature).toBe(before);
+      expect(await db.walletTrade.count({ where: { signature: s1 } })).toBe(0);
+      expect((await db.tokenMeta.findUnique({ where: { mint: stable } }))?.source).toBe('outage');
+      rpc.sigs.delete(W.quiet);
+      rpc.txs.delete(s1);
+    });
+
     it('keeps reading when a token is simply unknown to Jupiter (it answered)', async () => {
       const unknownA = addr();
       const unknownB = addr();
@@ -259,6 +277,8 @@ describe.skipIf(!ready)('Oxbow tracker API', () => {
       await get(`/api/wallets/${W.quiet}`);
       expect(await wallet(W.quiet)).toMatchObject({ active: false });
       // With room it comes back, as an ordinary wallet (it had been dropped as smart money).
+      // (Follow lists are checked once a minute; start that minute over.)
+      await redis.flushdb();
       await get(`/api/feed?wallets=${W.quiet}`);
       expect(await wallet(W.quiet)).toMatchObject({ active: true, source: 'user' });
     });

@@ -120,10 +120,12 @@ export function parseTrades(tx: RawTx, wallet: string, isQuote: (mint: string) =
   const coin = coins.length === 1 ? coins[0]! : null;
   const against = (l: { delta: bigint }) => !!coin && (l.delta > 0n) !== (coin.delta > 0n);
 
-  // What paid for the coin: a stablecoin moving the other way comes first (SOL beside it is a tip),
-  // then SOL beyond the noise floor.
+  // What paid for the coin: a stablecoin moving the other way comes first (SOL beside it, up to a tip's
+  // size, is a tip), then SOL beyond the noise floor.
   const stable = quotes.filter(against);
   const sol: Leg = { mint: WSOL, delta: ch.sol, decimals: 9 };
+  // Paid in a stablecoin and more SOL than a tip, both: no single price to read, so not a trade we can value.
+  if (stable.length && against(sol) && abs(ch.sol) > SOL_TIP_MAX) return [];
   const money: Leg | null = stable.length === 1 ? stable[0]! : abs(ch.sol) > SOL_NOISE && against(sol) ? sol : null;
 
   const trade = (coin: Leg, quote: Leg): ParsedTrade => ({

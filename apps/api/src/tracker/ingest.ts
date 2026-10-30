@@ -14,7 +14,10 @@
 import { Prisma, type PrismaClient, type TrackedWallet, type WalletTrade } from '@oxbow/db';
 import type { FeedTrade } from '@oxbow/shared';
 import { parseTrades, walletChanges, WSOL, type RawTx } from './parse';
-import type { TrackerRpc } from './rpc';
+import { RpcError, type TrackerRpc } from './rpc';
+
+/** A failure that says nothing about the transaction (no price yet, Jupiter or the node down): retry, never give up on it. */
+export class TransientError extends Error {}
 import { brief, quoteUsd, STALE, type TokenBook, type TokenMeta } from './tokens';
 
 export interface IngestDeps {
@@ -55,7 +58,7 @@ export class Ingestor {
    */
   async ingest(wallet: WalletRef, signature: string, opts: { publish?: boolean; pre?: { tx: RawTx; metas: ReadonlyMap<string, TokenMeta> } } = {}): Promise<WalletTrade[]> {
     const tx = opts.pre?.tx ?? (await this.d.rpc.getTransaction(signature));
-    if (!tx) throw new Error(`transaction ${signature.slice(0, 8)}… not found yet`);
+    if (!tx) throw new Error(`transaction ${signature.slice(0, 8)}… not found`);
     const changes = walletChanges(tx, wallet.address);
     if (!changes || !changes.tokens.length) return [];
 
@@ -63,10 +66,10 @@ export class Ingestor {
     const metas = opts.pre && [...decimals.keys(), WSOL].every((m) => opts.pre!.metas.has(m)) ? opts.pre.metas : await this.d.tokens.get([...decimals.keys(), WSOL], STALE.ingest, decimals);
     const trades = parseTrades(tx, wallet.address, (m) => metas.get(m)?.stable === true);
     if (!trades.length) return [];
-    // While Jupiter is failing, a token it couldn't name may be a stablecoin it would have flagged: try again later.
-    // When Jupiter answered and simply doesn't list it, it is an unknown token and the reading stands.
-    const unnamed = trades.some((t) => metas.get(t.mint)?.source !== 'jupiter' || (t.quoteMint !== WSOL && metas.get(t.quoteMint)?.source !== 'jupiter'));
-    if (unnamed && this.d.tokens.jupiterTrouble()) throw new Error('token data incomplete, will retry');
+    // A token saved while Jupiter was failing may be a stablecoin it would have flagged: read this again later.
+    // One Jupiter answered for without listing is an unknown token, and the reading stands.
+    const legs = [...decimals.keys()];
+    if (legs.some((m) => !metas.has(m) || metas.get(m)!.source === 'outage')) throw new TransientError('token data incomplete');
 
     const solUsd = trades.some((t) => t.quoteMint === WSOL) ? await this.d.tokens.solPrice() : null;
     const ts = new Date(tx.blockTime ? tx.blockTime * 1000 : this.now());
@@ -76,7 +79,7 @@ export class Ingestor {
       // No SOL price (or Jupiter failing): retry later rather than store a $0 trade.
       // A token nobody prices can't value the other side: that leg is left out.
       if (quotePrice === null) {
-        if (t.quoteMint === WSOL || this.d.tokens.jupiterTrouble()) throw new Error(`no USD price for ${t.quoteMint === WSOL ? 'SOL' : t.quoteMint}`);
+        if (t.quoteMint === WSOL) throw new TransientError('no USD price for SOL');
         continue;
       }
       const amount = ui(t.amount, t.decimals);
@@ -143,19 +146,26 @@ export class Ingestor {
     // Oldest first, so the bookmark only ever moves forward over finished work.
     for (const s of todo) {
       if (!s.err && !seen?.(s.signature)) {
+        const fk = `${wallet.address}:${s.signature}`;
         try {
           const tx = txs.get(s.signature);
           const rows = await this.ingest(wallet, s.signature, { publish: live && (s.blockTime ?? 0) * 1000 > liveAfter, pre: tx ? { tx, metas } : undefined });
           stored += rows.length;
+          this.failures.delete(fk);
         } catch (e) {
-          const n = (this.failures.get(s.signature) ?? 0) + 1;
+          // Outages don't count against the transaction: wait them out.
+          if (e instanceof TransientError || e instanceof RpcError) {
+            this.d.log?.(`${wallet.address.slice(0, 6)}… waiting at ${s.signature.slice(0, 8)}…: ${(e as Error).message}`);
+            break;
+          }
+          const n = (this.failures.get(fk) ?? 0) + 1;
           if (n < MAX_FAILURES) {
-            this.failures.set(s.signature, n);
+            this.failures.set(fk, n);
             if (this.failures.size > 10_000) this.failures.delete(this.failures.keys().next().value!);
             this.d.log?.(`${wallet.address.slice(0, 6)}… stopped at ${s.signature.slice(0, 8)}… (${n}/${MAX_FAILURES}): ${(e as Error).message}`);
             break;
           }
-          this.failures.delete(s.signature);
+          this.failures.delete(fk);
           this.d.log?.(`${wallet.address.slice(0, 6)}… passing over ${s.signature.slice(0, 8)}… after ${n} failures: ${(e as Error).message}`);
         }
       }

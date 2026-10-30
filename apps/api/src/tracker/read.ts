@@ -27,8 +27,10 @@ import { brief, STALE, type TokenBook } from './tokens';
 type WalletInfo = Pick<TrackedWallet, 'address' | 'label' | 'featured' | 'source'>;
 const n = (d: Prisma.Decimal | number | null) => (d === null ? 0 : Number(d));
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
-/** The leaderboard ranks the last 30 days of trades. */
+/** The leaderboard ranks the last 30 days of trades... */
 const LEADERBOARD_DAYS = 30;
+/** ...using up to 90 days before them for what older positions cost. */
+const COST_BASIS_DAYS = 90;
 
 export class Reader {
   constructor(
@@ -81,9 +83,10 @@ export class Reader {
       select: { address: true, label: true, featured: true, source: true },
     });
     if (!list.length) return [];
-    // The last 30 days: bounded work per refresh, and what a leaderboard should rank anyway.
+    // Ranks the last 30 days; the 90 before that only supply what older positions cost. Bounded work per refresh.
+    const from = new Date(this.now() - LEADERBOARD_DAYS * 864e5);
     const trades = await this.db.walletTrade.findMany({
-      where: { wallet: { in: list.map((w) => w.address) }, ts: { gte: new Date(this.now() - LEADERBOARD_DAYS * 864e5) } },
+      where: { wallet: { in: list.map((w) => w.address) }, ts: { gte: new Date(this.now() - (LEADERBOARD_DAYS + COST_BASIS_DAYS) * 864e5) } },
       orderBy: [{ ts: 'asc' }, { id: 'asc' }],
       select: { wallet: true, ts: true, side: true, mint: true, amount: true, usd: true },
     });
@@ -93,8 +96,11 @@ export class Reader {
       arr.push({ ts: t.ts, side: t.side, mint: t.mint, amount: n(t.amount), usd: n(t.usd) });
       byWallet.set(t.wallet, arr);
     }
-    // Stored prices only: the leaderboard shouldn't send a Jupiter request per token on every refresh.
-    const stored = await this.db.tokenMeta.findMany({ where: { mint: { in: [...new Set(trades.map((t) => t.mint))] } }, select: { mint: true, usdPrice: true } });
+    // Stored prices only (no Jupiter request per token on every refresh), and only recent ones.
+    const stored = await this.db.tokenMeta.findMany({
+      where: { mint: { in: [...new Set(trades.map((t) => t.mint))] }, updatedAt: { gte: new Date(this.now() - 864e5) } },
+      select: { mint: true, usdPrice: true },
+    });
     const priceOf = new Map(stored.map((r) => [r.mint, r.usdPrice]));
     const prices = (m: string) => priceOf.get(m) ?? null;
     const weekAgo = this.now() - 7 * 864e5;
@@ -105,7 +111,7 @@ export class Reader {
         label: w.label,
         featured: w.featured,
         smart: w.source === 'discovered',
-        stats: stats(ts, prices),
+        stats: stats(ts, prices, from),
         volume7dUsd: ts.reduce((s, t) => (t.ts.getTime() >= weekAgo ? s + t.usd : s), 0),
       };
     });
@@ -274,10 +280,11 @@ export class Reader {
   }
 }
 
-function stats(trades: PnlTrade[], price: (m: string) => number | null): WalletStats {
+function stats(trades: PnlTrade[], price: (m: string) => number | null, from: Date): WalletStats {
+  const inWindow = trades.filter((t) => t.ts >= from);
   return {
-    ...summarize(positions(trades).values(), price),
-    firstTradeAt: iso(trades[0]?.ts ?? null),
+    ...summarize(positions(trades, from).values(), price),
+    firstTradeAt: iso(inWindow[0]?.ts ?? null),
     lastTradeAt: iso(trades[trades.length - 1]?.ts ?? null),
   };
 }

@@ -24,6 +24,9 @@ export interface TrackerRpc {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The node couldn't answer (network, rate limit, server error): nothing to do with the transaction asked about. */
+export class RpcError extends Error {}
+
 export function jsonRpc(url: string, opts: { timeoutMs?: number; retries?: number } = {}): TrackerRpc {
   const timeoutMs = opts.timeoutMs ?? 15_000;
   const retries = opts.retries ?? 3;
@@ -38,12 +41,12 @@ export function jsonRpc(url: string, opts: { timeoutMs?: number; retries?: numbe
           body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }),
           signal: AbortSignal.timeout(timeoutMs),
         });
-        if (res.status === 429 || res.status >= 500) throw new Error(`rpc ${res.status}`);
+        if (res.status === 429 || res.status >= 500) throw new RpcError(`rpc ${res.status}`);
         const body = (await res.json()) as { result?: T; error?: { code: number; message: string } };
-        if (body.error) throw new Error(`rpc error ${body.error.code}: ${body.error.message}`);
+        if (body.error) throw new RpcError(`rpc error ${body.error.code}: ${body.error.message}`);
         return body.result as T;
       } catch (e) {
-        if (attempt >= retries) throw e;
+        if (attempt >= retries) throw e instanceof RpcError ? e : new RpcError((e as Error).message);
         await sleep(400 * 2 ** attempt);
       }
     }

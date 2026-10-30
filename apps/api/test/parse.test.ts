@@ -88,6 +88,10 @@ describe('parseTrades rules', () => {
     const [t] = parseTrades(tx(-5_000_000, [{ mint: MINT, pre: 0, post: 1000 }, { mint: USDC_T, pre: 5_000_000_000, post: 0 }]), W, (m) => m === USDC_T);
     expect(t).toMatchObject({ side: 'BUY', quoteMint: USDC_T, quoteAmount: 5_000_000_000n });
   });
+  it('leaves out a buy paid in a stablecoin and real SOL together (no single price)', () => {
+    const USDC_T = 'Usdc111111111111111111111111111111111111111';
+    expect(parseTrades(tx(-2_000_000_000, [{ mint: MINT, pre: 0, post: 1000 }, { mint: USDC_T, pre: 100_000_000, post: 0 }]), W, (m) => m === USDC_T)).toEqual([]);
+  });
   it('keeps a token-for-token swap with a priority tip', () => {
     expect(parseTrades(tx(-2_000_000, [{ mint: MINT, pre: 1000, post: 0 }, { mint: OTHER, pre: 0, post: 5 }]), W, () => false)).toHaveLength(2);
   });

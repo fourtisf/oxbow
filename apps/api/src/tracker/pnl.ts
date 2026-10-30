@@ -33,10 +33,15 @@ export interface Position {
   lastTradeAt: Date;
 }
 
-/** Positions per mint. `trades` must be oldest first. */
-export function positions(trades: readonly PnlTrade[]): Map<string, Position> {
+/**
+ * Positions per mint. `trades` must be oldest first. With `countFrom`, earlier trades still
+ * build each position's quantity and cost, but only later ones count as activity and profit
+ * (a 30-day leaderboard that knows what older buys cost).
+ */
+export function positions(trades: readonly PnlTrade[], countFrom?: Date): Map<string, Position> {
   const out = new Map<string, Position>();
   for (const t of trades) {
+    const counted = !countFrom || t.ts >= countFrom;
     let p = out.get(t.mint);
     if (!p) {
       p = { mint: t.mint, qty: 0, cost: 0, boughtQty: 0, boughtUsd: 0, soldUsd: 0, realized: 0, matched: false, buys: 0, sells: 0, lastTradeAt: t.ts };
@@ -44,20 +49,26 @@ export function positions(trades: readonly PnlTrade[]): Map<string, Position> {
     }
     p.lastTradeAt = t.ts;
     if (t.side === 'BUY') {
-      p.buys++;
+      if (counted) {
+        p.buys++;
+        p.boughtUsd += t.usd;
+      }
       p.qty += t.amount;
       p.cost += t.usd;
       p.boughtQty += t.amount;
-      p.boughtUsd += t.usd;
       continue;
     }
-    p.sells++;
-    p.soldUsd += t.usd;
+    if (counted) {
+      p.sells++;
+      p.soldUsd += t.usd;
+    }
     if (p.qty <= 0 || t.amount <= 0) continue;
     const sold = Math.min(t.amount, p.qty);
     const costOut = p.cost * (sold / p.qty);
-    p.realized += t.usd * (sold / t.amount) - costOut;
-    p.matched = true;
+    if (counted) {
+      p.realized += t.usd * (sold / t.amount) - costOut;
+      p.matched = true;
+    }
     p.qty -= sold;
     p.cost -= costOut;
     // Rounding leftovers of a full exit.
@@ -92,7 +103,9 @@ export interface Summary {
 export function summarize(pos: Iterable<Position>, price: (mint: string) => number | null, held?: (mint: string) => number | null): Summary {
   const s: Summary = { trades: 0, buys: 0, sells: 0, volumeUsd: 0, realizedPnlUsd: 0, unrealizedPnlUsd: 0, winRate: null, wins: 0, losses: 0, tokensTraded: 0 };
   for (const p of pos) {
-    s.tokensTraded++;
+    // Only positions with activity counted (all of them without `countFrom`).
+    if (!p.buys && !p.sells && !isOpen(p)) continue;
+    s.tokensTraded += p.buys || p.sells ? 1 : 0;
     s.buys += p.buys;
     s.sells += p.sells;
     s.volumeUsd += p.boughtUsd + p.soldUsd;

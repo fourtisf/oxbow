@@ -48,7 +48,6 @@ export function quoteUsd(quoteMint: string, metas: ReadonlyMap<string, TokenMeta
 
 export class TokenBook {
   private solUsd: { usd: number; at: number } | null = null;
-  private jupiterFailedAt = 0;
 
   constructor(
     private readonly db: PrismaClient,
@@ -69,19 +68,23 @@ export class TokenBook {
     const out = new Map<string, TokenMeta>();
     if (!want.length) return out;
     for (const r of await this.db.tokenMeta.findMany({ where: { mint: { in: want } } })) out.set(r.mint, r);
-    // Stand-ins (Jupiter didn't know the token) are asked about again every ten minutes, whatever the use.
+    // Stand-ins for tokens Jupiter doesn't list are asked about again every ten minutes; ones saved while
+    // Jupiter was failing ("outage") every time.
     const todo = want.filter((m) => {
       const r = out.get(m);
-      return !r || r.updatedAt.getTime() < this.now() - (r.source === 'jupiter' ? staleMs : STAND_IN_RETRY_MS);
+      if (!r || r.source === 'outage') return true;
+      return r.updatedAt.getTime() < this.now() - (r.source === 'jupiter' ? staleMs : STAND_IN_RETRY_MS);
     });
     if (!todo.length) return out;
 
     const fetched = new Map<string, JupiterToken>();
+    const failed = new Set<string>();
     for (let i = 0; i < todo.length; i += 100) {
+      const batch = todo.slice(i, i + 100);
       try {
-        for (const t of await this.jup.tokens(todo.slice(i, i + 100))) fetched.set(t.mint, t);
+        for (const t of await this.jup.tokens(batch)) fetched.set(t.mint, t);
       } catch (e) {
-        this.jupiterFailedAt = this.now();
+        batch.forEach((m) => failed.add(m));
         this.opts.log?.(`Jupiter token data unavailable: ${(e as Error).message}`);
       }
     }
@@ -90,10 +93,13 @@ export class TokenBook {
     // Never seen and unknown to Jupiter (or Jupiter unreachable): ask the chain, else keep what the transaction said.
     // A row we already have is kept as it is: stale data beats a stand-in.
     for (const mint of todo) {
-      if (out.has(mint) || fetched.has(mint)) continue;
-      const chain = await this.fromChain(mint);
-      if (chain) out.set(mint, await this.save(chain, 'chain'));
-      else if (decimals.has(mint)) out.set(mint, await this.save(placeholder(mint, decimals.get(mint)!), 'tx'));
+      if (fetched.has(mint)) continue;
+      const have = out.get(mint);
+      // Keep what we have, except an outage stand-in once Jupiter has answered without listing the token.
+      if (have && (have.source !== 'outage' || failed.has(mint))) continue;
+      const row = (await this.fromChain(mint)) ?? (decimals.has(mint) ? placeholder(mint, decimals.get(mint)!) : null);
+      // Jupiter failing says nothing about the token (it may be a stablecoin it would flag): mark it so.
+      if (row) out.set(mint, await this.save(row, failed.has(mint) ? 'outage' : row.name || row.logoUri ? 'chain' : 'tx'));
     }
     return out;
   }
@@ -106,6 +112,7 @@ export class TokenBook {
     if (this.solUsd && this.now() - this.solUsd.at < SOL_PRICE_MS) return this.solUsd.usd;
     const row = (await this.get([WSOL], SOL_PRICE_MS)).get(WSOL);
     if (!row?.usdPrice || row.source !== 'jupiter' || this.now() - row.updatedAt.getTime() > SOL_PRICE_MAX_AGE_MS) return null;
+    // (An "outage" stand-in never replaces a stored Jupiter row: rows we have are kept as they are.)
     if (this.now() - row.updatedAt.getTime() < SOL_PRICE_MS) this.solUsd = { usd: row.usdPrice, at: this.now() };
     return row.usdPrice;
   }
@@ -122,12 +129,7 @@ export class TokenBook {
     }
   }
 
-  /** Jupiter failed within the last minute: missing token data may be its fault, not the token's. */
-  jupiterTrouble(): boolean {
-    return this.now() - this.jupiterFailedAt < 60_000;
-  }
-
-  private save(t: JupiterToken, source: 'jupiter' | 'chain' | 'tx'): Promise<TokenMeta> {
+  private save(t: JupiterToken, source: 'jupiter' | 'chain' | 'tx' | 'outage'): Promise<TokenMeta> {
     const data = { ...t, source, updatedAt: new Date(this.now()) };
     return this.db.tokenMeta.upsert({ where: { mint: t.mint }, create: data, update: data });
   }

@@ -77,6 +77,16 @@ export class MarketTape {
     }
   }
 
+  private async retries(mint: string): Promise<{ signature: string; tries: number }[]> {
+    if (!this.d.redis) return [];
+    try {
+      const raw = await this.d.redis.get(`${key(mint)}:retry`);
+      return raw ? (JSON.parse(raw) as { signature: string; tries: number }[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
   /** When the tape was last refreshed (epoch ms), or 0. */
   async refreshedAt(mint: string): Promise<number> {
     if (!this.d.redis) return 0;
@@ -85,7 +95,8 @@ export class MarketTape {
   }
 
   /**
-   * Reads up to `maxNew` signatures newer than the tape's head and adds their fills.
+   * Reads up to `maxNew` signatures newer than the tape's head and adds their fills. The head always
+   * moves to the newest signature; any transaction that couldn't be read is retried on its own.
    * One refresh per mint at a time across processes; a caller that finds one running gets the stored tape.
    */
   async refresh(mint: string, maxNew: number): Promise<TapeTrade[]> {
@@ -97,16 +108,19 @@ export class MarketTape {
     }
     try {
       const head = (redis ? await redis.get(`${key(mint)}:head`).catch(() => null) : null) || null;
-      const sigs = (await this.d.rpc.getSignatures(mint, { limit: maxNew, until: head ?? undefined })).filter((s) => !s.err);
+      const newer = (await this.d.rpc.getSignatures(mint, { limit: maxNew, until: head ?? undefined })).filter((s) => !s.err);
+      // Transactions that couldn't be read last time are asked for again (up to three tries), on their own.
+      const retry = await this.retries(mint);
+      const sigs = [...newer, ...retry.filter((r) => !newer.some((f) => f.signature === r.signature)).map((r) => ({ signature: r.signature, slot: 0, err: null, blockTime: null }))];
       const old = await this.read(mint);
       if (!sigs.length) {
         await redis?.set(`${key(mint)}:at`, String(this.now()), 'EX', TTL_SEC).catch(() => {});
         return old;
       }
       const txs = await mapLimit(sigs, READ_CONCURRENCY, (s) => this.d.rpc.getTransaction(s.signature).catch(() => null));
-      // The head only moves past what was read: a transaction that couldn't be read yet is asked for again next time.
-      const oldestMissing = txs.reduce((at, tx, i) => (tx ? at : i), -1);
-      const nextHead = oldestMissing < 0 ? sigs[0]!.signature : (sigs[oldestMissing + 1]?.signature ?? head);
+      const missing = sigs.flatMap((s, i) => (txs[i] ? [] : [{ signature: s.signature, tries: (retry.find((r) => r.signature === s.signature)?.tries ?? 0) + 1 }])).filter((r) => r.tries < 3);
+      await redis?.set(`${key(mint)}:retry`, JSON.stringify(missing), 'EX', TTL_SEC).catch(() => {});
+      const nextHead = newer[0]?.signature ?? head;
       const decimals = new Map<string, number>();
       for (const tx of txs) {
         if (!tx) continue;

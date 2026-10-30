@@ -6,6 +6,7 @@
  * processes. Requests from this machine (the web server rendering pages) are
  * not limited; nginx in front sets the client IP.
  */
+import { createHash } from 'node:crypto';
 import Fastify, { type FastifyBaseLogger } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import type { Redis } from 'ioredis';
@@ -245,14 +246,17 @@ export async function buildApp(deps: Deps) {
     const existing = await deps.db.trackedWallet.findUnique({ where: { address }, select: { active: true, source: true } });
     if (existing) {
       if (!existing.active) {
-        await assertRoom();
-        await deps.db.trackedWallet.update({ where: { address }, data: { active: true, lastViewedAt: new Date(now()), ...(existing.source === 'discovered' ? { source: 'user' } : {}) } });
+        const done = await withAddLock(async () => {
+          await assertRoom();
+          await deps.db.trackedWallet.update({ where: { address }, data: { active: true, lastViewedAt: new Date(now()), ...(existing.source === 'discovered' ? { source: 'user' } : {}) } });
+          return true;
+        });
+        if (!done) throw new HttpError(503, 'busy');
         await deps.redis?.publish(WALLETS_CHANNEL, address).catch(() => 0);
         await cache.drop('wallets:v1', `wallet:v1:${address}`);
       }
       return { address, created: false };
     }
-    await assertRoom();
     let acct;
     try {
       acct = await withTimeout(deps.rpc.getAccountInfo(new PublicKey(address)), RPC_TIMEOUT_MS);
@@ -262,28 +266,61 @@ export async function buildApp(deps: Deps) {
     // Wallets are plain system accounts; token accounts, mints and programs never sign trades.
     if (!acct) throw new HttpError(400, 'no_activity');
     if (!acct.owner.equals(SystemProgram.programId)) throw new HttpError(400, 'not_a_wallet');
-    await deps.db.trackedWallet.upsert({ where: { address }, create: { address }, update: { active: true } });
+    const added = await withAddLock(async () => {
+      await assertRoom();
+      await deps.db.trackedWallet.upsert({ where: { address }, create: { address }, update: { active: true } });
+      return true;
+    });
+    if (!added) throw new HttpError(503, 'busy');
     await deps.redis?.publish(WALLETS_CHANNEL, address).catch(() => 0);
     await cache.drop('wallets:v1', `wallet:v1:${address}`);
     return reply.code(201).send({ address, created: true });
   });
 
   /**
+   * Runs `fn` while holding the tracker's add lock, so two requests can't both take the last free slot.
+   * Without Redis it just runs. Returns null when another request held the lock for over two seconds.
+   */
+  async function withAddLock<T>(fn: () => Promise<T>): Promise<T | null> {
+    if (!deps.redis) return fn();
+    const token = Math.random().toString(36).slice(2);
+    // Wait a moment for another add to finish rather than refusing at once.
+    let got: string | null = null;
+    for (let i = 0; i < 20 && got !== 'OK'; i++) {
+      got = await deps.redis.set('oxbow:wallets:addlock', token, 'EX', 10, 'NX').catch(() => 'OK');
+      if (got !== 'OK') await new Promise((r) => setTimeout(r, 100));
+    }
+    if (got !== 'OK') return null;
+    try {
+      return await fn();
+    } finally {
+      await deps.redis.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0", 1, 'oxbow:wallets:addlock', token).catch(() => 0);
+    }
+  }
+
+  /**
    * Followed wallets stay tracked: active ones get their visit noted; ones that went quiet come back
    * while there is room under the cap. A discovered wallet that was dropped comes back as an ordinary one.
+   * At most once a minute per follow list: the feed is polled.
    */
   async function keepFollowed(addresses: string[]) {
+    if (deps.redis) {
+      const id = createHash('sha1').update([...addresses].sort().join(',')).digest('hex');
+      if ((await deps.redis.set(`oxbow:keep:${id}`, '1', 'EX', 60, 'NX').catch(() => 'OK')) !== 'OK') return;
+    }
     const stamp = new Date(now());
     await deps.db.trackedWallet.updateMany({ where: { address: { in: addresses }, active: true, lastViewedAt: { lt: new Date(now() - TOUCH_MS) } }, data: { lastViewedAt: stamp } });
     const quiet = await deps.db.trackedWallet.findMany({ where: { address: { in: addresses }, active: false }, select: { address: true, source: true } });
     if (!quiet.length) return;
-    const room = maxWallets - (await deps.db.trackedWallet.count({ where: { active: true } }));
-    const back = quiet.slice(0, Math.max(0, room));
-    if (!back.length) return;
-    for (const w of back) {
-      await deps.db.trackedWallet.update({ where: { address: w.address }, data: { active: true, lastViewedAt: stamp, ...(w.source === 'discovered' ? { source: 'user' } : {}) } });
-      await deps.redis?.publish(WALLETS_CHANNEL, w.address).catch(() => 0);
-    }
+    await withAddLock(async () => {
+      const room = maxWallets - (await deps.db.trackedWallet.count({ where: { active: true } }));
+      for (const w of quiet.slice(0, Math.max(0, room))) {
+        await deps.db.trackedWallet.update({ where: { address: w.address }, data: { active: true, lastViewedAt: stamp, ...(w.source === 'discovered' ? { source: 'user' } : {}) } });
+        await deps.redis?.publish(WALLETS_CHANNEL, w.address).catch(() => 0);
+        await cache.drop(`wallet:v1:${w.address}`);
+      }
+      await cache.drop('wallets:v1');
+    });
   }
 
   async function assertRoom() {
