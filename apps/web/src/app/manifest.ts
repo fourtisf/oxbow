@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Oxbow',
     short_name: 'Oxbow',
-    description: getT('en').meta.description,
+    description: getT().meta.description,
     start_url: '/',
     display: 'standalone',
     background_color: '#03060C',

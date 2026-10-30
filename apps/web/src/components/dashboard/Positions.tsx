@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { amt, feePct, impermanentLossPct, pct, signed, usd, venueInfo, type Position } from '@oxbow/shared';
 import { useLocale, useT } from '@/i18n/client';
+import type { Locale } from '@/i18n/config';
 import { fmtDateL, relTimeL } from '@/i18n/format';
 import type { Messages } from '@/i18n/en';
 import { track } from '@/lib/analytics';
@@ -20,7 +21,7 @@ import { Modal } from '../ui/overlay';
 import { PairAvatar } from '../ui/TokenAvatar';
 import { Button, ButtonLink, cx, Fmt } from '../ui/primitives';
 
-function lockNote(x: Position, t: Messages, locale: 'en' | 'id'): string {
+function lockNote(x: Position, t: Messages, locale: Locale): string {
   if (x.lock.status === 'UNLOCKED') return t.trade.withdrawAny;
   if (x.lock.status === 'BURNED') return t.dash.burned;
   return x.lock.unlockAt ? t.dash.unlocks(fmtDateL(x.lock.unlockAt, locale)) : t.dash.locked;

@@ -1,12 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { LOCALE_COOKIE, pickLocale } from './i18n/config';
 
 /**
- * 1. Region restriction: when the visitor's country (from a header set by the
- *    proxy in front of the app, e.g. Cloudflare's CF-IPCountry or an Nginx
- *    GeoIP2 variable) is in GEO_BLOCKED_COUNTRIES, every page except the
- *    informational ones shows /restricted. Empty list = no blocking.
- * 2. Language: first visits get a locale cookie from Accept-Language.
+ * Region restriction: when the visitor's country (from a header set by the
+ * proxy in front of the app, e.g. Cloudflare's CF-IPCountry or an Nginx
+ * GeoIP2 variable) is in GEO_BLOCKED_COUNTRIES, every page except the
+ * informational ones shows /restricted. Empty list = no blocking.
  */
 const OPEN_WHEN_RESTRICTED = ['/restricted', '/terms', '/privacy', '/risk', '/docs', '/status'];
 
@@ -23,20 +21,13 @@ export function middleware(req: NextRequest) {
   const country = req.headers.get(header)?.trim().toUpperCase();
   const blocked = blockedCountries();
 
-  let res: NextResponse;
   if (country && blocked.includes(country) && !OPEN_WHEN_RESTRICTED.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     const url = req.nextUrl.clone();
     url.pathname = '/restricted';
     url.search = '';
-    res = NextResponse.rewrite(url);
-  } else {
-    res = NextResponse.next();
+    return NextResponse.rewrite(url);
   }
-
-  if (!req.cookies.get(LOCALE_COOKIE)) {
-    res.cookies.set(LOCALE_COOKIE, pickLocale(req.headers.get('accept-language')), { path: '/', maxAge: 31536000, sameSite: 'lax' });
-  }
-  return res;
+  return NextResponse.next();
 }
 
 export const config = {

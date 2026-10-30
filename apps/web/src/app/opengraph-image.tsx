@@ -7,6 +7,6 @@ export const contentType = 'image/png';
 export const alt = 'Oxbow: stock-paired pools on Solana';
 
 export default function Image() {
-  const t = getT('en');
+  const t = getT();
   return siteOgImage('Stock-paired pools on Solana', t.home.lede);
 }

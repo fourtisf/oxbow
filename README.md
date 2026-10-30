@@ -98,8 +98,7 @@ The app runs in one of two modes, chosen at build time:
 - **Legal**: Terms, Privacy and Risk pages (drafts, see below), one-time
   terms confirmation before connecting a wallet, region notice by country
   header (`GEO_BLOCKED_COUNTRIES`).
-- **Growth**: English and Indonesian (cookie, else browser language),
-  watchlist (this browser), share menu, Open Graph images per pool,
+- **Growth**: watchlist (this browser), share menu, Open Graph images per pool,
   sitemap and robots, empty states for a launch with no pools.
 - **Ops**: optional Sentry and Plausible, `/status` page, error pages, a
   lite mode for low-end phones (no blur, grain or city animation).

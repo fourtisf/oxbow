@@ -1,6 +1,6 @@
 /**
- * English copy. Strings that exist in the prototype are kept word for word.
- * `id.ts` must have the same shape (TypeScript enforces it).
+ * English copy, the site's only language. Strings that exist in the prototype
+ * are kept word for word.
  */
 export const en = {
   meta: {
@@ -80,7 +80,6 @@ export const en = {
     risk: 'Risk disclosure',
     sample: 'Oxbow prototype. Pools, prices and volumes shown are sample data.',
     nfa: 'Not financial advice. Trading tokens carries risk.',
-    language: 'Language',
   },
   wallet: {
     select: 'Select wallet',

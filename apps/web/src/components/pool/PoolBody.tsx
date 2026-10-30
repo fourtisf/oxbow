@@ -16,6 +16,7 @@ import {
   type Timeframe,
 } from '@oxbow/shared';
 import { useLocale, useT } from '@/i18n/client';
+import { INTL_TAG, type Locale } from '@/i18n/config';
 import { fmtDateL, marketReason, marketWhen, relTimeL } from '@/i18n/format';
 import type { Messages } from '@/i18n/en';
 import { track } from '@/lib/analytics';
@@ -38,7 +39,7 @@ const STALE_MS = 5 * 60_000;
 
 const HOLDER_COLOR = { BURNED: '#9ECFFF', LOCKED: '#3DDC97', CREATOR: '#FF5A6E', OTHER: '#4A5D74' } as const;
 
-function holderLabel(h: HolderSlice, t: Messages, locale: 'en' | 'id') {
+function holderLabel(h: HolderSlice, t: Messages, locale: Locale) {
   if (h.kind === 'LOCKED') return t.pool.holder.LOCKED(h.unlockAt ? fmtDateL(h.unlockAt, locale) : '—');
   return t.pool.holder[h.kind];
 }
@@ -76,8 +77,8 @@ function LpNote({ p }: { p: PoolDetail }) {
   );
 }
 
-const hoverLabel = (ts: number, tf: Timeframe, locale: 'en' | 'id') =>
-  new Date(ts).toLocaleString(locale === 'id' ? 'id-ID' : 'en-US', tf === '1W' ? { month: 'short', day: 'numeric', hour: 'numeric' } : { hour: 'numeric', minute: '2-digit' });
+const hoverLabel = (ts: number, tf: Timeframe, locale: Locale) =>
+  new Date(ts).toLocaleString(INTL_TAG[locale], tf === '1W' ? { month: 'short', day: 'numeric', hour: 'numeric' } : { hour: 'numeric', minute: '2-digit' });
 
 function ShareMenu({ p }: { p: PoolDetail }) {
   const t = useT();

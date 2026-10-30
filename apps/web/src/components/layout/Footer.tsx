@@ -1,9 +1,8 @@
 import Link from 'next/link';
-import { getLocale, getT } from '@/i18n/server';
+import { getT } from '@/i18n/server';
 import { SAMPLE_DATA } from '@/lib/api/mode';
 import { social } from '@/lib/site';
 import { BrandMark } from './BrandMark';
-import { LanguageSwitch } from './LanguageSwitch';
 
 export function Footer() {
   const t = getT();
@@ -17,7 +16,6 @@ export function Footer() {
               oxbow
             </Link>
             <p>{t.footer.tagline}</p>
-            <LanguageSwitch locale={getLocale()} label={t.footer.language} />
           </div>
           <div>
             <h2>{t.footer.product}</h2>

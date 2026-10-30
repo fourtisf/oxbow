@@ -10,7 +10,7 @@ export const alt = 'Oxbow pool';
 
 /** Share card for /pool/[address]: pair, price, 24h change and liquidity label. */
 export default async function Image({ params }: { params: { address: string } }) {
-  const t = getT('en');
+  const t = getT();
   const p = isAddress(params.address) ? await api.pool(params.address) : null;
   if (!p) return siteOgImage('Stock-paired pools on Solana', t.home.lede);
   const lp = p.lp;

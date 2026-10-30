@@ -1,23 +1,35 @@
 'use client';
 
 import Link from 'next/link';
-import { buysPct, feePct, pct, tiny, usd, venueInfo, type PoolSummary, type Timeframe } from '@oxbow/shared';
+import { buysPct, feePct, pct, tiny, usd, venueInfo, type PoolSummary, type StockInfo, type Timeframe } from '@oxbow/shared';
 import { useT } from '@/i18n/client';
 import { TOP_QUERY } from '@/lib/api/presets';
-import { useChart, useMovers, usePools } from '@/lib/api/queries';
+import { useChart, useMovers, usePools, useStocks } from '@/lib/api/queries';
 import { poolHref, useOpenPool } from '@/lib/nav';
 import { useUi } from '@/lib/store/ui';
 import { ChangePill, LpBadge, SafetyMark } from '../ui/badges';
 import { ArrowIcon, BoltIcon, TrendIcon } from '../ui/Icons';
 import { Sparkline } from '../ui/Sparkline';
-import { PairAvatar } from '../ui/TokenAvatar';
+import { PairAvatar, TokenAvatar } from '../ui/TokenAvatar';
 import { BracketCorners, ButtonLink, Fmt } from '../ui/primitives';
 
-/** "Market movers" marquee: top 12 pools by 24h change. */
+/**
+ * "Market movers" marquee: top 12 pools by 24h change. Before the first pool,
+ * the verified stocks' own 24h moves, each linking to Create with that stock.
+ */
 export function MoversMarquee() {
   const t = useT();
   const { data } = useMovers();
+  const { data: stocks } = useStocks();
   const list = data ?? [];
+  const stockMoves = data && !list.length ? [...(stocks ?? [])].sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h)).slice(0, 12) : [];
+  const stockItem = (s: StockInfo, dup: boolean) => (
+    <Link key={(dup ? 'b' : 'a') + s.mint} className="mv" href={`/create?quote=${encodeURIComponent(s.symbol)}`} tabIndex={dup ? -1 : undefined} aria-hidden={dup || undefined}>
+      <TokenAvatar asset={s} size={24} />
+      <span>{s.symbol}</span>
+      <ChangePill value={s.change24h} />
+    </Link>
+  );
   const item = (p: PoolSummary, dup: boolean) => (
     <Link key={(dup ? 'b' : 'a') + p.address} className="mv" href={poolHref(p.address)} scroll={false} tabIndex={dup ? -1 : undefined} aria-hidden={dup || undefined}>
       <PairAvatar base={p.base} quote={p.quote} size={24} />
@@ -34,7 +46,12 @@ export function MoversMarquee() {
         <span>{t.home.movers}</span>
       </div>
       <div className="mvwin">
-        {data && !list.length ? (
+        {stockMoves.length ? (
+          <div className="track">
+            {stockMoves.map((s) => stockItem(s, false))}
+            {stockMoves.map((s) => stockItem(s, true))}
+          </div>
+        ) : data && !list.length ? (
           <p className="mv-empty">{t.home.moversEmpty}</p>
         ) : (
           <div className="track">
