@@ -6,12 +6,22 @@ trade in one tap from their own wallet.
 
 - **Live feed** of tracked wallets' trades (token, size, price paid, USD
   value), with a Following tab for the wallets you follow.
-- **Wallets**: a leaderboard by realized profit, and a page per wallet with
-  realized and unrealized PnL, win rate, holdings (checked against the chain)
-  and closed positions. Anyone can add a wallet; the owner features some.
+- **Smart money, found automatically**: the worker samples the traders and
+  biggest holders of the tokens trading most, reads each candidate's own
+  history, drops bots and idle wallets, and tracks the ones that keep closing
+  trades at a profit (SMART badge). The owner can also feature wallets, and
+  anyone can add one.
+- **Wallets**: a 30-day leaderboard by realized profit, and a page per wallet
+  with realized and unrealized PnL, win rate, holdings (checked against the
+  chain) and closed positions.
 - **Tokens**: price, market cap, liquidity, holders, age, a safety check
   (mint and freeze authority, holder concentration, developer share, organic
   score, Jupiter verification) and which tracked wallets hold it.
+- **Order flow**: every token page shows its latest fills by any trader,
+  read from the chain and grouped by price like an order book, with buy and
+  sell pressure (Solana tokens trade in pools, so there are no resting orders).
+- **Limit orders** through Jupiter's trigger program: buy at a lower price or
+  sell at a higher one; open orders listed and cancellable in the trade panel.
 - **Copy trading**: buy or sell any token for SOL through Jupiter's routing.
   The server builds the transaction, the visitor's wallet signs it. Oxbow
   charges `OXBOW_FEE_BPS` (0.5% by default) on the SOL side as a plain SOL
@@ -55,6 +65,18 @@ trade in one tap from their own wallet.
   USD values use the SOL price when the trade was read.
 - **Live updates**: the worker publishes trades on Redis; every API process
   fans them out to browsers over SSE (`/api/feed/stream`).
+- **Discovery** (`src/tracker/discovery.ts`): candidates from the market tapes
+  of Jupiter's top-traded tokens (1 h and 24 h) and their largest wallet
+  holders. Each is judged on its own last `DISCOVERY_HISTORY_TXS`
+  transactions: dropped for bot pace (60+ transactions an hour, or three fills
+  of one token in a short sample), sandwich shape, or no swap in a week;
+  passed as "consistent" (3+ tokens closed, 55%+ in profit, $250+ realized)
+  or "big win" ($2,500+ realized, no more losses than wins). Discovered
+  wallets that close more losses than wins over two weeks are dropped daily.
+  `pnpm --filter @oxbow/api wallets discover` runs a round by hand.
+- **Market tape** (`src/tracker/tape.ts`): signatures touching a mint, read
+  newest first and parsed for every signer, shared in Redis for token pages
+  and discovery, refreshed at most every 15 s per token.
 
 ## API
 
@@ -62,12 +84,14 @@ trade in one tap from their own wallet.
 | --- | --- |
 | `GET /api/feed?wallets=&mint=&side=&minUsd=&cursor=&limit=` | Trades, newest first, paged. |
 | `GET /api/feed/stream` | Server-sent events, `event: trade`. |
-| `GET /api/wallets` | Leaderboard. |
+| `GET /api/wallets` | Leaderboard (last 30 days). |
 | `GET /api/wallets/:address` | Stats, holdings, closed positions (404 if not tracked). |
 | `GET /api/wallets/:address/trades` | One wallet's trades. |
 | `POST /api/wallets` `{address}` | Track a wallet (plain system accounts only; 10 an hour per IP). |
 | `GET /api/tokens/hot` | What tracked wallets bought most in 24 h. |
 | `GET /api/tokens/:mint` | Token facts, safety check, tracked wallets in it. |
+| `GET /api/tokens/:mint/flow` | Latest fills by any trader, grouped by price level. |
+| `POST /api/limit/create`, `POST /api/limit/cancel`, `GET /api/limit/orders?wallet=` | Jupiter limit orders (unsigned transactions, checked). |
 | `GET /api/tokens/search?q=` | Jupiter token search (name, ticker or CA). |
 | `GET /api/swap/quote` | Quote for SOL → token or token → SOL, fee included. |
 | `POST /api/swap/build` | Unsigned v0 transaction for the trader's wallet. |

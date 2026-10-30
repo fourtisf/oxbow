@@ -33,6 +33,13 @@ interface Ctx {
 }
 
 const RPC_MS = 8000;
+
+/** Jupiter's refusals as API errors: busy (rate-limited) is not "no route". */
+export function jupiterFailure(e: unknown): never {
+  if (e instanceof JupiterError && e.status === 429) throw new HttpError(503, 'jupiter_busy');
+  if (e instanceof JupiterError && e.status >= 400 && e.status < 500) throw new HttpError(400, 'no_route', { detail: e.detail.slice(0, 120) });
+  throw new HttpError(502, 'jupiter_unavailable');
+}
 const TREASURY_CHECK_MS = 10 * 60_000;
 const ALT_MS = 60_000;
 
@@ -70,8 +77,7 @@ export function registerSwapRoutes(app: FastifyInstance, ctx: Ctx) {
     try {
       raw = await jup.quote({ inputMint: q.inputMint, outputMint: q.outputMint, amount: amount - buyFee, slippageBps: q.slippageBps });
     } catch (e) {
-      if (e instanceof JupiterError && e.status >= 400 && e.status < 500) throw new HttpError(400, 'no_route', { detail: e.detail.slice(0, 120) });
-      throw new HttpError(502, 'jupiter_unavailable');
+      jupiterFailure(e);
     }
     const fee = buy ? buyFee : feeOf(BigInt(raw.outAmount), bps);
     const threshold = BigInt(raw.otherAmountThreshold);
@@ -124,8 +130,7 @@ export function registerSwapRoutes(app: FastifyInstance, ctx: Ctx) {
     try {
       ixs = await jup.swapInstructions(q.raw, body.wallet);
     } catch (e) {
-      if (e instanceof JupiterError && e.status >= 400 && e.status < 500) throw new HttpError(400, 'no_route', { detail: e.detail.slice(0, 120) });
-      throw new HttpError(502, 'jupiter_unavailable');
+      jupiterFailure(e);
     }
     const [tables, { blockhash, lastValidBlockHeight }] = await Promise.all([
       lookupTables(ixs.addressLookupTableAddresses),

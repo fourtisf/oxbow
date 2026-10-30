@@ -86,7 +86,10 @@ export class FakeJupiter implements Jupiter {
     if (this.down) throw new Error('down');
     return [...this.table.values()].filter((t) => t.symbol.toLowerCase().includes(q.toLowerCase()) || t.mint === q);
   }
+  /** Set to make quotes fail with this HTTP status. */
+  quoteStatus: number | null = null;
   async quote(p: QuoteParams): Promise<JupiterQuote> {
+    if (this.quoteStatus) throw new JupiterError(this.quoteStatus, this.quoteStatus === 429 ? 'Too many requests' : 'No routes found');
     this.quotes.push(p);
     const buy = p.inputMint === WSOL;
     // 1 SOL = 50,000 MEME (6 decimals) both ways.

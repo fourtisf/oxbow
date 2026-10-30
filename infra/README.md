@@ -74,7 +74,15 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
    nginx -t && systemctl reload nginx
    ```
 
-5. As `oxbow`: add the featured wallets, one per command, with a public label.
+5. Smart money is found automatically: the worker runs a discovery round at
+   start and every two hours. To fill the feed right away, run a few rounds
+   by hand (each takes a minute or two):
+
+   ```bash
+   cd /home/oxbow/oxbow && sudo -u oxbow pnpm --filter @oxbow/api wallets discover
+   ```
+
+6. Optional: add featured wallets, one per command, with a public label.
    Only addresses you have checked yourself:
 
    ```bash
@@ -94,7 +102,10 @@ online; `pm2 logs oxbow-worker` shows each wallet catching up and live trades
 as they happen.
 
 RPC use: one websocket subscription per tracked wallet, one transaction read
-per trade, and a catch-up call per wallet every `TRACKER_RESYNC_SEC` (5 min).
+per trade, a catch-up call per wallet every `TRACKER_RESYNC_SEC` (5 min),
+about 1,000 calls per discovery round (`DISCOVERY_EVERY_MIN`, 2 h), and up to
+25 per token page every 15 s while someone has it open (order flow). On
+Helius's free plan, raise `DISCOVERY_EVERY_MIN` if credits run low.
 Jupiter's free API is rate-limited; at scale, get a key at portal.jup.ag and
 set `JUPITER_API_BASE=https://api.jup.ag` and `JUPITER_API_KEY`.
 

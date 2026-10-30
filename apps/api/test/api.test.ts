@@ -401,6 +401,15 @@ describe.skipIf(!ready)('Oxbow tracker API', () => {
       expect(SwapQuoteSchema.parse((await get(`/api/swap/quote?inputMint=${WSOL}&outputMint=${M.meme}&amount=1000000000`)).body).feeLamports).toBe('0');
     });
 
+    it('tells "Jupiter is busy" apart from "no route"', async () => {
+      const url = `/api/swap/quote?inputMint=${WSOL}&outputMint=${M.meme}&amount=1000000000`;
+      jup.quoteStatus = 429;
+      expect((await get(url)).body).toEqual({ error: 'jupiter_busy' });
+      jup.quoteStatus = 400;
+      expect((await get(url)).body).toMatchObject({ error: 'no_route' });
+      jup.quoteStatus = null;
+    });
+
     it('only swaps against SOL', async () => {
       expect((await get(`/api/swap/quote?inputMint=${M.dog}&outputMint=${M.meme}&amount=1000`)).body).toEqual({ error: 'sol_side_required' });
       expect((await get(`/api/swap/quote?inputMint=${WSOL}&outputMint=${WSOL}&amount=1000`)).body).toEqual({ error: 'sol_side_required' });

@@ -12,7 +12,7 @@ import { ApiError, get, post, qs } from './api/http';
 import type { ConnectedWallet } from './store/wallet';
 import { signAndSend, WalletError } from './wallets';
 
-export type TradeErrorCode = 'REJECTED' | 'CANT_SIGN' | 'TX_FAILED' | 'TIMEOUT' | 'NO_ROUTE' | 'FAILED' | 'REJECTED_BY_JUPITER';
+export type TradeErrorCode = 'REJECTED' | 'CANT_SIGN' | 'TX_FAILED' | 'TIMEOUT' | 'NO_ROUTE' | 'FAILED' | 'REJECTED_BY_JUPITER' | 'BUSY';
 
 export class TradeError extends Error {
   constructor(
@@ -30,6 +30,7 @@ const toB64 = (b: Uint8Array) => btoa(Array.from(b, (c) => String.fromCharCode(c
 
 export function asTradeError(e: unknown): TradeError {
   if (e instanceof TradeError) return e;
+  if (e instanceof ApiError && e.code === 'jupiter_busy') return new TradeError('BUSY');
   if (e instanceof ApiError && e.code === 'limit_rejected') return new TradeError('REJECTED_BY_JUPITER', String(e.details.detail ?? ''));
   if (e instanceof WalletError) return new TradeError(e.code === 'REJECTED' ? 'REJECTED' : e.code === 'CANT_SIGN' ? 'CANT_SIGN' : 'FAILED');
   if (e instanceof ApiError && (e.code === 'no_route' || e.code === 'sol_side_required')) return new TradeError('NO_ROUTE');

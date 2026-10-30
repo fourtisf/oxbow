@@ -14,6 +14,7 @@ import { JupiterError, type Jupiter } from './jupiter';
 
 function asHttp(e: unknown): never {
   if (e instanceof SwapAssemblyError) throw new HttpError(502, e.code);
+  if (e instanceof JupiterError && e.status === 429) throw new HttpError(503, 'jupiter_busy');
   // Jupiter explains refusals (e.g. "Order size must be at least 5 USD"): pass that on.
   if (e instanceof JupiterError && e.status >= 400 && e.status < 500) throw new HttpError(400, 'limit_rejected', { detail: e.detail.slice(0, 160) });
   throw new HttpError(502, 'jupiter_unavailable');

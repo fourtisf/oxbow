@@ -249,7 +249,7 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
             </p>
           )}
           {noRoute && <p className="err">{t.trade.noRoute}</p>}
-          {quote.isError && !noRoute && <p className="err">{t.trade.quoteFailed}</p>}
+          {quote.isError && !noRoute && <p className="err">{(quote.error as { code?: string } | null)?.code === 'jupiter_busy' ? t.trade.quoteBusy : t.trade.quoteFailed}</p>}
           {needsAck && (
             <label className="check">
               <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
