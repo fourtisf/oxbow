@@ -14,7 +14,7 @@ test.describe('create pool (mock wallet)', () => {
 
     // Long and spaceless reads as a mistyped address (0 and O aren't base58).
     await page.getByRole('textbox', { name: 'Token mint address' }).fill('Pebb5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVw0O');
-    await expect(page.getByText("That isn't a Solana mint address.", { exact: false })).toBeVisible();
+    await expect(page.getByText("That isn't a valid Solana CA.", { exact: false })).toBeVisible();
 
     await page.getByRole('textbox', { name: 'Token mint address' }).fill(EXAMPLE_MINT);
     await expect(page.getByText('Looking up the token')).toBeVisible();

@@ -45,7 +45,7 @@ test.describe('token lookup', () => {
     await page.route('**/api/token/*', (r) => r.fulfill({ status: 404, json: { error: 'not_found' } }));
     await page.goto('/create');
     await page.getByRole('textbox', { name: 'Token mint address' }).fill(REAL_MINT);
-    await expect(page.getByText(/There's no token with that mint on Solana (devnet|mainnet)\./)).toBeVisible();
+    await expect(page.getByText(/There's no token with that CA on Solana (devnet|mainnet)\./)).toBeVisible();
   });
 
   test('an RPC failure asks to try again instead of inventing a token', async ({ page }) => {
