@@ -358,6 +358,23 @@ describe.skipIf(!ready)('Oxbow API', () => {
     expect(list).toEqual([{ mint: other, symbol: 'BONK', name: 'Bonk', logoUri: 'https://arweave.net/b.png' }]);
   });
 
+  it('falls back to the project logo Jupiter lists when the metadata has no image', async () => {
+    const mint = Keypair.generate().publicKey;
+    rpc.accounts.set(mint.toBase58(), mintAccount(5, 10n ** 14n, null));
+    await built.app.close();
+    built = await buildApp({
+      db,
+      redis,
+      prices,
+      rpc: rpc as unknown as ChainReader,
+      cluster: 'devnet',
+      now: () => NOW,
+      fetchJson: async () => null,
+      popular: async () => [{ mint: mint.toBase58(), symbol: 'BONK', name: 'Bonk', logoUri: 'https://arweave.net/bonk.png' }],
+    });
+    expect(TokenInfoSchema.parse((await get(`/api/tokens/${mint.toBase58()}`)).body).logoUri).toBe('https://arweave.net/bonk.png');
+  });
+
   it('reports service health on /api/status', async () => {
     const s = StatusSchema.parse((await get('/api/status')).body);
     expect(s).toMatchObject({ api: 'OK', sampleData: false, rpc: { state: 'OK', slot: 123_456 }, prices: { state: 'OK' } });

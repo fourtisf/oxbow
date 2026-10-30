@@ -183,6 +183,9 @@ export async function buildApp(deps: Deps) {
 
   // ------------------------------------------------------------ tokens
 
+  /** Jupiter's most-traded verified tokens, cached half an hour (two minutes when the list came back empty). */
+  const popularList = () => (deps.popular ? cache.wrap('popular:v1', (v: unknown[]) => (v.length ? 1800 : 120), deps.popular) : Promise.resolve([]));
+
   async function token(req: FastifyRequest, reply: FastifyReply) {
     const { mint } = Mint.parse(req.params);
     const found = await cache.wrap<TokenLookup>(
@@ -225,8 +228,10 @@ export async function buildApp(deps: Deps) {
     return {
       ...found.token,
       supply,
-      // Pair assets and verified stocks keep their own logo when the token metadata has none (wrapped SOL has none).
-      logoUri: found.token.logoUri ?? book.assets[mint]?.logoUri ?? (isSol ? '/tokens/sol.svg' : null),
+      // When the token's metadata has no image: the pair asset's or verified stock's own logo, then the
+      // project logo Jupiter lists for it, then SOL's for wrapped SOL (whose metadata has none).
+      logoUri:
+        found.token.logoUri ?? book.assets[mint]?.logoUri ?? (await popularList()).find((p) => p.mint === mint)?.logoUri ?? (isSol ? '/tokens/sol.svg' : null),
       symbolTaken: await market.symbolTaken(found.token.symbol, mint),
       createdAt: listed?.mintCreatedAt?.toISOString() ?? found.token.createdAt,
     } satisfies TokenInfo;
@@ -235,7 +240,7 @@ export async function buildApp(deps: Deps) {
   const tokenOpts = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
   // "Popular on Solana" quick picks, minus the pair assets themselves.
   app.get('/api/tokens/popular', async (_req, reply) => {
-    const list = deps.popular ? await cache.wrap('popular:v1', (v: unknown[]) => (v.length ? 1800 : 120), deps.popular) : [];
+    const list = await popularList();
     const book = await market.quoteBook();
     pub(reply, 300);
     return list.filter((p) => !book.assets[p.mint]).slice(0, 8);
