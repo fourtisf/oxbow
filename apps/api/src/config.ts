@@ -26,7 +26,21 @@ export const ConfigSchema = z.object({
   BACKFILL_LIMIT: z.preprocess(blank, z.coerce.number().int().min(10).max(1000).default(100)),
   /** Seconds between catch-up rounds over every wallet (covers anything the websocket missed). */
   TRACKER_RESYNC_SEC: z.preprocess(blank, z.coerce.number().int().min(30).default(300)),
-  /** Days a wallet nobody follows or opens stays tracked (featured wallets always are). */
+  /** Find profitable wallets automatically from trending tokens' traders ("discovered" smart money). */
+  DISCOVERY_ENABLED: z.preprocess(blank, z.enum(['0', '1', 'true', 'false']).default('1').transform((v) => v === '1' || v === 'true')),
+  /** Minutes between discovery rounds. */
+  DISCOVERY_EVERY_MIN: z.preprocess(blank, z.coerce.number().int().min(10).default(120)),
+  /** Candidates evaluated per round (each reads DISCOVERY_HISTORY_TXS transactions). */
+  DISCOVERY_EVALS: z.preprocess(blank, z.coerce.number().int().min(1).max(100).default(8)),
+  DISCOVERY_HISTORY_TXS: z.preprocess(blank, z.coerce.number().int().min(20).max(200).default(60)),
+  /** A discovered wallet needs at least this much realized profit (USD) in the history read. */
+  DISCOVERY_MIN_PNL_USD: z.preprocess(blank, z.coerce.number().nonnegative().default(250)),
+  /** ...and at least this share of closed positions in profit. */
+  DISCOVERY_MIN_WIN_RATE: z.preprocess(blank, z.coerce.number().min(0).max(1).default(0.55)),
+  /** ...or this much realized profit with no more losses than wins (whales close few positions). */
+  DISCOVERY_BIG_WIN_USD: z.preprocess(blank, z.coerce.number().nonnegative().default(2500)),
+  DISCOVERY_MAX: z.preprocess(blank, z.coerce.number().int().min(0).default(50)),
+  /** Days a wallet nobody follows or opens stays tracked (featured and discovered wallets always are). */
   WALLET_IDLE_DAYS: z.preprocess(blank, z.coerce.number().int().positive().default(14)),
 });
 export type Config = z.infer<typeof ConfigSchema>;

@@ -34,7 +34,7 @@ const LIVE_WINDOW_MS = 10 * 60_000;
 /** Pages of 100 signatures a catch-up may walk before it settles for the newest ones. */
 const MAX_PAGES = 5;
 
-export type WalletRef = Pick<TrackedWallet, 'address' | 'label' | 'featured' | 'lastSignature' | 'backfilledAt'>;
+export type WalletRef = Pick<TrackedWallet, 'address' | 'label' | 'featured' | 'source' | 'lastSignature' | 'backfilledAt'>;
 
 export const ui = (raw: bigint, decimals: number) => Number(raw) / 10 ** decimals;
 
@@ -161,7 +161,7 @@ export class Ingestor {
 const n = (d: Prisma.Decimal | number) => Number(d);
 
 /** A stored trade as the feed shows it. */
-export function toFeedTrade(r: WalletTrade, wallet: Pick<TrackedWallet, 'address' | 'label' | 'featured'>, metas: ReadonlyMap<string, TokenMeta>): FeedTrade {
+export function toFeedTrade(r: WalletTrade, wallet: Pick<TrackedWallet, 'address' | 'label' | 'featured' | 'source'>, metas: ReadonlyMap<string, TokenMeta>): FeedTrade {
   const quote = metas.get(r.quoteMint);
   return {
     id: r.id.toString(),
@@ -169,6 +169,7 @@ export function toFeedTrade(r: WalletTrade, wallet: Pick<TrackedWallet, 'address
     wallet: wallet.address,
     walletLabel: wallet.label,
     featured: wallet.featured,
+    smart: wallet.source === 'discovered',
     ts: r.ts.toISOString(),
     side: r.side,
     token: brief(metas.get(r.mint), r.mint),

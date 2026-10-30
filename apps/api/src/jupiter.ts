@@ -101,6 +101,40 @@ export function toToken(raw: unknown): JupiterToken | null {
   };
 }
 
+const TriggerTxSchema = z.object({ transaction: z.string().min(1), order: AddressSchema.nullish() }).passthrough();
+
+const intStr = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()]).transform(String);
+const TriggerOrderRow = z
+  .object({
+    orderKey: AddressSchema,
+    inputMint: AddressSchema,
+    outputMint: AddressSchema,
+    rawMakingAmount: intStr,
+    rawTakingAmount: intStr,
+    rawRemainingMakingAmount: intStr.nullish(),
+    createdAt: z.string().nullish(),
+    expiredAt: z.string().nullish(),
+    status: z.string().max(32).nullish(),
+  })
+  .passthrough();
+
+function toTriggerOrder(raw: unknown): TriggerOrder | null {
+  const r = TriggerOrderRow.safeParse(raw);
+  if (!r.success) return null;
+  const o = r.data;
+  return {
+    order: o.orderKey,
+    inputMint: o.inputMint,
+    outputMint: o.outputMint,
+    makingAmount: o.rawMakingAmount,
+    takingAmount: o.rawTakingAmount,
+    remainingMakingAmount: o.rawRemainingMakingAmount ?? o.rawMakingAmount,
+    createdAt: date(o.createdAt)?.toISOString() ?? null,
+    expiredAt: date(o.expiredAt)?.toISOString() ?? null,
+    status: o.status ?? 'Open',
+  };
+}
+
 export interface QuoteParams {
   inputMint: string;
   outputMint: string;
@@ -149,9 +183,40 @@ const SwapIxSchema = z.object({
   computeUnitLimit: z.number().int().positive().nullish(),
 });
 
+export interface TriggerCreate {
+  inputMint: string;
+  outputMint: string;
+  maker: string;
+  makingAmount: string;
+  takingAmount: string;
+  /** Unix seconds. */
+  expiredAt?: number;
+}
+
+/** A limit order as Jupiter's trigger service lists it (raw amounts). */
+export interface TriggerOrder {
+  order: string;
+  inputMint: string;
+  outputMint: string;
+  makingAmount: string;
+  takingAmount: string;
+  remainingMakingAmount: string;
+  createdAt: string | null;
+  expiredAt: string | null;
+  status: string;
+}
+
 export interface Jupiter {
   /** Token data by mint, up to 100 per call. Unknown mints are simply missing. */
   tokens(mints: string[]): Promise<JupiterToken[]>;
+  /** Most traded tokens over the interval, by volume. */
+  topTraded(interval: '1h' | '6h' | '24h', limit: number): Promise<JupiterToken[]>;
+  /** Unsigned transaction that opens a limit order for `maker`. */
+  createTrigger(p: TriggerCreate): Promise<{ transaction: string; order: string | null }>;
+  /** Unsigned transaction that cancels one of `maker`'s limit orders. */
+  cancelTrigger(maker: string, order: string): Promise<{ transaction: string }>;
+  /** `user`'s open limit orders. */
+  triggerOrders(user: string): Promise<TriggerOrder[]>;
   /** Search by name, ticker or mint. */
   search(query: string): Promise<JupiterToken[]>;
   quote(p: QuoteParams): Promise<JupiterQuote>;
@@ -220,6 +285,32 @@ export function jupiterClient(base: string, opts: { timeoutMs?: number; apiKey?:
     },
     async search(query) {
       return tokenList(await call(`/tokens/v2/search?query=${encodeURIComponent(query)}`));
+    },
+    async topTraded(interval, limit) {
+      return tokenList(await call(`/tokens/v2/toptraded/${interval}?limit=${Math.min(100, Math.max(1, limit))}`));
+    },
+    async createTrigger(p) {
+      const body = {
+        inputMint: p.inputMint,
+        outputMint: p.outputMint,
+        maker: p.maker,
+        payer: p.maker,
+        params: { makingAmount: p.makingAmount, takingAmount: p.takingAmount, ...(p.expiredAt ? { expiredAt: String(p.expiredAt) } : {}) },
+        computeUnitPrice: 'auto',
+      };
+      const r = TriggerTxSchema.safeParse(await call('/trigger/v1/createOrder', { method: 'POST', body: JSON.stringify(body) }));
+      if (!r.success) throw new JupiterError(502, 'unexpected createOrder response');
+      return { transaction: r.data.transaction, order: r.data.order ?? null };
+    },
+    async cancelTrigger(maker, order) {
+      const r = TriggerTxSchema.safeParse(await call('/trigger/v1/cancelOrder', { method: 'POST', body: JSON.stringify({ maker, order, computeUnitPrice: 'auto' }) }));
+      if (!r.success) throw new JupiterError(502, 'unexpected cancelOrder response');
+      return { transaction: r.data.transaction };
+    },
+    async triggerOrders(user) {
+      const raw = z.object({ orders: z.array(z.unknown()) }).passthrough().safeParse(await call(`/trigger/v1/getTriggerOrders?user=${user}&orderStatus=active`));
+      if (!raw.success) throw new JupiterError(502, 'unexpected getTriggerOrders response');
+      return raw.data.orders.map(toTriggerOrder).filter((o): o is TriggerOrder => !!o);
     },
     async quote(p) {
       const qs = new URLSearchParams({

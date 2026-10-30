@@ -110,3 +110,30 @@ export function composeSwapTx(p: ComposeSwapParams): VersionedTransaction {
 
 /** Oxbow's cut of `lamports` at `feeBps`, rounded down. */
 export const feeOf = (lamports: bigint, feeBps: number): bigint => (lamports * BigInt(feeBps)) / 10_000n;
+
+/** Jupiter's limit-order (trigger) program, the one its createOrder and cancelOrder transactions call. */
+export const JUPITER_TRIGGER_PROGRAM_ID = new PublicKey('j1o2qRpjcyUwEvwtcfhEQefh773ZgjxcVRry7LDqg5X');
+
+const TRIGGER_ALLOWED = new Set(
+  [JUPITER_TRIGGER_PROGRAM_ID, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, SystemProgram.programId, ComputeBudgetProgram.programId].map((p) =>
+    p.toBase58(),
+  ),
+);
+
+/**
+ * Checks a transaction from Jupiter's limit-order service before the trader is asked
+ * to sign it: `payer` pays and is the only signer, and only known programs are called.
+ * (Invoked programs are always in the static keys, never loaded from lookup tables.)
+ */
+export function checkTriggerTx(base64: string, payer: string): VersionedTransaction {
+  let tx: VersionedTransaction;
+  try {
+    tx = VersionedTransaction.deserialize(Buffer.from(base64, 'base64'));
+  } catch {
+    throw new SwapAssemblyError('bad_instruction');
+  }
+  const keys = tx.message.staticAccountKeys.map((k) => k.toBase58());
+  if (keys[0] !== payer || tx.message.header.numRequiredSignatures !== 1) throw new SwapAssemblyError('bad_instruction');
+  for (const ix of tx.message.compiledInstructions) if (!TRIGGER_ALLOWED.has(keys[ix.programIdIndex] ?? '')) throw new SwapAssemblyError('unknown_program');
+  return tx;
+}

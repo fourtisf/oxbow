@@ -6,17 +6,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 import { z } from 'zod';
 import { Redis } from 'ioredis';
-import {
-  AddressLookupTableAccount,
-  ComputeBudgetProgram,
-  PublicKey,
-  SystemInstruction,
-  SystemProgram,
-  TransactionMessage,
-  VersionedTransaction,
-  type AccountInfo,
-} from '@solana/web3.js';
-import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { ComputeBudgetProgram, PublicKey, SystemInstruction, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { createDb, type PrismaClient } from '@oxbow/db';
 import {
   BuiltSwapSchema,
@@ -31,183 +22,22 @@ import {
   WalletSummarySchema,
   type FeedTrade,
 } from '@oxbow/shared';
-import { JUPITER_PROGRAM_ID, type JupiterInstruction, type JupiterSwapInstructions } from '@oxbow/solana/swap';
+import { JUPITER_PROGRAM_ID } from '@oxbow/solana/swap';
 import { buildApp, type ChainReader } from '../src/app';
+import { ALT, FakeChain, FakeJupiter, FakeTrackerRpc, NOW, SOL_USD, system, token, TREASURY } from './fakes';
 import { TRACKER_HEARTBEAT_KEY, TRACKER_LIVE_KEY, TRADES_CHANNEL, tradePublisher, WALLETS_CHANNEL } from '../src/hub';
-import type { Jupiter, JupiterQuote, JupiterToken, QuoteParams } from '../src/jupiter';
+import type { Jupiter } from '../src/jupiter';
 import { Ingestor } from '../src/tracker/ingest';
-import { WSOL, type RawTx } from '../src/tracker/parse';
-import type { SignatureInfo, TrackerRpc } from '../src/tracker/rpc';
+import { WSOL } from '../src/tracker/parse';
 import { TokenBook } from '../src/tracker/tokens';
 import { addr, fakeSwapTx, sig, type FakeSwap } from './fixtures';
 import { TEST_DATABASE_URL, TEST_REDIS_URL } from './global-setup';
 
 const ready = inject('servicesReady');
-const NOW = Date.parse('2026-10-30T12:00:00Z');
 const T = (minAgo: number) => Math.floor((NOW - minAgo * 60_000) / 1000);
-const SOL_USD = 200;
 
 const M = { meme: addr(), dog: addr(), usdc: addr(), rug: addr() };
 const W = { alpha: addr(), beta: addr(), quiet: addr() };
-const TREASURY = addr();
-
-function token(mint: string, over: Partial<JupiterToken> = {}): JupiterToken {
-  return {
-    mint,
-    symbol: 'TKN',
-    name: 'Token',
-    decimals: 6,
-    logoUri: `https://img.example/${mint.slice(0, 6)}.png`,
-    verified: true,
-    stable: false,
-    usdPrice: 1,
-    change24h: 0,
-    mcap: 5_000_000,
-    liquidity: 800_000,
-    holderCount: 12_000,
-    organicScore: 80,
-    mintAuthorityOff: true,
-    freezeAuthorityOff: true,
-    topHoldersPct: 15,
-    devPct: 0,
-    launchedAt: new Date('2026-01-01T00:00:00Z'),
-    ...over,
-  };
-}
-
-const ALT_KEYS = Array.from({ length: 20 }, () => new PublicKey(addr()));
-const ALT = new AddressLookupTableAccount({
-  key: new PublicKey(addr()),
-  state: { deactivationSlot: BigInt('18446744073709551615'), lastExtendedSlot: 0, lastExtendedSlotStartIndex: 0, addresses: ALT_KEYS },
-});
-
-class FakeJupiter implements Jupiter {
-  table = new Map<string, JupiterToken>([
-    [WSOL, token(WSOL, { symbol: 'SOL', name: 'Wrapped SOL', decimals: 9, usdPrice: SOL_USD, logoUri: null })],
-    [M.meme, token(M.meme, { symbol: 'MEME', name: 'Meme Coin', usdPrice: 0.004 })],
-    [M.dog, token(M.dog, { symbol: 'DOG', name: 'Dog', usdPrice: 0.02 })],
-    [M.usdc, token(M.usdc, { symbol: 'USDC', name: 'USD Coin', stable: true, usdPrice: 1 })],
-    [
-      M.rug,
-      token(M.rug, { symbol: 'RUG', name: 'Rug', verified: false, usdPrice: 0.0001, liquidity: 900, mintAuthorityOff: false, launchedAt: new Date(NOW - 3_600_000), organicScore: 3 }),
-    ],
-  ]);
-  down = false;
-  quotes: QuoteParams[] = [];
-  swapProgram = JUPITER_PROGRAM_ID.toBase58();
-  async tokens(mints: string[]) {
-    if (this.down) throw new Error('down');
-    return mints.flatMap((m) => (this.table.has(m) ? [this.table.get(m)!] : []));
-  }
-  async search(q: string) {
-    if (this.down) throw new Error('down');
-    return [...this.table.values()].filter((t) => t.symbol.toLowerCase().includes(q.toLowerCase()) || t.mint === q);
-  }
-  async quote(p: QuoteParams): Promise<JupiterQuote> {
-    this.quotes.push(p);
-    const buy = p.inputMint === WSOL;
-    // 1 SOL = 50,000 MEME (6 decimals) both ways.
-    const out = buy ? (p.amount * 50_000n * 10n ** 6n) / 10n ** 9n : (p.amount * 10n ** 9n) / (50_000n * 10n ** 6n);
-    return {
-      inputMint: p.inputMint,
-      outputMint: p.outputMint,
-      inAmount: p.amount.toString(),
-      outAmount: out.toString(),
-      otherAmountThreshold: ((out * BigInt(10_000 - p.slippageBps)) / 10_000n).toString(),
-      priceImpactPct: '0.0012',
-      slippageBps: p.slippageBps,
-      routePlan: [{ swapInfo: { label: 'Whirlpool' } }, { swapInfo: { label: 'Raydium' } }],
-    };
-  }
-  async swapInstructions(_q: JupiterQuote, wallet: string): Promise<JupiterSwapInstructions> {
-    const ix = (i: ReturnType<typeof ComputeBudgetProgram.setComputeUnitLimit>): JupiterInstruction => ({
-      programId: i.programId.toBase58(),
-      accounts: i.keys.map((k) => ({ pubkey: k.pubkey.toBase58(), isSigner: k.isSigner, isWritable: k.isWritable })),
-      data: Buffer.from(i.data).toString('base64'),
-    });
-    return {
-      computeBudgetInstructions: [ix(ComputeBudgetProgram.setComputeUnitLimit({ units: 169_090 })), ix(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1000 }))],
-      setupInstructions: [{ programId: ASSOCIATED_TOKEN_PROGRAM_ID.toBase58(), accounts: [{ pubkey: wallet, isSigner: true, isWritable: true }], data: '' }],
-      swapInstruction: {
-        programId: this.swapProgram,
-        accounts: [{ pubkey: wallet, isSigner: true, isWritable: true }, ...ALT_KEYS.map((k) => ({ pubkey: k.toBase58(), isSigner: false, isWritable: false }))],
-        data: Buffer.from([1, 2, 3]).toString('base64'),
-      },
-      cleanupInstruction: null,
-      otherInstructions: [],
-      addressLookupTableAddresses: [ALT.key.toBase58()],
-      computeUnitLimit: 169_090,
-    };
-  }
-}
-
-class FakeTrackerRpc implements TrackerRpc {
-  txs = new Map<string, RawTx>();
-  sigs = new Map<string, SignatureInfo[]>();
-  add(s: FakeSwap) {
-    this.txs.set(s.signature, fakeSwapTx(s));
-    const list = this.sigs.get(s.wallet) ?? [];
-    list.push({ signature: s.signature, slot: 0, err: null, blockTime: s.blockTime });
-    list.sort((a, b) => (b.blockTime ?? 0) - (a.blockTime ?? 0));
-    this.sigs.set(s.wallet, list);
-  }
-  async getTransaction(signature: string) {
-    return this.txs.get(signature) ?? null;
-  }
-  async getSignatures(address: string, o: { limit: number; until?: string; before?: string }) {
-    let list = this.sigs.get(address) ?? [];
-    if (o.before) list = list.slice(list.findIndex((s) => s.signature === o.before) + 1);
-    if (o.until) {
-      const i = list.findIndex((s) => s.signature === o.until);
-      if (i >= 0) list = list.slice(0, i);
-    }
-    return list.slice(0, o.limit);
-  }
-}
-
-const system = (lamports = 1e9): AccountInfo<Buffer> => ({ owner: SystemProgram.programId, data: Buffer.alloc(0), executable: false, lamports });
-
-class FakeChain {
-  accounts = new Map<string, AccountInfo<Buffer>>();
-  held = new Map<string, [string, number][]>();
-  treasuryLamports = 5_000_000;
-  down = false;
-  async getSlot() {
-    if (this.down) throw new Error('down');
-    return 463_000_000;
-  }
-  async getAccountInfo(k: PublicKey) {
-    if (this.down) throw new Error('down');
-    return this.accounts.get(k.toBase58()) ?? null;
-  }
-  async getLatestBlockhash() {
-    return { blockhash: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', lastValidBlockHeight: 441_000_000 };
-  }
-  async getAddressLookupTable(k: PublicKey) {
-    return { context: { slot: 1 }, value: k.equals(ALT.key) ? ALT : null };
-  }
-  async getBalance(k: PublicKey) {
-    return k.toBase58() === TREASURY ? this.treasuryLamports : 2e9;
-  }
-  async getMinimumBalanceForRentExemption() {
-    return 890_880;
-  }
-  async getSignatureStatuses(sigs: string[]) {
-    return { context: { slot: 1 }, value: sigs.map(() => ({ slot: 1, confirmations: null, err: null, confirmationStatus: 'confirmed' as const })) };
-  }
-  async sendRawTransaction() {
-    return sig();
-  }
-  async getParsedTokenAccountsByOwner(owner: PublicKey, filter: { programId?: PublicKey; mint?: PublicKey }) {
-    // Only the classic token program holds these test tokens.
-    if (filter.programId && !filter.programId.equals(TOKEN_PROGRAM_ID)) return { context: { slot: 1 }, value: [] };
-    const rows = (this.held.get(owner.toBase58()) ?? []).filter(([m]) => !filter.mint || filter.mint.toBase58() === m);
-    return {
-      context: { slot: 1 },
-      value: rows.map(([mint, uiAmount]) => ({ pubkey: new PublicKey(addr()), account: { data: { parsed: { info: { mint, tokenAmount: { uiAmount } } } } } })),
-    };
-  }
-}
 
 const SOL = 1_000_000_000n;
 const TOK = 1_000_000n; // one MEME/DOG/RUG in raw units
@@ -250,7 +80,13 @@ describe.skipIf(!ready)('Oxbow tracker API', () => {
     db = createDb(TEST_DATABASE_URL);
     redis = new Redis(TEST_REDIS_URL, { maxRetriesPerRequest: 1 });
     await db.$executeRawUnsafe('TRUNCATE "WalletTrade", "TrackedWallet", "TokenMeta" RESTART IDENTITY CASCADE');
-    jup = new FakeJupiter();
+    jup = new FakeJupiter([
+      token(WSOL, { symbol: 'SOL', name: 'Wrapped SOL', decimals: 9, usdPrice: SOL_USD, logoUri: null }),
+      token(M.meme, { symbol: 'MEME', name: 'Meme Coin', usdPrice: 0.004 }),
+      token(M.dog, { symbol: 'DOG', name: 'Dog', usdPrice: 0.02 }),
+      token(M.usdc, { symbol: 'USDC', name: 'USD Coin', stable: true, usdPrice: 1 }),
+      token(M.rug, { symbol: 'RUG', name: 'Rug', verified: false, usdPrice: 0.0001, liquidity: 900, mintAuthorityOff: false, launchedAt: new Date(NOW - 3_600_000), organicScore: 3 }),
+    ]);
     chain = new FakeChain();
     rpc = new FakeTrackerRpc();
     published = [];

@@ -32,9 +32,12 @@ import { Cache } from './cache';
 import { HttpError, priv, pub, withTimeout } from './http';
 import { TRACKER_HEARTBEAT_KEY, TRACKER_LIVE_KEY, TradeHub, WALLETS_CHANNEL } from './hub';
 import type { Jupiter } from './jupiter';
+import { registerLimitRoutes } from './limit';
 import { registerSwapRoutes, type SwapConfig } from './swap';
 import { Reader } from './tracker/read';
-import { TokenBook } from './tracker/tokens';
+import type { TrackerRpc } from './tracker/rpc';
+import { MarketTape, orderFlow } from './tracker/tape';
+import { STALE, TokenBook } from './tracker/tokens';
 
 /** The RPC calls the API makes (a web3.js Connection in production). */
 export type ChainReader = AccountReader &
@@ -55,6 +58,8 @@ export interface Deps {
   redis: Redis | null;
   rpc: ChainReader;
   jupiter: Jupiter;
+  /** Raw JSON-RPC reads (transactions as the node encodes them), for token order flow. */
+  trackerRpc?: TrackerRpc;
   swap?: SwapConfig;
   /** Most wallets tracked at once; adding more is refused until some go quiet. */
   maxWallets?: number;
@@ -71,6 +76,10 @@ const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const MAX_STREAMS = 5000;
 const HEARTBEAT_MS = 20_000;
 const RPC_TIMEOUT_MS = 5000;
+/** A token's order flow is read from the chain again when older than this. */
+const FLOW_FRESH_MS = 15_000;
+/** Newest signatures read per order-flow refresh. */
+const FLOW_MAX_NEW = 25;
 /** Seen within this long: a wallet's page visit doesn't need to be written down again. */
 const TOUCH_MS = 3_600_000;
 
@@ -84,6 +93,7 @@ export async function buildApp(deps: Deps) {
   const fetchJson = deps.fetchJson ?? ((u: string) => fetchJsonSafely(u));
   const tokens = new TokenBook(deps.db, deps.jupiter, { chain: deps.rpc, fetchJson, ipfsGateway: deps.ipfsGateway, now });
   const reader = new Reader(deps.db, tokens, now);
+  const tape = deps.trackerRpc ? new MarketTape({ rpc: deps.trackerRpc, tokens, redis: deps.redis, now }) : null;
   const streamsPerIp = deps.streamsPerIp ?? 4;
   const maxWallets = deps.maxWallets ?? 1000;
   const openStreams = new Map<string, number>();
@@ -287,6 +297,27 @@ export async function buildApp(deps: Deps) {
     return results.slice(0, 8);
   });
 
+  // Reading fills costs RPC calls: a shared tape per mint, refreshed at most every 15 s.
+  app.get('/api/tokens/:mint/flow', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const { mint } = Mint.parse(req.params);
+    if (!tape) throw new HttpError(503, 'flow_unavailable');
+    const stale = now() - (await tape.refreshedAt(mint)) > FLOW_FRESH_MS;
+    const fills = stale ? await tape.refresh(mint, FLOW_MAX_NEW).catch(() => tape.read(mint)) : await tape.read(mint);
+    const shown = fills.slice(0, 100);
+    const traders = [...new Set(shown.map((f) => f.trader))];
+    const tracked = new Set(
+      traders.length ? (await deps.db.trackedWallet.findMany({ where: { address: { in: traders }, active: true }, select: { address: true } })).map((w) => w.address) : [],
+    );
+    const meta = (await tokens.get([mint], STALE.list)).get(mint);
+    pub(reply, 5);
+    return orderFlow(
+      mint,
+      shown.map(({ slot: _slot, ...f }) => ({ ...f, tracked: tracked.has(f.trader) })),
+      meta?.usdPrice ?? null,
+      now(),
+    );
+  });
+
   app.get('/api/tokens/:mint', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
     const { mint } = Mint.parse(req.params);
     const detail = await cache.wrap(`token:v2:${mint}`, (v) => (v ? 30 : 60), () => reader.token(mint));
@@ -296,6 +327,8 @@ export async function buildApp(deps: Deps) {
   });
 
   // ------------------------------------------------------------ swaps
+
+  registerLimitRoutes(app, deps.jupiter);
 
   const swaps = registerSwapRoutes(app, { jup: deps.jupiter, rpc: deps.rpc, config: deps.swap ?? { feeBps: 0 }, now, log: (m) => app.log.warn(m) });
 
@@ -408,5 +441,5 @@ export async function buildApp(deps: Deps) {
     });
   });
 
-  return { app, hub, cache, tokens, reader };
+  return { app, hub, cache, tokens, reader, tape };
 }

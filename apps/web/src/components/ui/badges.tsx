@@ -1,9 +1,9 @@
 'use client';
 
-/** Small labelled badges: ChangePill, VerifiedChip, FeaturedChip, SafetyPill, PnL. */
+/** Small labelled badges: ChangePill, VerifiedChip, FeaturedChip, SmartChip, SafetyPill, PnL. */
 import { pct, usd, type SafetyLevel } from '@oxbow/shared';
 import { useT } from '@/i18n/client';
-import { ShieldIcon, StarIcon, WarnIcon } from './Icons';
+import { BoltIcon, ShieldIcon, StarIcon, WarnIcon } from './Icons';
 import { cx, Fmt } from './primitives';
 
 export function ChangePill({ value }: { value: number }) {
@@ -32,6 +32,17 @@ export function FeaturedChip() {
     <span className="fchip-star" title={t.wallets.featured}>
       <StarIcon filled />
       <span className="sr-only">{t.common.featured}</span>
+    </span>
+  );
+}
+
+/** Found by Oxbow's discovery: keeps closing trades at a profit. */
+export function SmartChip() {
+  const t = useT();
+  return (
+    <span className="smchip" title={t.wallets.smart}>
+      <BoltIcon />
+      {t.common.smart}
     </span>
   );
 }

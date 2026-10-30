@@ -29,6 +29,7 @@ export const trade = (n: number, wallet: string, side: 'BUY' | 'SELL', token = M
   wallet,
   walletLabel: wallet === W.alpha ? 'Alpha' : null,
   featured: wallet === W.alpha,
+  smart: wallet === W.beta,
   ts: iso(minAgo),
   side,
   token,
@@ -58,14 +59,15 @@ const stats = (o: Record<string, unknown>) => ({
 });
 
 export const WALLETS = [
-  { address: W.alpha, label: 'Alpha', featured: true, stats: stats({}), volume7dUsd: 1400 },
-  { address: W.beta, label: null, featured: false, stats: stats({ realizedPnlUsd: -80, winRate: 0, wins: 0, losses: 1 }), volume7dUsd: 300 },
+  { address: W.alpha, label: 'Alpha', featured: true, smart: false, stats: stats({}), volume7dUsd: 1400 },
+  { address: W.beta, label: null, featured: false, smart: true, stats: stats({ realizedPnlUsd: -80, winRate: 0, wins: 0, losses: 1 }), volume7dUsd: 300 },
 ];
 
 export const walletDetail = (address: string, backfilled = true) => ({
   address,
   label: address === W.alpha ? 'Alpha' : null,
   featured: address === W.alpha,
+  smart: address === W.beta,
   addedAt: iso(600),
   backfilledAt: backfilled ? iso(590) : null,
   stats: stats({}),
@@ -87,13 +89,40 @@ const tokenDetail = (t: typeof MEME, danger = false) => ({
   topHoldersPct: 18,
   devPct: 0,
   safety: danger ? { level: 'DANGER', flags: ['MINTABLE', 'LOW_LIQUIDITY', 'NEW_TOKEN', 'LOW_ORGANIC', 'UNVERIFIED'] } : { level: 'OK', flags: [] },
-  traders: [{ address: W.alpha, label: 'Alpha', featured: true, boughtUsd: 800, soldUsd: 600, netAmount: 100_000, lastSide: 'SELL', lastTradeAt: iso(1) }],
+  solUsd: 200,
+  traders: [{ address: W.alpha, label: 'Alpha', featured: true, smart: false, boughtUsd: 800, soldUsd: 600, netAmount: 100_000, lastSide: 'SELL', lastTradeAt: iso(1) }],
 });
 
 export const HOT = [{ token: MEME, usdPrice: 0.004, change24h: 12.5, mcap: 4_000_000, buyers: 2, sellers: 1, buyUsd: 600, sellUsd: 600, lastTradeAt: iso(1) }];
 
+const fill = (n: number, side: 'BUY' | 'SELL', usd: number, priceUsd: number, trader: string, tracked = false) => ({
+  signature: sig(50 + n),
+  trader,
+  side,
+  amount: usd / priceUsd,
+  usd,
+  priceUsd,
+  ts: iso(n),
+  tracked,
+});
+export const FLOW = {
+  mint: M.meme,
+  trades: [fill(1, 'BUY', 300, 0.0041, W.alpha, true), fill(2, 'SELL', 100, 0.0042, W.fresh), fill(3, 'BUY', 200, 0.0039, W.me)],
+  buys: { count: 2, usd: 500 },
+  sells: { count: 1, usd: 100 },
+  levels: [
+    { priceUsd: 0.0042, buyUsd: 0, sellUsd: 100, buys: 0, sells: 1 },
+    { priceUsd: 0.0041, buyUsd: 300, sellUsd: 0, buys: 1, sells: 0 },
+    { priceUsd: 0.0039, buyUsd: 200, sellUsd: 0, buys: 1, sells: 0 },
+  ],
+  lastPriceUsd: 0.004,
+  windowSec: 180,
+  updatedAt: new Date(NOW).toISOString(),
+};
+
 export interface MockState {
   tracked: Set<string>;
+  orders: Record<string, unknown>[];
   posts: { path: string; body: unknown }[];
   /** Extra events the SSE stream sends once. */
   live: unknown[];
@@ -122,7 +151,7 @@ function quoteFor(q: URLSearchParams) {
 const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 export async function mockApi(page: Page, opts: { live?: unknown[] } = {}): Promise<MockState> {
-  const state: MockState = { tracked: new Set([W.alpha, W.beta]), posts: [], live: opts.live ?? [], feedQueries: [] };
+  const state: MockState = { tracked: new Set([W.alpha, W.beta]), orders: [], posts: [], live: opts.live ?? [], feedQueries: [] };
   await page.route('**/api/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -153,6 +182,20 @@ export async function mockApi(page: Page, opts: { live?: unknown[] } = {}): Prom
     const wm = p.match(/^\/api\/wallets\/(\w+)$/);
     if (wm) return state.tracked.has(wm[1]!) ? json(route, walletDetail(wm[1]!, wm[1] !== W.fresh)) : json(route, { error: 'not_tracked' }, 404);
     if (p === '/api/tokens/hot') return json(route, HOT);
+    if (p.endsWith('/flow')) return json(route, FLOW);
+    if (p === '/api/limit/orders') return json(route, state.orders);
+    if (p === '/api/limit/create') {
+      const b = req.postDataJSON() as Record<string, string>;
+      if (b.makingAmount === '1') return json(route, { error: 'limit_rejected', detail: 'Order size must be at least 5 USD' }, 400);
+      const order = W.fresh;
+      state.orders.push({ order, inputMint: b.inputMint, outputMint: b.outputMint, makingAmount: b.makingAmount, takingAmount: b.takingAmount, remainingMakingAmount: b.makingAmount, createdAt: new Date().toISOString(), expiredAt: null, status: 'Open' });
+      return json(route, { transaction: 'AQID', order });
+    }
+    if (p === '/api/limit/cancel') {
+      const b = req.postDataJSON() as { order: string };
+      state.orders = state.orders.filter((o) => o.order !== b.order);
+      return json(route, { transaction: 'AQID' });
+    }
     if (p === '/api/tokens/search') return json(route, [{ ...MEME, verified: true }]);
     const tm = p.match(/^\/api\/tokens\/(\w+)$/);
     if (tm) return tm[1] === M.meme ? json(route, tokenDetail(MEME)) : tm[1] === M.rug ? json(route, tokenDetail(RUG, true)) : json(route, { error: 'not_found' }, 404);

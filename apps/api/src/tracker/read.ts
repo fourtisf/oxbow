@@ -24,7 +24,7 @@ import { WSOL } from './parse';
 import { openPart, positions, summarize, type PnlTrade } from './pnl';
 import { brief, STALE, type TokenBook } from './tokens';
 
-type WalletInfo = Pick<TrackedWallet, 'address' | 'label' | 'featured'>;
+type WalletInfo = Pick<TrackedWallet, 'address' | 'label' | 'featured' | 'source'>;
 const n = (d: Prisma.Decimal | number | null) => (d === null ? 0 : Number(d));
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
@@ -54,7 +54,7 @@ export class Reader {
       where,
       orderBy: [{ ts: 'desc' }, { id: 'desc' }],
       take: q.limit + 1,
-      include: { trader: { select: { address: true, label: true, featured: true } } },
+      include: { trader: { select: { address: true, label: true, featured: true, source: true } } },
     });
     const page = rows.slice(0, q.limit);
     const metas = await this.tokens.get(
@@ -70,13 +70,13 @@ export class Reader {
 
   // ------------------------------------------------------------ wallets
 
-  /** Featured wallets first, then the rest by realized profit. */
+  /** Featured wallets first, then discovered smart money, then the rest, each by realized profit. */
   async wallets(limit = 100): Promise<WalletSummary[]> {
     const list = await this.db.trackedWallet.findMany({
       where: { active: true },
       orderBy: [{ featured: 'desc' }, { lastTradeAt: { sort: 'desc', nulls: 'last' } }],
       take: 500,
-      select: { address: true, label: true, featured: true },
+      select: { address: true, label: true, featured: true, source: true },
     });
     if (!list.length) return [];
     const trades = await this.db.walletTrade.findMany({
@@ -98,11 +98,12 @@ export class Reader {
         address: w.address,
         label: w.label,
         featured: w.featured,
+        smart: w.source === 'discovered',
         stats: stats(ts, prices),
         volume7dUsd: ts.reduce((s, t) => (t.ts.getTime() >= weekAgo ? s + t.usd : s), 0),
       };
     });
-    rows.sort((a, b) => Number(b.featured) - Number(a.featured) || b.stats.realizedPnlUsd - a.stats.realizedPnlUsd);
+    rows.sort((a, b) => Number(b.featured) - Number(a.featured) || Number(b.smart) - Number(a.smart) || b.stats.realizedPnlUsd - a.stats.realizedPnlUsd);
     return rows.slice(0, limit);
   }
 
@@ -151,6 +152,7 @@ export class Reader {
       address: w.address,
       label: w.label,
       featured: w.featured,
+      smart: w.source === 'discovered',
       addedAt: w.addedAt.toISOString(),
       backfilledAt: iso(w.backfilledAt),
       stats: {
@@ -172,11 +174,11 @@ export class Reader {
       where: { mint, trader: { active: true } },
       orderBy: [{ ts: 'asc' }, { id: 'asc' }],
       take: 5000,
-      include: { trader: { select: { address: true, label: true, featured: true } } },
+      include: { trader: { select: { address: true, label: true, featured: true, source: true } } },
     });
     const by = new Map<string, TokenTrader>();
     for (const r of rows) {
-      const t = by.get(r.wallet) ?? { address: r.wallet, label: r.trader.label, featured: r.trader.featured, boughtUsd: 0, soldUsd: 0, netAmount: 0, lastSide: r.side, lastTradeAt: '' };
+      const t = by.get(r.wallet) ?? { address: r.wallet, label: r.trader.label, featured: r.trader.featured, smart: r.trader.source === 'discovered', boughtUsd: 0, soldUsd: 0, netAmount: 0, lastSide: r.side, lastTradeAt: '' };
       if (r.side === 'BUY') {
         t.boughtUsd += n(r.usd);
         t.netAmount += n(r.amount);
@@ -218,6 +220,7 @@ export class Reader {
       devPct: meta.devPct,
       safety: { level: safetyLevel(flags), flags },
       traders,
+      solUsd: await this.tokens.solPrice().catch(() => null),
     };
   }
 

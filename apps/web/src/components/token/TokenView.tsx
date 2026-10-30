@@ -10,6 +10,7 @@ import { useNow } from '@/lib/hooks';
 import { links } from '@/lib/links';
 import { useTrade } from '@/lib/store/trade';
 import { Feed } from '../feed/Feed';
+import { OrderFlow } from './OrderFlow';
 import { ChangePill, SafetyPill, VerifiedChip } from '../ui/badges';
 import { CopyIcon, WarnIcon } from '../ui/Icons';
 import { ExtLink } from '../ui/ExtLink';
@@ -139,6 +140,8 @@ export function TokenView({ mint }: { mint: string }) {
         </div>
       </dl>
 
+      <OrderFlow mint={mint} />
+
       <div className="wgrid">
         <div className="wcol">
           <Safety d={d} />
@@ -162,7 +165,7 @@ export function TokenView({ mint }: { mint: string }) {
                     {d.traders.map((w) => (
                       <tr key={w.address}>
                         <td>
-                          <WalletTag address={w.address} label={w.label} featured={w.featured} size={24} />
+                          <WalletTag address={w.address} label={w.label} featured={w.featured} smart={w.smart} size={24} />
                           <small className="muted rel" suppressHydrationWarning>
                             {relTimeL(Date.parse(w.lastTradeAt), t, now)}
                           </small>

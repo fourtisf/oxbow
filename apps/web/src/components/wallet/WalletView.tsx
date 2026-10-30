@@ -18,7 +18,7 @@ import { useFollow, useWalletName } from '@/lib/store/follow';
 import { toast } from '@/lib/store/toast';
 import { useTrade } from '@/lib/store/trade';
 import { Feed } from '../feed/Feed';
-import { FeaturedChip, Pnl } from '../ui/badges';
+import { FeaturedChip, Pnl, SmartChip } from '../ui/badges';
 import { CopyIcon, ExternalIcon, StarIcon } from '../ui/Icons';
 import { Button, cx, Fmt } from '../ui/primitives';
 import { TokenTag } from '../ui/TokenTag';
@@ -121,7 +121,7 @@ function Header({ address, d }: { address: string; d: WalletDetail | null }) {
       <div className="whead-main">
         <h1>
           <span suppressHydrationWarning>{name ?? shortAddr(address)}</span>
-          {d?.featured && <FeaturedChip />}
+          {d?.featured ? <FeaturedChip /> : d?.smart ? <SmartChip /> : null}
         </h1>
         <div className="waddr">
           <span className="mono">{shortAddr(address)}</span>

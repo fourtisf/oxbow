@@ -16,6 +16,7 @@ import { CheckIcon, CloseIcon, ExternalIcon, WarnIcon } from '../ui/Icons';
 import { Modal } from '../ui/overlay';
 import { Button, cx, Fmt } from '../ui/primitives';
 import { TokenAvatar } from '../ui/TokenAvatar';
+import { LimitForm } from './LimitForm';
 
 const SOL_DECIMALS = 9;
 /** SOL kept back on MAX for network and account fees. */
@@ -45,6 +46,8 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
   const wallet = useWallet((s) => s.wallet);
   const openWallet = useWallet((s) => s.open);
   const [side, setSide] = useState<TradeSide>(target!.side);
+  const [mode, setMode] = useState<'market' | 'limit'>('market');
+  const [limitBusy, setLimitBusy] = useState(false);
   const [input, setInput] = useState('');
   const [step, setStep] = useState<number | null>(null);
   const [error, setError] = useState<TradeErrorCode | null>(null);
@@ -73,14 +76,14 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
   const quote = useQuery({
     queryKey: ['quote', inMint, outMint, amount, slippageBps],
     queryFn: () => getQuote({ inputMint: inMint, outputMint: outMint, amount: BigInt(amount), slippageBps }),
-    enabled: BigInt(amount) > 0n && step === null && !done,
+    enabled: mode === 'market' && BigInt(amount) > 0n && step === null && !done,
     refetchInterval: 15_000,
     retry: false,
   });
   const q = quote.data && quote.data.inputMint === inMint && BigInt(amount) === raw ? quote.data : null;
   const noRoute = (quote.error as { code?: string } | null)?.code === 'no_route';
 
-  useEffect(() => onBusy(step !== null), [step, onBusy]);
+  useEffect(() => onBusy(step !== null || limitBusy), [step, limitBusy, onBusy]);
   useEffect(() => {
     setInput('');
     setError(null);
@@ -125,7 +128,7 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
             {target!.from && <p className="m-sub">{t.trade.copying(target!.from.name ?? shortAddr(target!.from.address))}</p>}
           </div>
         </div>
-        <button type="button" className="icon-btn" onClick={close} aria-label={t.common.close} disabled={step !== null}>
+        <button type="button" className="icon-btn" onClick={close} aria-label={t.common.close} disabled={step !== null || limitBusy}>
           <CloseIcon />
         </button>
       </div>
@@ -146,14 +149,26 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
       ) : (
         <>
           <div className="seg tp-side" role="group" aria-label={t.trade.side}>
-            <button type="button" aria-pressed={buy} onClick={() => setSide('BUY')} disabled={step !== null}>
+            <button type="button" aria-pressed={buy} onClick={() => setSide('BUY')} disabled={step !== null || limitBusy}>
               {t.trade.buy}
             </button>
-            <button type="button" aria-pressed={!buy} onClick={() => setSide('SELL')} disabled={step !== null}>
+            <button type="button" aria-pressed={!buy} onClick={() => setSide('SELL')} disabled={step !== null || limitBusy}>
               {t.trade.sell}
             </button>
           </div>
 
+          <div className="seg tp-mode" role="group" aria-label={t.trade.mode}>
+            <button type="button" aria-pressed={mode === 'market'} onClick={() => setMode('market')} disabled={step !== null || limitBusy}>
+              {t.trade.market}
+            </button>
+            <button type="button" aria-pressed={mode === 'limit'} onClick={() => setMode('limit')} disabled={step !== null || limitBusy}>
+              {t.trade.limit}
+            </button>
+          </div>
+          {mode === 'limit' ? (
+            <LimitForm key={side} token={token} side={side} onBusy={setLimitBusy} />
+          ) : (
+            <>
           <div className="flabel">
             <span>{buy ? t.trade.youPay : t.trade.youSell}</span>
             {balIn !== null && (
@@ -271,6 +286,8 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
                       ? t.trade.confirmBuy(token.symbol)
                       : t.trade.confirmSell(token.symbol)}
           </Button>
+            </>
+          )}
           <p className="fine">{t.trade.disclaimer}</p>
         </>
       )}

@@ -4,6 +4,8 @@ import {
   FeedPageSchema,
   FeedTradeSchema,
   HotTokenSchema,
+  LimitOrderSchema,
+  OrderFlowSchema,
   StatusSchema,
   TokenDetailSchema,
   TokenSearchResultSchema,
@@ -74,6 +76,8 @@ export const httpApi: OxbowApi = {
   addWallet: (address) => post('/api/wallets', { address }, AddWalletResultSchema),
   hot: () => get('/api/tokens/hot', z.array(HotTokenSchema)),
   token: (mint) => get(`/api/tokens/${enc(mint)}`, TokenDetailSchema.nullable(), { nullOn404: true }),
+  flow: (mint) => get(`/api/tokens/${enc(mint)}/flow`, OrderFlowSchema),
+  limitOrders: (wallet) => get(`/api/limit/orders?wallet=${enc(wallet)}`, z.array(LimitOrderSchema)),
   searchTokens: (q) => get(`/api/tokens/search?q=${enc(q)}`, z.array(TokenSearchResultSchema)),
   status: () => get('/api/status', StatusSchema),
   subscribe(onTrade) {

@@ -17,6 +17,8 @@ model TrackedWallet {
   address        String        @id
   label          String?
   featured       Boolean       @default(false)
+  /// How it got here: "owner" (wallets CLI), "user" (pasted on the site) or "discovered" (found profitable by the worker).
+  source         String        @default("user")
   /// Turned off when nobody has looked at it for a while (user-added only).
   active         Boolean       @default(true)
   addedAt        DateTime      @default(now())

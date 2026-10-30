@@ -28,7 +28,7 @@ export function TopWallets({ limit = 6 }: { limit?: number }) {
         <ul className="toplist">
           {data.slice(0, limit).map((w) => (
             <li key={w.address}>
-              <WalletTag address={w.address} label={w.label} featured={w.featured} />
+              <WalletTag address={w.address} label={w.label} featured={w.featured} smart={w.smart} />
               <span className="topnum">
                 <Pnl value={w.stats.realizedPnlUsd} className="mono" />
                 <small className="muted mono">{w.stats.winRate === null ? '—' : `${Math.round(w.stats.winRate * 100)}% ${t.wallets.th.winRate.toLowerCase()}`}</small>

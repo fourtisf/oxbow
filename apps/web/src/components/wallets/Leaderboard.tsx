@@ -23,7 +23,6 @@ export function Leaderboard() {
             <th>#</th>
             <th>{t.wallets.th.wallet}</th>
             <th className="r">{t.wallets.th.pnl}</th>
-            <th className="r">{t.wallets.th.unrealized}</th>
             <th className="r">{t.wallets.th.winRate}</th>
             <th className="r">{t.wallets.th.trades}</th>
             <th className="r">{t.wallets.th.volume}</th>
@@ -35,13 +34,10 @@ export function Leaderboard() {
             <tr key={w.address}>
               <td className="mono muted">{i + 1}</td>
               <td>
-                <WalletTag address={w.address} label={w.label} featured={w.featured} />
+                <WalletTag address={w.address} label={w.label} featured={w.featured} smart={w.smart} />
               </td>
               <td className="r mono">
                 <Pnl value={w.stats.realizedPnlUsd} />
-              </td>
-              <td className="r mono">
-                <Pnl value={w.stats.unrealizedPnlUsd} />
               </td>
               <td className="r mono">{w.stats.winRate === null ? '—' : `${Math.round(w.stats.winRate * 100)}%`}</td>
               <td className="r mono">{w.stats.trades.toLocaleString('en-US')}</td>

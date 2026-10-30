@@ -7,15 +7,19 @@
  * wallet's own prompt.
  */
 import { z } from 'zod';
-import { BalancesSchema, BuiltSwapSchema, SwapQuoteSchema, TxStatusSchema, type SwapQuote, type SwapQuoteQuery } from '@oxbow/shared';
+import { BalancesSchema, BuiltLimitSchema, BuiltSwapSchema, SwapQuoteSchema, TxStatusSchema, type LimitCreateBody, type SwapQuote, type SwapQuoteQuery } from '@oxbow/shared';
 import { ApiError, get, post, qs } from './api/http';
 import type { ConnectedWallet } from './store/wallet';
 import { signAndSend, WalletError } from './wallets';
 
-export type TradeErrorCode = 'REJECTED' | 'CANT_SIGN' | 'TX_FAILED' | 'TIMEOUT' | 'NO_ROUTE' | 'FAILED';
+export type TradeErrorCode = 'REJECTED' | 'CANT_SIGN' | 'TX_FAILED' | 'TIMEOUT' | 'NO_ROUTE' | 'FAILED' | 'REJECTED_BY_JUPITER';
 
 export class TradeError extends Error {
-  constructor(readonly code: TradeErrorCode) {
+  constructor(
+    readonly code: TradeErrorCode,
+    /** Jupiter's own words, when it refused. */
+    readonly detail = '',
+  ) {
     super(code);
   }
 }
@@ -26,6 +30,7 @@ const toB64 = (b: Uint8Array) => btoa(Array.from(b, (c) => String.fromCharCode(c
 
 export function asTradeError(e: unknown): TradeError {
   if (e instanceof TradeError) return e;
+  if (e instanceof ApiError && e.code === 'limit_rejected') return new TradeError('REJECTED_BY_JUPITER', String(e.details.detail ?? ''));
   if (e instanceof WalletError) return new TradeError(e.code === 'REJECTED' ? 'REJECTED' : e.code === 'CANT_SIGN' ? 'CANT_SIGN' : 'FAILED');
   if (e instanceof ApiError && (e.code === 'no_route' || e.code === 'sol_side_required')) return new TradeError('NO_ROUTE');
   return new TradeError('FAILED');
@@ -70,6 +75,33 @@ export async function executeSwap(wallet: ConnectedWallet, q: QuoteInput, onStep
   } catch (e) {
     throw asTradeError(e);
   }
+}
+
+/** Signs, sends and confirms a transaction the API built (limit orders). `onStep` as for swaps. */
+async function signBuilt(wallet: ConnectedWallet, build: () => Promise<{ transaction: string }>, onStep: (step: number) => void): Promise<string> {
+  try {
+    onStep(0);
+    const built = await build();
+    onStep(1);
+    const signature = await signAndSend(wallet.name, wallet.address, fromB64(built.transaction), async (signed) => {
+      const r = await post('/api/tx/send', { transaction: toB64(signed) }, z.object({ signature: z.string() }));
+      return r.signature;
+    });
+    onStep(2);
+    await confirmed(signature);
+    return signature;
+  } catch (e) {
+    throw asTradeError(e);
+  }
+}
+
+/** Opens a limit order through Jupiter. Resolves with the signature. */
+export function placeLimit(wallet: ConnectedWallet, body: Omit<LimitCreateBody, 'wallet'>, onStep: (step: number) => void) {
+  return signBuilt(wallet, () => post('/api/limit/create', { ...body, wallet: wallet.address }, BuiltLimitSchema), onStep);
+}
+
+export function cancelLimit(wallet: ConnectedWallet, order: string, onStep: (step: number) => void = () => {}) {
+  return signBuilt(wallet, () => post('/api/limit/cancel', { wallet: wallet.address, order }, BuiltLimitSchema), onStep);
 }
 
 /** "1.5" in UI units to raw units; extra decimals are cut, never rounded up. 0n when not a number. */

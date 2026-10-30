@@ -38,4 +38,9 @@ export const useToken = (mint: string) =>
 export const useTokenSearch = (q: string) =>
   useQuery({ queryKey: qk.search(q), queryFn: () => api.searchTokens(q), enabled: q.trim().length >= 2, staleTime: 5 * 60_000, retry: false });
 
+export const useFlow = (mint: string) => useQuery({ queryKey: qk.flow(mint), queryFn: () => api.flow(mint), enabled: isAddress(mint), refetchInterval: 15_000, retry: false });
+
+export const useLimitOrders = (wallet: string | null | undefined) =>
+  useQuery({ queryKey: qk.limitOrders(wallet ?? ''), queryFn: () => api.limitOrders(wallet!), enabled: !!wallet, refetchInterval: 30_000, retry: false });
+
 export const useStatus = () => useQuery({ queryKey: qk.status(), queryFn: () => api.status(), refetchInterval: 30_000 });

@@ -32,6 +32,7 @@ export const STALE = {
 } as const;
 
 const SOL_PRICE_MS = 30_000;
+const SOL_PRICE_MAX_AGE_MS = 3_600_000;
 /** A stand-in row is retried after this long, even by trade reading. */
 const STAND_IN_RETRY_MS = 10 * 60_000;
 
@@ -72,6 +73,7 @@ export class TokenBook {
     for (const t of fetched.values()) out.set(t.mint, await this.save(t, 'jupiter'));
 
     // Never seen and unknown to Jupiter (or Jupiter unreachable): ask the chain, else keep what the transaction said.
+    // A row we already have is kept as it is: stale data beats a stand-in.
     for (const mint of todo) {
       if (out.has(mint) || fetched.has(mint)) continue;
       const chain = await this.fromChain(mint);
@@ -81,12 +83,16 @@ export class TokenBook {
     return out;
   }
 
-  /** Today's SOL price in USD, from Jupiter, at most 30 s old. Null when Jupiter can't be reached and nothing is stored. */
+  /**
+   * SOL's USD price from Jupiter, refreshed every 30 s. While Jupiter can't be reached the
+   * last price is used for up to an hour; after that, null (and trades wait to be priced).
+   */
   async solPrice(): Promise<number | null> {
     if (this.solUsd && this.now() - this.solUsd.at < SOL_PRICE_MS) return this.solUsd.usd;
     const row = (await this.get([WSOL], SOL_PRICE_MS)).get(WSOL);
-    if (row?.usdPrice) this.solUsd = { usd: row.usdPrice, at: this.now() };
-    return row?.usdPrice ?? null;
+    if (!row?.usdPrice || row.source !== 'jupiter' || this.now() - row.updatedAt.getTime() > SOL_PRICE_MAX_AGE_MS) return null;
+    if (this.now() - row.updatedAt.getTime() < SOL_PRICE_MS) this.solUsd = { usd: row.usdPrice, at: this.now() };
+    return row.usdPrice;
   }
 
   private async fromChain(mint: string): Promise<JupiterToken | null> {

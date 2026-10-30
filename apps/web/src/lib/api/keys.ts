@@ -11,4 +11,6 @@ export const qk = {
   search: (q: string) => ['search', q.toLowerCase()] as const,
   balances: (wallet: string, mints: string[]) => ['balances', wallet, mints] as const,
   status: () => ['status'] as const,
+  flow: (mint: string) => ['flow', mint] as const,
+  limitOrders: (wallet: string) => ['limitOrders', wallet] as const,
 };

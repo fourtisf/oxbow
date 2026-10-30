@@ -40,6 +40,8 @@ export const FeedTradeSchema = z.object({
   wallet: AddressSchema,
   walletLabel: z.string().max(40).nullable(),
   featured: z.boolean(),
+  /** Found profitable by Oxbow's discovery, not added by hand. */
+  smart: z.boolean(),
   ts: z.string().datetime(),
   side: TradeSideSchema,
   token: TokenBriefSchema,
@@ -104,6 +106,7 @@ export const WalletSummarySchema = z.object({
   address: AddressSchema,
   label: z.string().max(40).nullable(),
   featured: z.boolean(),
+  smart: z.boolean(),
   stats: WalletStatsSchema,
   /** USD volume over the last 7 days. */
   volume7dUsd: z.number().nonnegative(),
@@ -140,6 +143,7 @@ export const WalletDetailSchema = z.object({
   address: AddressSchema,
   label: z.string().max(40).nullable(),
   featured: z.boolean(),
+  smart: z.boolean(),
   /** Oxbow follows this wallet on chain. Untracked wallets return 404. */
   addedAt: z.string().datetime(),
   /** Null while its history is still being read (right after it was added). */
@@ -178,6 +182,7 @@ export const TokenTraderSchema = z.object({
   address: AddressSchema,
   label: z.string().max(40).nullable(),
   featured: z.boolean(),
+  smart: z.boolean(),
   boughtUsd: z.number().nonnegative(),
   soldUsd: z.number().nonnegative(),
   /** Bought minus sold, in UI units. Positive means it may still hold some. */
@@ -202,6 +207,8 @@ export const TokenDetailSchema = TokenBriefSchema.extend({
   devPct: z.number().min(0).max(100).nullable(),
   safety: z.object({ level: SafetyLevelSchema, flags: z.array(SafetyFlagSchema) }),
   traders: z.array(TokenTraderSchema),
+  /** SOL's USD price now, for turning USD limit prices into SOL amounts. */
+  solUsd: z.number().positive().nullable(),
 });
 export type TokenDetail = z.infer<typeof TokenDetailSchema>;
 
@@ -272,6 +279,80 @@ export const BuiltSwapSchema = z.object({
   lastValidBlockHeight: z.number().int(),
 });
 export type BuiltSwap = z.infer<typeof BuiltSwapSchema>;
+
+/** One fill in a token's market, any trader (read from the chain). */
+export const MarketTradeSchema = z.object({
+  signature: SignatureSchema,
+  trader: AddressSchema,
+  side: TradeSideSchema,
+  amount: z.number().nonnegative(),
+  usd: z.number().nonnegative(),
+  priceUsd: z.number().nonnegative(),
+  ts: z.string().datetime(),
+  /** The trader is a wallet Oxbow tracks. */
+  tracked: z.boolean(),
+});
+export type MarketTrade = z.infer<typeof MarketTradeSchema>;
+
+/** A price level of the order flow: what filled there, each side. */
+export const FlowLevelSchema = z.object({
+  priceUsd: z.number().nonnegative(),
+  buyUsd: z.number().nonnegative(),
+  sellUsd: z.number().nonnegative(),
+  buys: z.number().int().nonnegative(),
+  sells: z.number().int().nonnegative(),
+});
+export type FlowLevel = z.infer<typeof FlowLevelSchema>;
+
+/** `GET /api/tokens/:mint/flow` — the token's latest fills grouped like an order book. */
+export const OrderFlowSchema = z.object({
+  mint: AddressSchema,
+  trades: z.array(MarketTradeSchema),
+  buys: z.object({ count: z.number().int().nonnegative(), usd: z.number().nonnegative() }),
+  sells: z.object({ count: z.number().int().nonnegative(), usd: z.number().nonnegative() }),
+  /** Highest price first. Levels above the last price are mostly sells, below mostly buys. */
+  levels: z.array(FlowLevelSchema),
+  lastPriceUsd: z.number().nonnegative().nullable(),
+  /** Seconds between the oldest and newest fill shown. */
+  windowSec: z.number().nonnegative(),
+  updatedAt: z.string().datetime(),
+});
+export type OrderFlow = z.infer<typeof OrderFlowSchema>;
+
+/** `POST /api/limit/create` — a limit order through Jupiter (one side is SOL). Amounts are raw units. */
+export const LimitCreateBodySchema = z.object({
+  wallet: AddressSchema,
+  inputMint: AddressSchema,
+  outputMint: AddressSchema,
+  makingAmount: RawAmount,
+  takingAmount: RawAmount,
+  /** Unix seconds; never when absent. */
+  expiredAt: z.number().int().positive().optional(),
+});
+export type LimitCreateBody = z.infer<typeof LimitCreateBodySchema>;
+
+/** An unsigned transaction from Jupiter's limit-order service for the wallet to sign. */
+export const BuiltLimitSchema = z.object({
+  transaction: z.string().min(1),
+  order: AddressSchema.optional(),
+});
+export type BuiltLimit = z.infer<typeof BuiltLimitSchema>;
+
+export const LimitOrderSchema = z.object({
+  order: AddressSchema,
+  inputMint: AddressSchema,
+  outputMint: AddressSchema,
+  makingAmount: z.string(),
+  takingAmount: z.string(),
+  remainingMakingAmount: z.string(),
+  createdAt: z.string().datetime().nullable(),
+  expiredAt: z.string().datetime().nullable(),
+  status: z.string().max(32),
+});
+export type LimitOrder = z.infer<typeof LimitOrderSchema>;
+
+/** `POST /api/limit/cancel` */
+export const LimitCancelBodySchema = z.object({ wallet: AddressSchema, order: AddressSchema });
 
 /** `POST /api/tx/send` — a signed transaction for wallets that sign but don't send. */
 export const SendTxBodySchema = z.object({ transaction: z.string().min(1).max(4096) });

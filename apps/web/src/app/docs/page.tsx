@@ -7,7 +7,7 @@ export function generateMetadata(): Metadata {
   return { title: getT().meta.docs };
 }
 
-const TOC = ['overview', 'copy', 'fees', 'pnl', 'safety', 'risks', 'faq'] as const;
+const TOC = ['overview', 'smart', 'copy', 'limit', 'flow', 'fees', 'pnl', 'safety', 'risks', 'faq'] as const;
 const FLAGS: SafetyFlag[] = ['MINTABLE', 'FREEZABLE', 'LOW_LIQUIDITY', 'CONCENTRATED', 'DEV_HOLDS_MUCH', 'NEW_TOKEN', 'LOW_ORGANIC', 'UNVERIFIED'];
 /** The fee the API charges by default (OXBOW_FEE_BPS); shown in the docs as a percentage. */
 const FEE_PCT = `${(Number(process.env.NEXT_PUBLIC_OXBOW_FEE_BPS) || 50) / 100}%`;
@@ -35,11 +35,27 @@ export default function DocsPage() {
               <p>{t.docs.overview1}</p>
               <p>{t.docs.overview2}</p>
             </section>
+            <section className="card" id="d-smart">
+              <div className="label">{t.docs.toc.smart}</div>
+              <h2>{t.docs.smartH}</h2>
+              <p>{t.docs.smart1}</p>
+              <p>{t.docs.smart2}</p>
+            </section>
             <section className="card" id="d-copy">
               <div className="label">{t.docs.toc.copy}</div>
               <h2>{t.docs.copyH}</h2>
               <p>{t.docs.copy1}</p>
               <p>{t.docs.copy2}</p>
+            </section>
+            <section className="card" id="d-limit">
+              <div className="label">{t.docs.toc.limit}</div>
+              <h2>{t.docs.limitH}</h2>
+              <p>{t.docs.limit1}</p>
+            </section>
+            <section className="card" id="d-flow">
+              <div className="label">{t.docs.toc.flow}</div>
+              <h2>{t.docs.flowH}</h2>
+              <p>{t.docs.flow1}</p>
             </section>
             <section className="card" id="d-fees">
               <div className="label">{t.docs.toc.fees}</div>

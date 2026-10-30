@@ -23,7 +23,7 @@ export function TradeRow({ trade, now, fresh, hideWallet }: { trade: FeedTrade; 
       <span className={cx('tside', buy ? 'buy' : 'sell')}>{buy ? 'BUY' : 'SELL'}</span>
       <div className="tmain">
         <div className="tline">
-          {!hideWallet && <WalletTag address={trade.wallet} label={trade.walletLabel} featured={trade.featured} size={22} />}
+          {!hideWallet && <WalletTag address={trade.wallet} label={trade.walletLabel} featured={trade.featured} smart={trade.smart} size={22} />}
           <span className="muted">{buy ? t.feed.bought : t.feed.sold}</span>
           <span className="tamt mono">
             <Fmt>{amt(trade.amount)}</Fmt>

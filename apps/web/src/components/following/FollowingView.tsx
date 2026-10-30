@@ -37,7 +37,7 @@ export function FollowingView() {
             <ul className="flist">
               {list.map((f) => (
                 <li key={f.address}>
-                  <WalletTag address={f.address} label={known.get(f.address)?.label} featured={known.get(f.address)?.featured} />
+                  <WalletTag address={f.address} label={known.get(f.address)?.label} featured={known.get(f.address)?.featured} smart={known.get(f.address)?.smart} />
                   <FollowControls address={f.address} label={known.get(f.address)?.label ?? null} />
                   <button type="button" className="icon-btn sm" aria-label={`${t.following.remove} ${f.address}`} onClick={() => unfollow(f.address)}>
                     <CloseIcon />

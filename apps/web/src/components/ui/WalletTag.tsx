@@ -6,7 +6,7 @@ import { walletHref } from '@/lib/links';
 import { useWalletName } from '@/lib/store/follow';
 import { useHydrated } from '@/lib/hooks';
 import { avatarSrc } from '@/lib/avatar';
-import { FeaturedChip } from './badges';
+import { FeaturedChip, SmartChip } from './badges';
 import { cx } from './primitives';
 
 /** Pixel identicon drawn from the address (canvas, so client only). */
@@ -17,7 +17,23 @@ export function WalletAvatar({ address, size = 28 }: { address: string; size?: n
 }
 
 /** A wallet as lists show it: avatar, the viewer's nickname or the featured label or the short address, and the featured star. */
-export function WalletTag({ address, label, featured, link = true, size = 28, className }: { address: string; label?: string | null; featured?: boolean; link?: boolean; size?: number; className?: string }) {
+export function WalletTag({
+  address,
+  label,
+  featured,
+  smart,
+  link = true,
+  size = 28,
+  className,
+}: {
+  address: string;
+  label?: string | null;
+  featured?: boolean;
+  smart?: boolean;
+  link?: boolean;
+  size?: number;
+  className?: string;
+}) {
   const name = useWalletName(address, label);
   const body = (
     <>
@@ -26,7 +42,7 @@ export function WalletTag({ address, label, featured, link = true, size = 28, cl
         <b className={name ? undefined : 'mono'} suppressHydrationWarning>
           {name ?? shortAddr(address)}
         </b>
-        {featured && <FeaturedChip />}
+        {featured ? <FeaturedChip /> : smart ? <SmartChip /> : null}
       </span>
     </>
   );

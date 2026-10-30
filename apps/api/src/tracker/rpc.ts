@@ -4,6 +4,7 @@
  * shape of the test fixtures). Rate limits (429) and node hiccups are retried
  * a few times with backoff.
  */
+import { PublicKey } from '@solana/web3.js';
 import type { RawTx } from './parse';
 
 export interface SignatureInfo {
@@ -17,6 +18,8 @@ export interface TrackerRpc {
   getTransaction(signature: string): Promise<RawTx | null>;
   /** Newest first. `until` stops before that signature; `before` starts after it. */
   getSignatures(address: string, opts: { limit: number; until?: string; before?: string }): Promise<SignatureInfo[]>;
+  /** Owners of the mint's largest token accounts that are ordinary wallets (pool vaults and other program accounts left out). */
+  getTopHolders(mint: string): Promise<string[]>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -49,6 +52,21 @@ export function jsonRpc(url: string, opts: { timeoutMs?: number; retries?: numbe
   return {
     getTransaction: (signature) =>
       call<RawTx | null>('getTransaction', [signature, { encoding: 'json', commitment: 'confirmed', maxSupportedTransactionVersion: 1 }]),
+    async getTopHolders(mint) {
+      const largest = await call<{ value: { address: string }[] }>('getTokenLargestAccounts', [mint, { commitment: 'confirmed' }]);
+      const accounts = largest.value.map((a) => a.address).slice(0, 20);
+      if (!accounts.length) return [];
+      const infos = await call<{ value: ({ data: { parsed?: { info?: { owner?: string } } } } | null)[] }>('getMultipleAccounts', [accounts, { encoding: 'jsonParsed', commitment: 'confirmed' }]);
+      const owners = infos.value.map((a) => a?.data?.parsed?.info?.owner).filter((o): o is string => typeof o === 'string');
+      // Pools hold their tokens in accounts owned by program addresses, which are off the curve.
+      return [...new Set(owners)].filter((o) => {
+        try {
+          return PublicKey.isOnCurve(new PublicKey(o).toBytes());
+        } catch {
+          return false;
+        }
+      });
+    },
     getSignatures: (address, o) =>
       call<SignatureInfo[]>('getSignaturesForAddress', [address, { limit: o.limit, commitment: 'confirmed', ...(o.until ? { until: o.until } : {}), ...(o.before ? { before: o.before } : {}) }]),
   };

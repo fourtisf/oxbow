@@ -122,6 +122,81 @@ test.describe('tokens', () => {
   });
 });
 
+test.describe('order flow and smart money', () => {
+  test('a token page shows its order flow: pressure, price levels and fills, tracked wallets marked', async ({ page }) => {
+    await mockApi(page);
+    await page.goto(`/token/${M.meme}`);
+    const flow = page.locator('.flow');
+    await expect(flow.getByRole('heading', { name: 'Order flow' })).toBeVisible();
+    await expect(flow.locator('.press-row')).toContainText('83%');
+    await expect(flow.locator('.book tbody tr')).toHaveCount(3);
+    await expect(flow.locator('.fills li')).toHaveCount(3);
+    await expect(flow.locator('.fills li.tracked')).toHaveCount(1);
+    await expect(flow).toContainText('last 3m');
+  });
+
+  test('discovered wallets carry the SMART badge in the feed and on the leaderboard', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/wallets');
+    await expect(page.locator('table.lb tbody tr').nth(1).locator('.smchip')).toHaveText('SMART');
+    await expect(page.locator('table.lb tbody tr').first().locator('.smchip')).toHaveCount(0);
+    await page.goto('/');
+    await expect(page.locator('.feedcard .trow', { hasText: 'RUG' }).locator('.smchip')).toBeVisible();
+  });
+});
+
+test.describe('limit orders', () => {
+  test('place a limit buy at a target price, see it open, cancel it', async ({ page }) => {
+    const api = await mockApi(page);
+    await fakePhantom(page);
+    await page.goto(`/token/${M.meme}`);
+    await page.getByRole('button', { name: 'Select Wallet' }).first().click();
+    await acceptTermsIfAsked(page);
+    await page.getByRole('dialog', { name: 'Select wallet' }).getByRole('button', { name: 'Phantom', exact: true }).click();
+    await expect(page.getByText('Connected Phantom')).toBeVisible();
+    await page.locator('.tacts').getByRole('button', { name: 'Buy' }).click();
+    const panel = page.getByRole('dialog', { name: 'Buy MEME' });
+    await panel.getByRole('button', { name: 'Limit' }).click();
+    await panel.getByRole('textbox', { name: 'You pay' }).fill('0.5');
+    await panel.getByRole('textbox', { name: 'MEME price (USD)' }).fill('0.002');
+    // 0.5 SOL at $200 = $100, at $0.002 a token = 50,000 MEME.
+    await expect(panel.locator('.tp-quote')).toContainText('50.0K MEME');
+    await panel.getByRole('button', { name: 'Place buy order for MEME' }).click();
+    await expect(panel.getByRole('heading', { name: 'Order placed' })).toBeVisible();
+    expect(api.posts.find((p) => p.path === '/api/limit/create')?.body).toMatchObject({
+      wallet: W.me,
+      inputMint: 'So11111111111111111111111111111111111111112',
+      outputMint: M.meme,
+      makingAmount: '500000000',
+      takingAmount: '50000000000',
+    });
+    await panel.getByRole('button', { name: 'Your open orders' }).click();
+    const orders = panel.locator('.orders li');
+    await expect(orders).toHaveCount(1);
+    await expect(orders).toContainText('Buy 50.0K MEME');
+    await orders.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByText('Order cancelled')).toBeVisible();
+    await expect(panel.locator('.orders li')).toHaveCount(0);
+  });
+
+  test('warns when a buy target is above the market and blocks orders under $5', async ({ page }) => {
+    await mockApi(page);
+    await fakePhantom(page);
+    await page.goto(`/token/${M.meme}`);
+    await page.getByRole('button', { name: 'Select Wallet' }).first().click();
+    await acceptTermsIfAsked(page);
+    await page.getByRole('dialog', { name: 'Select wallet' }).getByRole('button', { name: 'Phantom', exact: true }).click();
+    await page.locator('.tacts').getByRole('button', { name: 'Buy' }).click();
+    const panel = page.getByRole('dialog', { name: 'Buy MEME' });
+    await panel.getByRole('button', { name: 'Limit' }).click();
+    await panel.getByRole('textbox', { name: 'MEME price (USD)' }).fill('0.01');
+    await expect(panel.locator('.note.warn')).toContainText('Above the current price');
+    await panel.getByRole('textbox', { name: 'You pay' }).fill('0.01');
+    await expect(panel.getByText('Jupiter needs at least $5 per order.')).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Place buy order for MEME' })).toBeDisabled();
+  });
+});
+
 test.describe('copy trading', () => {
   test('copy a buy: quote with the fee, connect, approve in the wallet, confirmed', async ({ page }) => {
     const api = await mockApi(page);

@@ -7,6 +7,10 @@
  * - Catch-up: every TRACKER_RESYNC_SEC each wallet's signatures since its
  *   bookmark are read, covering anything the websocket missed (restarts,
  *   dropped connections). New wallets get their history read the same way.
+ * - Discovery: every DISCOVERY_EVERY_MIN, traders of the tokens trading most
+ *   right now are checked and the profitable ones tracked as smart money
+ *   (tracker/discovery.ts); once a day, discovered wallets that stopped
+ *   earning are dropped.
  * - Upkeep: token data refreshed for what was traded today, and wallets nobody
  *   has followed or opened for WALLET_IDLE_DAYS stop being tracked.
  */
@@ -18,8 +22,10 @@ import { loadConfig } from './config';
 import { loadEnvFile } from './env-file';
 import { TRACKER_HEARTBEAT_KEY, TRACKER_LIVE_KEY, tradePublisher, WALLETS_CHANNEL } from './hub';
 import { jupiterClient } from './jupiter';
+import { Discovery } from './tracker/discovery';
 import { Ingestor, type WalletRef } from './tracker/ingest';
 import { jsonRpc } from './tracker/rpc';
+import { MarketTape } from './tracker/tape';
 import { STALE, TokenBook } from './tracker/tokens';
 
 loadEnvFile();
@@ -32,8 +38,28 @@ const sub = redis.duplicate();
 sub.on('error', () => {});
 
 const conn = new Connection(config.RPC_URL, { commitment: 'confirmed', wsEndpoint: config.RPC_WS_URL });
-const tokens = new TokenBook(db, jupiterClient(config.JUPITER_API_BASE, { apiKey: config.JUPITER_API_KEY }), { chain: conn, fetchJson: (u) => fetchJsonSafely(u), ipfsGateway: config.IPFS_GATEWAY, log });
-const ingestor = new Ingestor({ db, rpc: jsonRpc(config.RPC_URL), tokens, publish: tradePublisher(redis), log, backfillLimit: config.BACKFILL_LIMIT });
+const jup = jupiterClient(config.JUPITER_API_BASE, { apiKey: config.JUPITER_API_KEY });
+const rpc = jsonRpc(config.RPC_URL);
+const tokens = new TokenBook(db, jup, { chain: conn, fetchJson: (u) => fetchJsonSafely(u), ipfsGateway: config.IPFS_GATEWAY, log });
+const ingestor = new Ingestor({ db, rpc, tokens, publish: tradePublisher(redis), log, backfillLimit: config.BACKFILL_LIMIT });
+const discovery = new Discovery({
+  db,
+  rpc,
+  tokens,
+  jup,
+  redis,
+  tape: new MarketTape({ rpc, tokens, redis, log }),
+  ingestor,
+  log,
+  config: {
+    evalsPerRun: config.DISCOVERY_EVALS,
+    historyTxs: config.DISCOVERY_HISTORY_TXS,
+    minPnlUsd: config.DISCOVERY_MIN_PNL_USD,
+    minWinRate: config.DISCOVERY_MIN_WIN_RATE,
+    bigWinUsd: config.DISCOVERY_BIG_WIN_USD,
+    max: config.DISCOVERY_MAX,
+  },
+});
 
 /** Signatures handled from the websocket recently, so catch-up rounds don't read them twice. */
 class SeenSet {
@@ -123,7 +149,7 @@ function catchUp(address: string) {
     try {
       if (stopping) return;
       // Fresh bookmark from the database: live reads don't move it.
-      const w = await db.trackedWallet.findUnique({ where: { address }, select: { address: true, label: true, featured: true, lastSignature: true, backfilledAt: true, active: true } });
+      const w = await db.trackedWallet.findUnique({ where: { address } });
       if (!w?.active) return;
       const stored = await ingestor.catchUp(w, seen.has);
       wallets.set(address, (await db.trackedWallet.findUnique({ where: { address } })) ?? w);
@@ -160,13 +186,27 @@ async function resync() {
 
 async function upkeep() {
   const idle = new Date(Date.now() - config.WALLET_IDLE_DAYS * 864e5);
-  const { count } = await db.trackedWallet.updateMany({ where: { active: true, featured: false, lastViewedAt: { lt: idle } }, data: { active: false } });
+  const { count } = await db.trackedWallet.updateMany({ where: { active: true, featured: false, source: { not: 'discovered' }, lastViewedAt: { lt: idle } }, data: { active: false } });
   if (count) log(`${count} idle wallet(s) no longer tracked`);
   const traded = await db.walletTrade.findMany({ where: { ts: { gt: new Date(Date.now() - 864e5) } }, distinct: ['mint'], select: { mint: true }, take: 500 });
   await tokens.get(
     traded.map((t) => t.mint),
     STALE.list,
   );
+}
+
+async function discover() {
+  const r = await discovery.run();
+  log(`discovery: ${r.sampled} token(s) sampled, ${r.evaluated} wallet(s) checked, ${r.promoted.length} new`);
+  if (r.promoted.length) await refreshWallets();
+}
+
+async function prune() {
+  const n = await discovery.prune();
+  if (n) {
+    log(`${n} discovered wallet(s) stopped earning; no longer tracked`);
+    await refreshWallets();
+  }
 }
 
 const wsLive = () => (conn as unknown as { _rpcWebSocketConnected?: boolean })._rpcWebSocketConnected === true;
@@ -202,6 +242,7 @@ sub.on('message', (_ch, address: string) => {
 await sub.subscribe(WALLETS_CHANNEL);
 
 const timers = [every(config.TRACKER_RESYNC_SEC * 1000, resync), every(15_000, heartbeat), every(3_600_000, upkeep), every(60_000, refreshWallets)];
+if (config.DISCOVERY_ENABLED) timers.push(every(config.DISCOVERY_EVERY_MIN * 60_000, discover), every(86_400_000, prune));
 log(`tracker up: ${config.RPC_URL.replace(/api-key=[^&]+/, 'api-key=…')}`);
 
 const shutdown = async () => {

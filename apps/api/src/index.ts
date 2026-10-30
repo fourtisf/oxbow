@@ -10,6 +10,7 @@ import { buildApp } from './app';
 import { loadConfig } from './config';
 import { loadEnvFile } from './env-file';
 import { jupiterClient } from './jupiter';
+import { jsonRpc } from './tracker/rpc';
 
 loadEnvFile();
 const config = loadConfig();
@@ -24,6 +25,7 @@ const { app } = await buildApp({
   redis,
   rpc: new Connection(config.RPC_URL, 'confirmed'),
   jupiter: jupiterClient(config.JUPITER_API_BASE, { apiKey: config.JUPITER_API_KEY }),
+  trackerRpc: jsonRpc(config.RPC_URL),
   swap: { treasury: config.OXBOW_TREASURY, feeBps: config.OXBOW_FEE_BPS },
   maxWallets: config.MAX_TRACKED_WALLETS,
   ipfsGateway: config.IPFS_GATEWAY,
