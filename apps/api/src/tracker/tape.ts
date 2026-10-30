@@ -12,7 +12,7 @@ import type { Redis } from 'ioredis';
 import type { FlowLevel, MarketTrade, OrderFlow } from '@oxbow/shared';
 import { parseTrades, walletChanges, WSOL, type RawTx } from './parse';
 import type { TrackerRpc } from './rpc';
-import { STALE, type TokenBook, type TokenMeta } from './tokens';
+import { quoteUsd, STALE, type TokenBook, type TokenMeta } from './tokens';
 import { ui } from './ingest';
 
 /** A fill as stored on the tape (no `tracked` flag: that is looked up when read). */
@@ -47,8 +47,7 @@ export function fillsOf(tx: RawTx, signature: string, mint: string, metas: Reado
   for (const signer of msg.accountKeys.slice(0, msg.header.numRequiredSignatures)) {
     for (const t of parseTrades(tx, signer, (m) => metas.get(m)?.stable === true)) {
       if (t.mint !== mint) continue;
-      const quote = metas.get(t.quoteMint);
-      const px = t.quoteMint === WSOL ? solUsd : quote?.stable ? (quote.usdPrice ?? 1) : (quote?.usdPrice ?? null);
+      const px = quoteUsd(t.quoteMint, metas, solUsd);
       if (px === null) continue;
       const amount = ui(t.amount, t.decimals);
       const usd = ui(t.quoteAmount, t.quoteDecimals) * px;
@@ -91,12 +90,13 @@ export class MarketTape {
    */
   async refresh(mint: string, maxNew: number): Promise<TapeTrade[]> {
     const redis = this.d.redis;
+    const token = Math.random().toString(36).slice(2);
     if (redis) {
-      const got = await redis.set(`${key(mint)}:lock`, '1', 'EX', LOCK_SEC, 'NX').catch(() => 'OK');
+      const got = await redis.set(`${key(mint)}:lock`, token, 'EX', LOCK_SEC, 'NX').catch(() => 'OK');
       if (got !== 'OK') return this.read(mint);
     }
     try {
-      const head = redis ? await redis.get(`${key(mint)}:head`).catch(() => null) : null;
+      const head = (redis ? await redis.get(`${key(mint)}:head`).catch(() => null) : null) || null;
       const sigs = (await this.d.rpc.getSignatures(mint, { limit: maxNew, until: head ?? undefined })).filter((s) => !s.err);
       const old = await this.read(mint);
       if (!sigs.length) {
@@ -104,6 +104,9 @@ export class MarketTape {
         return old;
       }
       const txs = await mapLimit(sigs, READ_CONCURRENCY, (s) => this.d.rpc.getTransaction(s.signature).catch(() => null));
+      // The head only moves past what was read: a transaction that couldn't be read yet is asked for again next time.
+      const oldestMissing = txs.reduce((at, tx, i) => (tx ? at : i), -1);
+      const nextHead = oldestMissing < 0 ? sigs[0]!.signature : (sigs[oldestMissing + 1]?.signature ?? head);
       const decimals = new Map<string, number>();
       for (const tx of txs) {
         if (!tx) continue;
@@ -119,17 +122,15 @@ export class MarketTape {
         .sort((a, b) => b.slot - a.slot)
         .slice(0, KEEP);
       if (redis) {
-        await redis
-          .multi()
-          .set(key(mint), JSON.stringify({ trades }), 'EX', TTL_SEC)
-          .set(`${key(mint)}:head`, sigs[0]!.signature, 'EX', TTL_SEC)
-          .set(`${key(mint)}:at`, String(this.now()), 'EX', TTL_SEC)
-          .exec()
-          .catch(() => {});
+        const m = redis.multi().set(key(mint), JSON.stringify({ trades }), 'EX', TTL_SEC).set(`${key(mint)}:at`, String(this.now()), 'EX', TTL_SEC);
+        if (nextHead) m.set(`${key(mint)}:head`, nextHead, 'EX', TTL_SEC);
+        else m.del(`${key(mint)}:head`);
+        await m.exec().catch(() => {});
       }
       return trades;
     } finally {
-      await redis?.del(`${key(mint)}:lock`).catch(() => 0);
+      // Only our own lock: one that expired and was taken by another refresh stays.
+      await redis?.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0", 1, `${key(mint)}:lock`, token).catch(() => 0);
     }
   }
 }

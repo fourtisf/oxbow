@@ -103,6 +103,10 @@ export function walletChanges(tx: RawTx, wallet: string): { sol: bigint; tokens:
 
 /** Moves smaller than this many lamports are fees, tips and rounding, not a payment. */
 const SOL_NOISE = 1_000_000n; // 0.001 SOL
+/** Up to this much SOL can ride along a token-for-token swap (priority tips) without being part of it. */
+const SOL_TIP_MAX = 50_000_000n; // 0.05 SOL
+
+const abs = (v: bigint) => (v < 0n ? -v : v);
 
 /**
  * The wallet's trades in `tx`. `isQuote` says which tokens count as money (stablecoins);
@@ -113,10 +117,14 @@ export function parseTrades(tx: RawTx, wallet: string, isQuote: (mint: string) =
   if (!ch) return [];
   const quotes = ch.tokens.filter((l) => isQuote(l.mint));
   const coins = ch.tokens.filter((l) => !isQuote(l.mint));
+  const coin = coins.length === 1 ? coins[0]! : null;
+  const against = (l: { delta: bigint }) => !!coin && (l.delta > 0n) !== (coin.delta > 0n);
 
-  // What money moved: SOL beyond noise, else a single stablecoin.
-  const money: Leg | null =
-    ch.sol > SOL_NOISE || ch.sol < -SOL_NOISE ? { mint: WSOL, delta: ch.sol, decimals: 9 } : quotes.length === 1 ? quotes[0]! : null;
+  // What paid for the coin: a stablecoin moving the other way comes first (SOL beside it is a tip),
+  // then SOL beyond the noise floor.
+  const stable = quotes.filter(against);
+  const sol: Leg = { mint: WSOL, delta: ch.sol, decimals: 9 };
+  const money: Leg | null = stable.length === 1 ? stable[0]! : abs(ch.sol) > SOL_NOISE && against(sol) ? sol : null;
 
   const trade = (coin: Leg, quote: Leg): ParsedTrade => ({
     side: coin.delta > 0n ? 'BUY' : 'SELL',
@@ -128,8 +136,8 @@ export function parseTrades(tx: RawTx, wallet: string, isQuote: (mint: string) =
     quoteDecimals: quote.decimals,
   });
 
-  if (coins.length === 1 && money && (coins[0]!.delta > 0n) !== (money.delta > 0n)) return [trade(coins[0]!, money)];
-  if (coins.length === 2 && !money) {
+  if (coin && money) return [trade(coin, money)];
+  if (coins.length === 2 && !quotes.length && abs(ch.sol) <= SOL_TIP_MAX) {
     // Token for token: each side priced against the other.
     const [a, b] = coins as [Leg, Leg];
     if ((a.delta > 0n) === (b.delta > 0n)) return [];

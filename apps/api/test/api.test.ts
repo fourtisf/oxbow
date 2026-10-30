@@ -177,6 +177,32 @@ describe.skipIf(!ready)('Oxbow tracker API', () => {
       published.length = 0;
     });
 
+    it('passes over a signature that keeps failing, so one bad transaction cannot stall a wallet', async () => {
+      const bad = sig();
+      rpc.add({ wallet: W.quiet, signature: bad, blockTime: T(4), mint: M.meme, tokenDelta: TOK, quoteDelta: -SOL });
+      rpc.txs.delete(bad);
+      const before = (await wallet(W.quiet)).lastSignature;
+      for (let i = 0; i < 4; i++) await ingestor.catchUp(await wallet(W.quiet));
+      expect((await wallet(W.quiet)).lastSignature).toBe(before);
+      await ingestor.catchUp(await wallet(W.quiet));
+      expect((await wallet(W.quiet)).lastSignature).toBe(bad);
+      rpc.sigs.delete(W.quiet);
+    });
+
+    it('keeps reading when a token is simply unknown to Jupiter (it answered)', async () => {
+      const unknownA = addr();
+      const unknownB = addr();
+      const s1 = sig();
+      // Token for token between two tokens nobody lists: nothing can price it, but it must not stall.
+      rpc.add({ wallet: W.quiet, signature: s1, blockTime: T(3), mint: unknownA, tokenDelta: 5n * TOK, quoteDelta: 0n });
+      const tx = rpc.txs.get(s1)!;
+      tx.meta!.preTokenBalances!.push({ accountIndex: 3, mint: unknownB, owner: W.quiet, uiTokenAmount: { amount: '9000000', decimals: 6 } });
+      tx.meta!.postTokenBalances!.push({ accountIndex: 3, mint: unknownB, owner: W.quiet, uiTokenAmount: { amount: '0', decimals: 6 } });
+      await expect(ingestor.ingest(await wallet(W.quiet), s1)).resolves.toEqual([]);
+      rpc.sigs.delete(W.quiet);
+      rpc.txs.delete(s1);
+    });
+
     it('stores nothing (so it is retried) when there is no SOL price', async () => {
       const blind = new TokenBook(db, { ...jup, tokens: async () => [] } as unknown as Jupiter, { now: () => NOW + 864e5 });
       await db.tokenMeta.update({ where: { mint: WSOL }, data: { usdPrice: null } });
@@ -222,10 +248,19 @@ describe.skipIf(!ready)('Oxbow tracker API', () => {
       expect((await get('/api/feed?wallets=notanaddress')).status).toBe(400);
     });
 
-    it('keeps followed wallets tracked when their feed is read', async () => {
-      await db.trackedWallet.update({ where: { address: W.quiet }, data: { active: false, lastViewedAt: new Date(NOW - 30 * 864e5) } });
+    it('keeps followed wallets tracked when their feed is read, within the cap', async () => {
+      await db.trackedWallet.update({ where: { address: W.quiet }, data: { active: false, source: 'discovered', lastViewedAt: new Date(NOW - 30 * 864e5) } });
+      // Full: the follow doesn't bring it back.
+      await rebuild({ maxWallets: 2 });
       await get(`/api/feed?wallets=${W.quiet}`);
-      expect(await wallet(W.quiet)).toMatchObject({ active: true });
+      expect(await wallet(W.quiet)).toMatchObject({ active: false });
+      // A visit to its page doesn't either.
+      await rebuild();
+      await get(`/api/wallets/${W.quiet}`);
+      expect(await wallet(W.quiet)).toMatchObject({ active: false });
+      // With room it comes back, as an ordinary wallet (it had been dropped as smart money).
+      await get(`/api/feed?wallets=${W.quiet}`);
+      expect(await wallet(W.quiet)).toMatchObject({ active: true, source: 'user' });
     });
   });
 
@@ -264,8 +299,13 @@ describe.skipIf(!ready)('Oxbow tracker API', () => {
       expect(beta.closed[0]!.realizedPnlUsd).toBeCloseTo(-80);
     });
 
-    it('answers 404 for wallets it does not track', async () => {
-      expect((await get(`/api/wallets/${addr()}`)).status).toBe(404);
+    it('answers 404 for wallets it does not track, and shows one as soon as it is tracked', async () => {
+      const fresh = addr();
+      chain.accounts.set(fresh, system());
+      expect((await get(`/api/wallets/${fresh}`)).status).toBe(404);
+      expect((await post('/api/wallets', { address: fresh }, '203.0.113.30')).status).toBe(201);
+      expect((await get(`/api/wallets/${fresh}`)).status).toBe(200);
+      await db.trackedWallet.delete({ where: { address: fresh } });
     });
 
     it('lists one wallet’s trades', async () => {

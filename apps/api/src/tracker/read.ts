@@ -27,6 +27,8 @@ import { brief, STALE, type TokenBook } from './tokens';
 type WalletInfo = Pick<TrackedWallet, 'address' | 'label' | 'featured' | 'source'>;
 const n = (d: Prisma.Decimal | number | null) => (d === null ? 0 : Number(d));
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
+/** The leaderboard ranks the last 30 days of trades. */
+const LEADERBOARD_DAYS = 30;
 
 export class Reader {
   constructor(
@@ -79,8 +81,9 @@ export class Reader {
       select: { address: true, label: true, featured: true, source: true },
     });
     if (!list.length) return [];
+    // The last 30 days: bounded work per refresh, and what a leaderboard should rank anyway.
     const trades = await this.db.walletTrade.findMany({
-      where: { wallet: { in: list.map((w) => w.address) } },
+      where: { wallet: { in: list.map((w) => w.address) }, ts: { gte: new Date(this.now() - LEADERBOARD_DAYS * 864e5) } },
       orderBy: [{ ts: 'asc' }, { id: 'asc' }],
       select: { wallet: true, ts: true, side: true, mint: true, amount: true, usd: true },
     });
@@ -90,7 +93,10 @@ export class Reader {
       arr.push({ ts: t.ts, side: t.side, mint: t.mint, amount: n(t.amount), usd: n(t.usd) });
       byWallet.set(t.wallet, arr);
     }
-    const prices = await this.prices(new Set(trades.map((t) => t.mint)));
+    // Stored prices only: the leaderboard shouldn't send a Jupiter request per token on every refresh.
+    const stored = await this.db.tokenMeta.findMany({ where: { mint: { in: [...new Set(trades.map((t) => t.mint))] } }, select: { mint: true, usdPrice: true } });
+    const priceOf = new Map(stored.map((r) => [r.mint, r.usdPrice]));
+    const prices = (m: string) => priceOf.get(m) ?? null;
     const weekAgo = this.now() - 7 * 864e5;
     const rows = list.map((w): WalletSummary => {
       const ts = byWallet.get(w.address) ?? [];
@@ -170,12 +176,15 @@ export class Reader {
   async token(mint: string): Promise<TokenDetail | null> {
     const meta = (await this.tokens.get([mint], STALE.page)).get(mint);
     if (!meta) return null;
-    const rows = await this.db.walletTrade.findMany({
-      where: { mint, trader: { active: true } },
-      orderBy: [{ ts: 'asc' }, { id: 'asc' }],
-      take: 5000,
-      include: { trader: { select: { address: true, label: true, featured: true, source: true } } },
-    });
+    // The newest 5,000, oldest first.
+    const rows = (
+      await this.db.walletTrade.findMany({
+        where: { mint, trader: { active: true } },
+        orderBy: [{ ts: 'desc' }, { id: 'desc' }],
+        take: 5000,
+        include: { trader: { select: { address: true, label: true, featured: true, source: true } } },
+      })
+    ).reverse();
     const by = new Map<string, TokenTrader>();
     for (const r of rows) {
       const t = by.get(r.wallet) ?? { address: r.wallet, label: r.trader.label, featured: r.trader.featured, smart: r.trader.source === 'discovered', boughtUsd: 0, soldUsd: 0, netAmount: 0, lastSide: r.side, lastTradeAt: '' };
@@ -262,11 +271,6 @@ export class Reader {
         lastTradeAt: r.lastTradeAt.toISOString(),
       };
     });
-  }
-
-  private async prices(mints: Set<string>): Promise<(m: string) => number | null> {
-    const metas = await this.tokens.get(mints, STALE.list);
-    return (m) => metas.get(m)?.usdPrice ?? null;
   }
 }
 

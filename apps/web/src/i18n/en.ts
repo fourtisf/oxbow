@@ -123,9 +123,9 @@ export const en = {
   wallets: {
     eyebrow: 'Leaderboard',
     title: 'Wallets',
-    lede: 'Every wallet Oxbow tracks, ranked by profit on the trades it has read. Smart money is found automatically: wallets that keep closing trades at a profit. Featured wallets are picked by the Oxbow team.',
+    lede: 'Every wallet Oxbow tracks, ranked by realized profit over the last 30 days. Smart money is found automatically: wallets that keep closing trades at a profit. Featured wallets are picked by the Oxbow team.',
     table: 'Tracked wallets',
-    th: { wallet: 'Wallet', pnl: 'Realized PnL', unrealized: 'Unrealized', winRate: 'Win rate', trades: 'Trades', volume: '7d volume', last: 'Last trade' },
+    th: { wallet: 'Wallet', pnl: 'PnL 30d', unrealized: 'Unrealized', winRate: 'Win rate', trades: 'Trades 30d', volume: 'Volume 7d', last: 'Last trade' },
     featured: 'Featured',
     smart: 'Smart money',
     empty: 'No wallets tracked yet. Paste one above to start.',

@@ -26,7 +26,7 @@ import { parseTrades, walletChanges, WSOL, type RawTx } from './parse';
 import { positions, summarize, type PnlTrade, type Summary } from './pnl';
 import type { TrackerRpc, SignatureInfo } from './rpc';
 import { mapLimit, type MarketTape } from './tape';
-import { STALE, type TokenBook, type TokenMeta } from './tokens';
+import { quoteUsd, STALE, type TokenBook, type TokenMeta } from './tokens';
 
 export interface DiscoveryConfig {
   /** Trending tokens sampled per run. */
@@ -210,8 +210,7 @@ export class Discovery {
     const trades: (PnlTrade & { slot: number })[] = [];
     for (const tx of txs.values()) {
       for (const t of parseTrades(tx, address, (m) => metas.get(m)?.stable === true)) {
-        const quote = metas.get(t.quoteMint);
-        const px = t.quoteMint === WSOL ? solUsd : quote?.stable ? (quote.usdPrice ?? 1) : (quote?.usdPrice ?? null);
+        const px = quoteUsd(t.quoteMint, metas, solUsd);
         if (px === null) continue;
         trades.push({ ts: new Date((tx.blockTime ?? 0) * 1000), slot: tx.slot, side: t.side, mint: t.mint, amount: ui(t.amount, t.decimals), usd: ui(t.quoteAmount, t.quoteDecimals) * px });
       }
@@ -237,21 +236,38 @@ export class Discovery {
     return { ...base, verdict: { ok: true, summary, avgTradeUsd, kind: 'consistent' } };
   }
 
-  /** Tracks `address` as discovered and stores the history `ev` already read. */
+  /**
+   * Tracks `address` as discovered and stores the history `ev` already read, oldest first.
+   * If a transaction can't be stored, the bookmark stops before it and the worker's
+   * catch-up finishes the history.
+   */
   async promote(address: string, ev: Evaluation): Promise<void> {
     const wallet = await this.d.db.trackedWallet.upsert({
       where: { address },
       create: { address, source: 'discovered' },
       update: { active: true },
     });
+    let bookmark: string | null = null;
+    let complete = true;
     for (const s of [...ev.sigs].reverse()) {
       const tx = ev.txs.get(s.signature);
-      if (!tx) continue;
-      await this.d.ingestor.ingest(wallet, s.signature, { pre: { tx, metas: ev.metas } }).catch(() => []);
+      if (!s.err) {
+        if (!tx) {
+          complete = false;
+          break;
+        }
+        try {
+          await this.d.ingestor.ingest(wallet, s.signature, { pre: { tx, metas: ev.metas } });
+        } catch {
+          complete = false;
+          break;
+        }
+      }
+      bookmark = s.signature;
     }
     await this.d.db.trackedWallet.update({
       where: { address },
-      data: { lastSignature: ev.sigs[0]?.signature ?? null, backfilledAt: new Date(this.now()) },
+      data: { lastSignature: bookmark, backfilledAt: complete ? new Date(this.now()) : null },
     });
   }
 

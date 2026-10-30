@@ -15,7 +15,7 @@ import { Prisma, type PrismaClient, type TrackedWallet, type WalletTrade } from 
 import type { FeedTrade } from '@oxbow/shared';
 import { parseTrades, walletChanges, WSOL, type RawTx } from './parse';
 import type { TrackerRpc } from './rpc';
-import { brief, STALE, type TokenBook, type TokenMeta } from './tokens';
+import { brief, quoteUsd, STALE, type TokenBook, type TokenMeta } from './tokens';
 
 export interface IngestDeps {
   db: PrismaClient;
@@ -33,12 +33,16 @@ export interface IngestDeps {
 const LIVE_WINDOW_MS = 10 * 60_000;
 /** Pages of 100 signatures a catch-up may walk before it settles for the newest ones. */
 const MAX_PAGES = 5;
+/** A signature that fails this many rounds in a row is passed over, so one bad transaction can't stall a wallet. */
+const MAX_FAILURES = 5;
 
 export type WalletRef = Pick<TrackedWallet, 'address' | 'label' | 'featured' | 'source' | 'lastSignature' | 'backfilledAt'>;
 
 export const ui = (raw: bigint, decimals: number) => Number(raw) / 10 ** decimals;
 
 export class Ingestor {
+  private readonly failures = new Map<string, number>();
+
   constructor(private readonly d: IngestDeps) {}
 
   private now() {
@@ -59,18 +63,22 @@ export class Ingestor {
     const metas = opts.pre && [...decimals.keys(), WSOL].every((m) => opts.pre!.metas.has(m)) ? opts.pre.metas : await this.d.tokens.get([...decimals.keys(), WSOL], STALE.ingest, decimals);
     const trades = parseTrades(tx, wallet.address, (m) => metas.get(m)?.stable === true);
     if (!trades.length) return [];
-    // A token-for-token reading is only sure when Jupiter vouched for both tokens (a stand-in could be a stablecoin it couldn't name).
-    if (trades.every((t) => t.quoteMint !== WSOL) && trades.some((t) => metas.get(t.mint)?.source !== 'jupiter' || metas.get(t.quoteMint)?.source !== 'jupiter'))
-      throw new Error('token data incomplete, will retry');
+    // While Jupiter is failing, a token it couldn't name may be a stablecoin it would have flagged: try again later.
+    // When Jupiter answered and simply doesn't list it, it is an unknown token and the reading stands.
+    const unnamed = trades.some((t) => metas.get(t.mint)?.source !== 'jupiter' || (t.quoteMint !== WSOL && metas.get(t.quoteMint)?.source !== 'jupiter'));
+    if (unnamed && this.d.tokens.jupiterTrouble()) throw new Error('token data incomplete, will retry');
 
     const solUsd = trades.some((t) => t.quoteMint === WSOL) ? await this.d.tokens.solPrice() : null;
     const ts = new Date(tx.blockTime ? tx.blockTime * 1000 : this.now());
     const rows: Prisma.WalletTradeCreateManyInput[] = [];
     for (const t of trades) {
-      const quote = metas.get(t.quoteMint);
-      const quotePrice = t.quoteMint === WSOL ? solUsd : quote?.stable ? (quote.usdPrice ?? 1) : (quote?.usdPrice ?? null);
-      // No price, no row: better to retry later than to store a $0 trade.
-      if (quotePrice === null) throw new Error(`no USD price for ${t.quoteMint === WSOL ? 'SOL' : t.quoteMint}`);
+      const quotePrice = quoteUsd(t.quoteMint, metas, solUsd);
+      // No SOL price (or Jupiter failing): retry later rather than store a $0 trade.
+      // A token nobody prices can't value the other side: that leg is left out.
+      if (quotePrice === null) {
+        if (t.quoteMint === WSOL || this.d.tokens.jupiterTrouble()) throw new Error(`no USD price for ${t.quoteMint === WSOL ? 'SOL' : t.quoteMint}`);
+        continue;
+      }
       const amount = ui(t.amount, t.decimals);
       const quoteAmount = ui(t.quoteAmount, t.quoteDecimals);
       const usd = quoteAmount * quotePrice;
@@ -88,6 +96,7 @@ export class Ingestor {
         priceUsd: new Prisma.Decimal(amount > 0 ? (usd / amount).toPrecision(18) : '0'),
       });
     }
+    if (!rows.length) return [];
     const created = await this.d.db.walletTrade.createManyAndReturn({ data: rows, skipDuplicates: true });
     if (created.length) {
       await this.d.db.trackedWallet.updateMany({ where: { address: wallet.address, OR: [{ lastTradeAt: null }, { lastTradeAt: { lt: ts } }] }, data: { lastTradeAt: ts } });
@@ -139,8 +148,15 @@ export class Ingestor {
           const rows = await this.ingest(wallet, s.signature, { publish: live && (s.blockTime ?? 0) * 1000 > liveAfter, pre: tx ? { tx, metas } : undefined });
           stored += rows.length;
         } catch (e) {
-          this.d.log?.(`${wallet.address.slice(0, 6)}… stopped at ${s.signature.slice(0, 8)}…: ${(e as Error).message}`);
-          break;
+          const n = (this.failures.get(s.signature) ?? 0) + 1;
+          if (n < MAX_FAILURES) {
+            this.failures.set(s.signature, n);
+            if (this.failures.size > 10_000) this.failures.delete(this.failures.keys().next().value!);
+            this.d.log?.(`${wallet.address.slice(0, 6)}… stopped at ${s.signature.slice(0, 8)}… (${n}/${MAX_FAILURES}): ${(e as Error).message}`);
+            break;
+          }
+          this.failures.delete(s.signature);
+          this.d.log?.(`${wallet.address.slice(0, 6)}… passing over ${s.signature.slice(0, 8)}… after ${n} failures: ${(e as Error).message}`);
         }
       }
       bookmark = s.signature;

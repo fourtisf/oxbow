@@ -33,11 +33,22 @@ export const STALE = {
 
 const SOL_PRICE_MS = 30_000;
 const SOL_PRICE_MAX_AGE_MS = 3_600_000;
-/** A stand-in row is retried after this long, even by trade reading. */
+/** A stand-in row (Jupiter didn't know the token) is asked about again after this long. */
 const STAND_IN_RETRY_MS = 10 * 60_000;
+
+/**
+ * USD value of one unit of a trade's quote token: SOL at `solUsd`, a stablecoin at its
+ * price (or $1), anything else at its listed price. Null when there is no price.
+ */
+export function quoteUsd(quoteMint: string, metas: ReadonlyMap<string, TokenMeta>, solUsd: number | null): number | null {
+  if (quoteMint === WSOL) return solUsd;
+  const q = metas.get(quoteMint);
+  return q?.stable ? (q.usdPrice ?? 1) : (q?.usdPrice ?? null);
+}
 
 export class TokenBook {
   private solUsd: { usd: number; at: number } | null = null;
+  private jupiterFailedAt = 0;
 
   constructor(
     private readonly db: PrismaClient,
@@ -58,8 +69,11 @@ export class TokenBook {
     const out = new Map<string, TokenMeta>();
     if (!want.length) return out;
     for (const r of await this.db.tokenMeta.findMany({ where: { mint: { in: want } } })) out.set(r.mint, r);
-    const cutoff = this.now() - staleMs;
-    const todo = want.filter((m) => !out.has(m) || out.get(m)!.updatedAt.getTime() < cutoff);
+    // Stand-ins (Jupiter didn't know the token) are asked about again every ten minutes, whatever the use.
+    const todo = want.filter((m) => {
+      const r = out.get(m);
+      return !r || r.updatedAt.getTime() < this.now() - (r.source === 'jupiter' ? staleMs : STAND_IN_RETRY_MS);
+    });
     if (!todo.length) return out;
 
     const fetched = new Map<string, JupiterToken>();
@@ -67,6 +81,7 @@ export class TokenBook {
       try {
         for (const t of await this.jup.tokens(todo.slice(i, i + 100))) fetched.set(t.mint, t);
       } catch (e) {
+        this.jupiterFailedAt = this.now();
         this.opts.log?.(`Jupiter token data unavailable: ${(e as Error).message}`);
       }
     }
@@ -107,10 +122,13 @@ export class TokenBook {
     }
   }
 
-  /** A stand-in (from the chain or the transaction) is dated so that Jupiter is asked again within minutes. */
+  /** Jupiter failed within the last minute: missing token data may be its fault, not the token's. */
+  jupiterTrouble(): boolean {
+    return this.now() - this.jupiterFailedAt < 60_000;
+  }
+
   private save(t: JupiterToken, source: 'jupiter' | 'chain' | 'tx'): Promise<TokenMeta> {
-    const standIn = source !== 'jupiter';
-    const data = { ...t, source, updatedAt: new Date(this.now() - (standIn ? STALE.ingest - STAND_IN_RETRY_MS : 0)) };
+    const data = { ...t, source, updatedAt: new Date(this.now()) };
     return this.db.tokenMeta.upsert({ where: { mint: t.mint }, create: data, update: data });
   }
 }

@@ -148,6 +148,29 @@ describe.skipIf(!ready)('discovery, tape and limit orders', () => {
     expect((await discovery.run()).evaluated).toBe(0);
   });
 
+  it('stops the bookmark before history it could not store, so the worker finishes it', async () => {
+    const ev = await discovery.evaluate(W.smart);
+    const lost = ev.sigs[2]!.signature;
+    ev.txs.delete(lost);
+    await discovery.promote(W.smart, ev);
+    const w = await db.trackedWallet.findUniqueOrThrow({ where: { address: W.smart } });
+    expect(w.backfilledAt).toBeNull();
+    expect(w.lastSignature).toBe(ev.sigs[3]!.signature);
+  });
+
+  it('re-reads market fills it could not read the first time', async () => {
+    const tape = new MarketTape({ rpc, tokens, redis, now: () => NOW });
+    const newest = rpc.sigs.get(HOT)![0]!.signature;
+    const saved = rpc.txs.get(newest)!;
+    rpc.txs.delete(newest);
+    const first = await tape.refresh(HOT, 10);
+    expect(first.some((f) => f.signature === newest)).toBe(false);
+    rpc.txs.set(newest, saved);
+    await redis.del(`oxbow:tape:${HOT}:lock`);
+    const second = await tape.refresh(HOT, 10);
+    expect(second.some((f) => f.signature === newest)).toBe(true);
+  });
+
   it('drops discovered wallets that stopped earning', async () => {
     await discovery.promote(W.loser, await discovery.evaluate(W.loser));
     // Five tokens closed at a loss inside the two-week window.

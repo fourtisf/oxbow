@@ -101,7 +101,7 @@ export const WalletStatsSchema = z.object({
 });
 export type WalletStats = z.infer<typeof WalletStatsSchema>;
 
-/** `GET /api/wallets` — leaderboard rows. */
+/** `GET /api/wallets` — leaderboard rows; `stats` cover the last 30 days. */
 export const WalletSummarySchema = z.object({
   address: AddressSchema,
   label: z.string().max(40).nullable(),

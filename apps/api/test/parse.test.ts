@@ -82,6 +82,15 @@ describe('parseTrades rules', () => {
   it('treats fee-sized SOL moves as noise, not payment', () => {
     expect(parseTrades(tx(-500_000, [{ mint: MINT, pre: 0, post: 1000 }]), W, () => false)).toEqual([]);
   });
+  it('prices a stablecoin trade in the stablecoin even with a SOL tip beside it', () => {
+    const USDC_T = 'Usdc111111111111111111111111111111111111111';
+    // Bought for 5,000 USDC, plus a 0.005 SOL tip.
+    const [t] = parseTrades(tx(-5_000_000, [{ mint: MINT, pre: 0, post: 1000 }, { mint: USDC_T, pre: 5_000_000_000, post: 0 }]), W, (m) => m === USDC_T);
+    expect(t).toMatchObject({ side: 'BUY', quoteMint: USDC_T, quoteAmount: 5_000_000_000n });
+  });
+  it('keeps a token-for-token swap with a priority tip', () => {
+    expect(parseTrades(tx(-2_000_000, [{ mint: MINT, pre: 1000, post: 0 }, { mint: OTHER, pre: 0, post: 5 }]), W, () => false)).toHaveLength(2);
+  });
   it('is not a trade when tokens and SOL move the same way (transfers, airdrops, liquidity)', () => {
     expect(parseTrades(tx(400_000_000, [{ mint: MINT, pre: 0, post: 1000 }]), W, () => false)).toEqual([]);
     expect(parseTrades(tx(0, [{ mint: MINT, pre: 0, post: 1000 }, { mint: OTHER, pre: 0, post: 5 }]), W, () => false)).toEqual([]);

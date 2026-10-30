@@ -143,9 +143,7 @@ export async function buildApp(deps: Deps) {
     const q = FeedQuerySchema.parse(req.query);
     if (q.wallets) {
       // Someone follows these: keep them tracked (wallets nobody looks at go quiet after a while).
-      await deps.db.trackedWallet
-        .updateMany({ where: { address: { in: q.wallets }, lastViewedAt: { lt: new Date(now() - TOUCH_MS) } }, data: { lastViewedAt: new Date(now()), active: true } })
-        .catch(() => {});
+      await keepFollowed(q.wallets).catch(() => {});
       priv(reply);
       return reader.feed(q);
     }
@@ -221,10 +219,12 @@ export async function buildApp(deps: Deps) {
 
   app.get('/api/wallets/:address', async (req, reply) => {
     const { address } = Address.parse(req.params);
-    const detail = await cache.wrap(`wallet:v1:${address}`, 20, async () => reader.wallet(address, await balances(address)));
+    // A "not tracked" answer is cached only briefly: tracking it should show at once.
+    const detail = await cache.wrap(`wallet:v1:${address}`, (v) => (v ? 20 : 2), async () => reader.wallet(address, await balances(address)));
     if (!detail) throw new HttpError(404, 'not_tracked');
+    // A visit keeps a tracked wallet tracked; it never brings back one that stopped (that is POST /api/wallets, within the cap).
     await deps.db.trackedWallet
-      .updateMany({ where: { address, lastViewedAt: { lt: new Date(now() - TOUCH_MS) } }, data: { lastViewedAt: new Date(now()), active: true } })
+      .updateMany({ where: { address, active: true, lastViewedAt: { lt: new Date(now() - TOUCH_MS) } }, data: { lastViewedAt: new Date(now()) } })
       .catch(() => {});
     // Still reading its history: ask again soon.
     pub(reply, detail.backfilledAt ? 15 : 3);
@@ -242,12 +242,13 @@ export async function buildApp(deps: Deps) {
   app.post('/api/wallets', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
     const { address } = AddWalletBodySchema.parse(req.body);
     priv(reply);
-    const existing = await deps.db.trackedWallet.findUnique({ where: { address }, select: { active: true } });
+    const existing = await deps.db.trackedWallet.findUnique({ where: { address }, select: { active: true, source: true } });
     if (existing) {
       if (!existing.active) {
         await assertRoom();
-        await deps.db.trackedWallet.update({ where: { address }, data: { active: true, lastViewedAt: new Date(now()) } });
+        await deps.db.trackedWallet.update({ where: { address }, data: { active: true, lastViewedAt: new Date(now()), ...(existing.source === 'discovered' ? { source: 'user' } : {}) } });
         await deps.redis?.publish(WALLETS_CHANNEL, address).catch(() => 0);
+        await cache.drop('wallets:v1', `wallet:v1:${address}`);
       }
       return { address, created: false };
     }
@@ -263,9 +264,27 @@ export async function buildApp(deps: Deps) {
     if (!acct.owner.equals(SystemProgram.programId)) throw new HttpError(400, 'not_a_wallet');
     await deps.db.trackedWallet.upsert({ where: { address }, create: { address }, update: { active: true } });
     await deps.redis?.publish(WALLETS_CHANNEL, address).catch(() => 0);
-    await cache.drop('wallets:v1');
+    await cache.drop('wallets:v1', `wallet:v1:${address}`);
     return reply.code(201).send({ address, created: true });
   });
+
+  /**
+   * Followed wallets stay tracked: active ones get their visit noted; ones that went quiet come back
+   * while there is room under the cap. A discovered wallet that was dropped comes back as an ordinary one.
+   */
+  async function keepFollowed(addresses: string[]) {
+    const stamp = new Date(now());
+    await deps.db.trackedWallet.updateMany({ where: { address: { in: addresses }, active: true, lastViewedAt: { lt: new Date(now() - TOUCH_MS) } }, data: { lastViewedAt: stamp } });
+    const quiet = await deps.db.trackedWallet.findMany({ where: { address: { in: addresses }, active: false }, select: { address: true, source: true } });
+    if (!quiet.length) return;
+    const room = maxWallets - (await deps.db.trackedWallet.count({ where: { active: true } }));
+    const back = quiet.slice(0, Math.max(0, room));
+    if (!back.length) return;
+    for (const w of back) {
+      await deps.db.trackedWallet.update({ where: { address: w.address }, data: { active: true, lastViewedAt: stamp, ...(w.source === 'discovered' ? { source: 'user' } : {}) } });
+      await deps.redis?.publish(WALLETS_CHANNEL, w.address).catch(() => 0);
+    }
+  }
 
   async function assertRoom() {
     const count = await deps.db.trackedWallet.count({ where: { active: true } });

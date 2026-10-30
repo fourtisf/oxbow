@@ -61,7 +61,7 @@ const discovery = new Discovery({
   },
 });
 
-/** Signatures handled from the websocket recently, so catch-up rounds don't read them twice. */
+/** A bounded set of signatures (oldest dropped first). */
 class SeenSet {
   private readonly items = new Set<string>();
   constructor(private readonly max: number) {}
@@ -73,7 +73,10 @@ class SeenSet {
   delete = (s: string) => this.items.delete(s);
 }
 
-const seen = new SeenSet(50_000);
+/** Signatures the websocket path stored: catch-up rounds skip only these, never ones still being read. */
+const done = new SeenSet(50_000);
+/** Signatures the websocket path is reading right now (a log can arrive twice). */
+const reading = new Set<string>();
 const subs = new Map<string, number>();
 const wallets = new Map<string, WalletRef>();
 const LIVE_RETRY_MS = [2_000, 6_000, 20_000];
@@ -99,24 +102,28 @@ const catchUpQueue = limiter(2);
 const catchingUp = new Set<string>();
 
 async function readLive(address: string, signature: string) {
-  if (seen.has(signature)) return;
-  seen.add(signature);
-  for (let attempt = 0; ; attempt++) {
-    const w = wallets.get(address);
-    if (!w || stopping) return;
-    try {
-      const rows = await ingestor.ingest(w, signature, { publish: w.backfilledAt !== null });
-      if (rows.length) log(`${address.slice(0, 6)}… ${rows.map((r) => r.side).join('+')} ${signature.slice(0, 8)}…`);
-      return;
-    } catch (e) {
-      // Fresh transactions can take a moment to be readable.
-      if (attempt >= LIVE_RETRY_MS.length) {
-        seen.delete(signature);
-        log(`live read gave up on ${signature.slice(0, 8)}…: ${(e as Error).message}`);
+  if (done.has(signature) || reading.has(signature)) return;
+  reading.add(signature);
+  try {
+    for (let attempt = 0; ; attempt++) {
+      const w = wallets.get(address);
+      if (!w || stopping) return;
+      try {
+        const rows = await ingestor.ingest(w, signature, { publish: w.backfilledAt !== null });
+        done.add(signature);
+        if (rows.length) log(`${address.slice(0, 6)}… ${rows.map((r) => r.side).join('+')} ${signature.slice(0, 8)}…`);
         return;
+      } catch (e) {
+        // Fresh transactions can take a moment to be readable. If it never works, the next catch-up reads it.
+        if (attempt >= LIVE_RETRY_MS.length) {
+          log(`live read gave up on ${signature.slice(0, 8)}…: ${(e as Error).message}`);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, LIVE_RETRY_MS[attempt]));
       }
-      await new Promise((r) => setTimeout(r, LIVE_RETRY_MS[attempt]));
     }
+  } finally {
+    reading.delete(signature);
   }
 }
 
@@ -151,7 +158,7 @@ function catchUp(address: string) {
       // Fresh bookmark from the database: live reads don't move it.
       const w = await db.trackedWallet.findUnique({ where: { address } });
       if (!w?.active) return;
-      const stored = await ingestor.catchUp(w, seen.has);
+      const stored = await ingestor.catchUp(w, done.has);
       wallets.set(address, (await db.trackedWallet.findUnique({ where: { address } })) ?? w);
       if (stored) log(`${address.slice(0, 6)}… caught up: ${stored} trade(s)`);
     } catch (e) {

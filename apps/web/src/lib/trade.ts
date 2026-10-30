@@ -59,25 +59,7 @@ async function confirmed(sig: string): Promise<void> {
   throw new TradeError('TIMEOUT');
 }
 
-/** Builds, signs, sends and confirms one swap. `onStep` gets 0 (build), 1 (sign), 2 (confirm). Resolves with the signature. */
-export async function executeSwap(wallet: ConnectedWallet, q: QuoteInput, onStep: (step: number, sig?: string) => void): Promise<{ signature: string; quote: SwapQuote }> {
-  try {
-    onStep(0);
-    const built = await post('/api/swap/build', { ...q, amount: q.amount.toString(), wallet: wallet.address }, BuiltSwapSchema);
-    onStep(1);
-    const signature = await signAndSend(wallet.name, wallet.address, fromB64(built.transaction), async (signed) => {
-      const r = await post('/api/tx/send', { transaction: toB64(signed) }, z.object({ signature: z.string() }));
-      return r.signature;
-    });
-    onStep(2, signature);
-    await confirmed(signature);
-    return { signature, quote: built.quote };
-  } catch (e) {
-    throw asTradeError(e);
-  }
-}
-
-/** Signs, sends and confirms a transaction the API built (limit orders). `onStep` as for swaps. */
+/** Builds (through the API), signs, sends and confirms one transaction. `onStep` gets 0 (build), 1 (sign), 2 (confirm). */
 async function signBuilt(wallet: ConnectedWallet, build: () => Promise<{ transaction: string }>, onStep: (step: number) => void): Promise<string> {
   try {
     onStep(0);
@@ -93,6 +75,21 @@ async function signBuilt(wallet: ConnectedWallet, build: () => Promise<{ transac
   } catch (e) {
     throw asTradeError(e);
   }
+}
+
+/** One swap through Jupiter, Oxbow's fee included. Resolves with the signature and the quote it was built on. */
+export async function executeSwap(wallet: ConnectedWallet, q: QuoteInput, onStep: (step: number) => void): Promise<{ signature: string; quote: SwapQuote }> {
+  let quote: SwapQuote | null = null;
+  const signature = await signBuilt(
+    wallet,
+    async () => {
+      const built = await post('/api/swap/build', { ...q, amount: q.amount.toString(), wallet: wallet.address }, BuiltSwapSchema);
+      quote = built.quote;
+      return built;
+    },
+    onStep,
+  );
+  return { signature, quote: quote! };
 }
 
 /** Opens a limit order through Jupiter. Resolves with the signature. */
