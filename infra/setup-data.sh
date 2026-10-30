@@ -36,8 +36,9 @@ else
   cat > "$ENV_FILE" <<ENV
 DATABASE_URL=postgresql://oxbow:$pass@127.0.0.1:5432/oxbow
 REDIS_URL=redis://127.0.0.1:6379
-SOLANA_CLUSTER=mainnet-beta
 RPC_URL=
+OXBOW_TREASURY=
+OXBOW_FEE_BPS=50
 PORT=4000
 HOST=127.0.0.1
 LOG_LEVEL=info
@@ -47,4 +48,4 @@ ENV
   echo "Wrote $ENV_FILE (database password generated, not shown)."
 fi
 
-echo "Done. Next: put your RPC URL in RPC_URL (nano $ENV_FILE), then run the deploy as $APP_USER."
+echo "Done. Next: put your RPC URL in RPC_URL and your fee wallet in OXBOW_TREASURY (nano $ENV_FILE), then run the deploy as $APP_USER."

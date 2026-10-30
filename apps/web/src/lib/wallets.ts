@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { bytesToBase58, isAddress } from '@oxbow/shared';
-import { env } from './env';
 
 /**
  * Solana wallets offered in "Select wallet", with their official icons
@@ -183,8 +182,8 @@ export function watchWallet(name: string, onChange: (address: string | null) => 
   });
 }
 
-/** Wallet Standard chain id for the network this build targets. */
-const CHAIN = env.cluster === 'mainnet-beta' ? 'solana:mainnet' : 'solana:devnet';
+/** Wallet Standard chain id: Oxbow trades on mainnet. */
+const CHAIN = 'solana:mainnet';
 
 /**
  * Has the wallet sign `tx` (an unsigned v0 transaction) and send it. Wallets

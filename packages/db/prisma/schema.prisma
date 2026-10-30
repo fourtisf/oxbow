@@ -1,5 +1,5 @@
-// Oxbow data model (brief section 5). Wallet positions are read live from the
-// chain per request, not stored.
+// Oxbow data model: the wallets being tracked, the buys and sells read from
+// their transactions, and what is known about each token traded.
 
 generator client {
   provider     = "prisma-client"
@@ -11,180 +11,77 @@ datasource db {
   provider = "postgresql"
 }
 
-model Token {
-  mint            String    @id
+/// A wallet Oxbow follows on chain. Featured wallets are picked by the owner;
+/// anyone can add others.
+model TrackedWallet {
+  address        String        @id
+  label          String?
+  featured       Boolean       @default(false)
+  /// Turned off when nobody has looked at it for a while (user-added only).
+  active         Boolean       @default(true)
+  addedAt        DateTime      @default(now())
+  /// Last time someone opened its page or followed it.
+  lastViewedAt   DateTime      @default(now())
+  lastTradeAt    DateTime?
+  /// Newest signature already read, so catching up stops there.
+  lastSignature  String?
+  backfilledAt   DateTime?
+  trades         WalletTrade[]
+
+  @@index([active, featured])
+}
+
+model WalletTrade {
+  id          BigInt        @id @default(autoincrement())
+  signature   String
+  wallet      String
+  trader      TrackedWallet @relation(fields: [wallet], references: [address], onDelete: Cascade)
+  ts          DateTime
+  slot        BigInt
+  side        TradeSide
+  mint        String
+  /// UI units of the token bought or sold.
+  amount      Decimal       @db.Decimal(40, 12)
+  quoteMint   String
+  quoteAmount Decimal       @db.Decimal(40, 12)
+  /// USD value at the time it was read.
+  usd         Decimal       @db.Decimal(24, 6)
+  priceUsd    Decimal       @db.Decimal(40, 18)
+
+  @@unique([signature, wallet, mint])
+  @@index([wallet, ts])
+  @@index([mint, ts])
+  @@index([ts])
+}
+
+/// Token facts from Jupiter's token data (and the chain when Jupiter doesn't know it), refreshed every few minutes.
+model TokenMeta {
+  mint            String   @id
   symbol          String
   name            String
   decimals        Int
-  supply          Decimal   @db.Decimal(40, 12)
-  /// "spl-token" or "token-2022"
-  tokenProgram    String
-  /// null = revoked
-  mintAuthority   String?
-  freezeAuthority String?
   logoUri         String?
-  /// Token-2022 extension names
-  extensions      Json      @default("[]")
-  /// TokenRisk flags (mintable, freezable, transferFee, transferHook, permanentDelegate)
-  risk            Json
-  mintCreatedAt   DateTime?
-  holderCount     Int       @default(0)
-  top10Pct        Float     @default(0)
-  updatedAt       DateTime  @updatedAt
-  poolsAsBase     Pool[]    @relation("base")
-}
-
-/// Verified stock tokens, seeded from the issuer's official list (scripts/seed-stocks.ts).
-model StockAsset {
-  mint            String          @id
-  symbol          String          @unique
-  name            String
-  issuer          String
-  decimals        Int
-  tokenProgram    String
-  /// jupiter | pyth
-  priceSource     String
-  priceFeedId     String?
-  brandColorA     String
-  brandColorB     String
-  monogram        String
-  logoUri         String?
-  minLiquidityUsd Decimal         @default(0) @db.Decimal(20, 2)
-  /// Issuer notice (split, dividend, halt) shown on the stock and its pools.
-  notice          String?
-  enabled         Boolean         @default(true)
-  verifiedAt      DateTime?
-  /// Why the last check disabled the stock.
-  checkNote       String?
-  sortOrder       Int             @default(0)
-  snapshots       StockSnapshot[]
-}
-
-/// SOL and USDC, the non-stock assets a pool can be paired with. Seeded with the stocks.
-model QuoteToken {
-  mint     String    @id
-  kind     QuoteKind @unique
-  symbol   String
-  name     String
-  decimals Int
-  logoUri  String?
-}
-
-/// Stock prices over time, for 24h change and the card sparkline.
-model StockSnapshot {
-  id       BigInt     @id @default(autoincrement())
-  mint     String
-  stock    StockAsset @relation(fields: [mint], references: [mint], onDelete: Cascade)
-  ts       DateTime
-  priceUsd Float
-
-  @@index([mint, ts])
-}
-
-model Pool {
-  address      String         @id
-  venue        Venue
-  baseMint     String
-  base         Token          @relation("base", fields: [baseMint], references: [mint])
-  /// stock, SOL or USDC mint
-  quoteMint    String
-  quoteKind    QuoteKind
-  feeBps       Int
-  /// Raydium CPMM LP mint
-  lpMint       String?
-  /// Meteora / Orca position NFT
-  positionNft  String?
-  creator      String
-  createdTx    String
-  createdAt    DateTime
-  lpStatus     LpStatus       @default(UNLOCKED)
-  lpLockedPct  Int            @default(0)
-  lpUnlockAt   DateTime?
-  /// HolderSlice[] ("who holds the liquidity"), kept up to date by the indexer
-  holders      Json           @default("[]")
-  reserveBase  Decimal        @db.Decimal(40, 12)
-  reserveQuote Decimal        @db.Decimal(40, 12)
-  priceUsd     Decimal        @db.Decimal(40, 18)
-  tvlUsd       Decimal        @db.Decimal(24, 6)
-  vol24hUsd    Decimal        @default(0) @db.Decimal(24, 6)
-  change24h    Decimal        @default(0) @db.Decimal(12, 4)
-  buys24h      Int            @default(0)
-  sells24h     Int            @default(0)
-  snapshots    PoolSnapshot[]
-  trades       Trade[]
-
-  @@index([quoteKind, tvlUsd])
-  @@index([vol24hUsd])
-  @@index([createdAt])
-  @@index([creator])
-}
-
-model PoolSnapshot {
-  id          BigInt   @id @default(autoincrement())
-  poolAddress String
-  pool        Pool     @relation(fields: [poolAddress], references: [address], onDelete: Cascade)
-  ts          DateTime
-  priceUsd    Decimal  @db.Decimal(40, 18)
-  tvlUsd      Decimal  @db.Decimal(24, 6)
-  volUsd      Decimal  @db.Decimal(24, 6)
-
-  @@index([poolAddress, ts])
-}
-
-model Trade {
-  sig         String    @id
-  poolAddress String
-  pool        Pool      @relation(fields: [poolAddress], references: [address], onDelete: Cascade)
-  ts          DateTime
-  side        TradeSide
-  trader      String
-  amountUsd   Decimal   @db.Decimal(24, 6)
-  baseAmount  Decimal   @db.Decimal(40, 12)
-  quoteAmount Decimal   @db.Decimal(40, 12)
-
-  @@index([poolAddress, ts])
-  @@index([trader, ts])
-}
-
-model LiquidityEvent {
-  sig         String   @id
-  poolAddress String
-  ts          DateTime
-  kind        LiqKind
-  wallet      String
-  amountUsd   Decimal  @db.Decimal(24, 6)
-
-  @@index([poolAddress, ts])
-  @@index([wallet, ts])
-}
-
-enum Venue {
-  RAYDIUM_CPMM
-  METEORA_DAMM_V2
-  ORCA_WHIRLPOOL
-}
-
-enum QuoteKind {
-  STOCK
-  SOL
-  USDC
-}
-
-enum LpStatus {
-  BURNED
-  LOCKED
-  PARTIAL
-  UNLOCKED
+  verified        Boolean  @default(false)
+  /// Jupiter tags it as a stablecoin: counted as money in trades.
+  stable          Boolean  @default(false)
+  usdPrice        Float?
+  change24h       Float?
+  mcap            Float?
+  liquidity       Float?
+  holderCount     Int?
+  organicScore    Float?
+  mintAuthorityOff  Boolean?
+  freezeAuthorityOff Boolean?
+  topHoldersPct   Float?
+  devPct          Float?
+  /// When its first pool was created.
+  launchedAt      DateTime?
+  /// Where the row came from: "jupiter", or a stand-in from "chain" metadata or the "tx" itself.
+  source          String   @default("jupiter")
+  updatedAt       DateTime
 }
 
 enum TradeSide {
   BUY
   SELL
-}
-
-enum LiqKind {
-  CREATE
-  ADD
-  REMOVE
-  CLAIM
 }

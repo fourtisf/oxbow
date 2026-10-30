@@ -14,17 +14,7 @@ declare global {
   }
 }
 
-export type TrackEvent =
-  | 'wallet_connected'
-  | 'pool_create_started'
-  | 'pool_created'
-  | 'swap'
-  | 'liquidity_added'
-  | 'fees_claimed'
-  | 'liquidity_withdrawn'
-  | 'pool_shared'
-  | 'watchlist_add'
-  | 'language_changed';
+export type TrackEvent = 'wallet_connected' | 'wallet_tracked' | 'wallet_followed' | 'alerts_on' | 'trade_opened' | 'trade_done';
 
 export function track(event: TrackEvent, props?: Props) {
   try {

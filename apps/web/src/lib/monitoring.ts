@@ -18,7 +18,7 @@ export function initMonitoring(): Promise<SentryLike | null> {
       .then((S) => {
         S.init({
           dsn: DSN,
-          environment: process.env.NEXT_PUBLIC_SOLANA_CLUSTER || 'devnet',
+          environment: 'mainnet',
           tracesSampleRate: 0,
         });
         return S as SentryLike;

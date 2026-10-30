@@ -1,7 +1,7 @@
 // PM2 processes on the VPS.
 //   pm2 start infra/ecosystem.config.cjs    (first time)
 //   bash infra/deploy.sh                    (updates)
-// The API runs once apps/api/.env exists (infra/setup-data.sh writes it).
+// The API and the tracker worker run once apps/api/.env exists (infra/setup-data.sh writes it).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -31,6 +31,18 @@ module.exports = {
             node_args: '--import tsx',
             env: { NODE_ENV: 'production' },
             max_memory_restart: '400M',
+            time: true,
+          },
+          {
+            // Follows tracked wallets on chain (websocket + catch-up) and stores their trades.
+            name: 'oxbow-worker',
+            cwd: path.join(root, 'apps', 'api'),
+            script: 'src/worker.ts',
+            interpreter: 'node',
+            node_args: '--import tsx',
+            env: { NODE_ENV: 'production' },
+            max_memory_restart: '400M',
+            restart_delay: 5000,
             time: true,
           },
         ]

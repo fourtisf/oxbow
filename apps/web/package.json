@@ -9,12 +9,10 @@
     "lint": "next lint --dir src",
     "typecheck": "tsc --noEmit",
     "test": "echo \"web: unit tests live in packages/shared; run pnpm e2e for browser tests\"",
-    "e2e": "playwright test",
-    "screens": "node screens/compare.mjs"
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@oxbow/shared": "workspace:*",
-    "@oxbow/solana": "workspace:*",
     "@sentry/nextjs": "11.9.0",
     "@tanstack/react-query": "5.105.0",
     "geist": "1.8.2",

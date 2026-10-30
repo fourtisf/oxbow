@@ -1,19 +1,30 @@
 'use client';
 
 import { create } from 'zustand';
+import type { TokenBrief, TradeSide } from '@oxbow/shared';
 
-/** Swap settings shared by every pool for this visit. */
-export const SLIPPAGE_PRESETS_BPS = [50, 100, 200] as const;
-/** Above this the UI warns that the price could be much worse. */
-export const HIGH_SLIPPAGE_BPS = 500;
-export const MAX_SLIPPAGE_BPS = 5000;
-
-interface TradeSettings {
-  slippageBps: number;
-  set(bps: number): void;
+export interface TradeTarget {
+  token: TokenBrief;
+  side: TradeSide;
+  /** The tracked wallet whose trade is being copied, for the panel's header. */
+  from?: { address: string; name: string | null };
+  /** Shown before trading a token that failed the safety check. */
+  danger?: boolean;
 }
 
-export const useTradeSettings = create<TradeSettings>((set) => ({
+interface TradeState {
+  target: TradeTarget | null;
+  slippageBps: number;
+  open(t: TradeTarget): void;
+  close(): void;
+  setSlippage(bps: number): void;
+}
+
+/** The buy/sell panel: which token it is open for. */
+export const useTrade = create<TradeState>((set) => ({
+  target: null,
   slippageBps: 100,
-  set: (bps) => set({ slippageBps: Math.min(MAX_SLIPPAGE_BPS, Math.max(1, Math.round(bps))) }),
+  open: (target) => set({ target }),
+  close: () => set({ target: null }),
+  setSlippage: (slippageBps) => set({ slippageBps }),
 }));

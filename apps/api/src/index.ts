@@ -1,15 +1,15 @@
 /**
  * Oxbow API entry point: reads config from the environment, connects to
  * Postgres, Redis and the Solana RPC, and serves on 127.0.0.1 (nginx in front).
+ * The tracker worker (src/worker.ts) runs as its own process.
  */
 import { Redis } from 'ioredis';
+import { Connection } from '@solana/web3.js';
 import { createDb } from '@oxbow/db';
-import { connect } from '@oxbow/solana/rpc';
 import { buildApp } from './app';
 import { loadConfig } from './config';
 import { loadEnvFile } from './env-file';
-import { jupiterPopular, jupiterSearch } from './popular';
-import { LivePrices } from './prices';
+import { jupiterClient } from './jupiter';
 
 loadEnvFile();
 const config = loadConfig();
@@ -22,13 +22,11 @@ redis.on('error', () => {
 const { app } = await buildApp({
   db,
   redis,
-  rpc: connect(config.RPC_URL, config.SOLANA_CLUSTER),
-  cluster: config.SOLANA_CLUSTER,
-  create: { treasury: config.OXBOW_TREASURY, feeLamports: config.OXBOW_FEE_LAMPORTS, priorityMicroLamports: config.PRIORITY_FEE_MICROLAMPORTS },
-  prices: new LivePrices(config.JUPITER_API_BASE, config.PYTH_HERMES_URL, (m) => app.log.warn(m)),
+  rpc: new Connection(config.RPC_URL, 'confirmed'),
+  jupiter: jupiterClient(config.JUPITER_API_BASE, { apiKey: config.JUPITER_API_KEY }),
+  swap: { treasury: config.OXBOW_TREASURY, feeBps: config.OXBOW_FEE_BPS },
+  maxWallets: config.MAX_TRACKED_WALLETS,
   ipfsGateway: config.IPFS_GATEWAY,
-  popular: jupiterPopular(config.JUPITER_API_BASE, (m) => app.log.warn(m)),
-  search: jupiterSearch(config.JUPITER_API_BASE, (m) => app.log.warn(m)),
   logger: { level: process.env.LOG_LEVEL ?? 'info' },
 });
 

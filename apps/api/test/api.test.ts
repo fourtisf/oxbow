@@ -1,121 +1,293 @@
+/**
+ * The tracker end to end against a real Postgres and Redis: wallets'
+ * transactions are read through the ingestor (fake RPC, fake Jupiter), then
+ * every route is checked against the shared schemas.
+ */
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
-import { Keypair, PublicKey, type AccountInfo } from '@solana/web3.js';
-import { MINT_SIZE, MintLayout, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { Redis } from 'ioredis';
 import { z } from 'zod';
+import { Redis } from 'ioredis';
 import {
-  ActivityItemSchema,
-  ChartSeriesSchema,
-  PoolDetailSchema,
-  PoolsPageSchema,
-  PoolSummarySchema,
-  PopularTokenSchema,
-  QuoteAssetSchema,
-  TokenSearchResultSchema,
-  StatsSchema,
-  StatusSchema,
-  StockInfoSchema,
-  TickerItemSchema,
-  TokenInfoSchema,
-  TradeSchema,
-  WalletActivitySchema,
-  type ActivityItem,
-} from '@oxbow/shared';
+  AddressLookupTableAccount,
+  ComputeBudgetProgram,
+  PublicKey,
+  SystemInstruction,
+  SystemProgram,
+  TransactionMessage,
+  VersionedTransaction,
+  type AccountInfo,
+} from '@solana/web3.js';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { createDb, type PrismaClient } from '@oxbow/db';
-import { SOL_MINT } from '@oxbow/solana/rpc';
+import {
+  BuiltSwapSchema,
+  FeedPageSchema,
+  FeedTradeSchema,
+  HotTokenSchema,
+  StatusSchema,
+  SwapQuoteSchema,
+  TokenDetailSchema,
+  TokenSearchResultSchema,
+  WalletDetailSchema,
+  WalletSummarySchema,
+  type FeedTrade,
+} from '@oxbow/shared';
+import { JUPITER_PROGRAM_ID, type JupiterInstruction, type JupiterSwapInstructions } from '@oxbow/solana/swap';
 import { buildApp, type ChainReader } from '../src/app';
-import { ACTIVITY_CHANNEL } from '../src/activity';
-import type { Price, PriceRequest, PriceSource } from '../src/prices';
-import { addr, makeIds, seedFixtures } from './fixtures';
+import { TRACKER_HEARTBEAT_KEY, TRACKER_LIVE_KEY, TRADES_CHANNEL, tradePublisher, WALLETS_CHANNEL } from '../src/hub';
+import type { Jupiter, JupiterQuote, JupiterToken, QuoteParams } from '../src/jupiter';
+import { Ingestor } from '../src/tracker/ingest';
+import { WSOL, type RawTx } from '../src/tracker/parse';
+import type { SignatureInfo, TrackerRpc } from '../src/tracker/rpc';
+import { TokenBook } from '../src/tracker/tokens';
+import { addr, fakeSwapTx, sig, type FakeSwap } from './fixtures';
 import { TEST_DATABASE_URL, TEST_REDIS_URL } from './global-setup';
 
 const ready = inject('servicesReady');
-const NOW = Date.parse('2026-10-28T15:00:00Z'); // a Wednesday, US market open
-const HOUR = 3_600_000;
-const DAY = 24 * HOUR;
+const NOW = Date.parse('2026-10-30T12:00:00Z');
+const T = (minAgo: number) => Math.floor((NOW - minAgo * 60_000) / 1000);
+const SOL_USD = 200;
 
-const ids = makeIds();
-const { M, P, creator, trader } = ids;
+const M = { meme: addr(), dog: addr(), usdc: addr(), rug: addr() };
+const W = { alpha: addr(), beta: addr(), quiet: addr() };
+const TREASURY = addr();
 
-class FakePrices implements PriceSource {
-  calls: PriceRequest[][] = [];
-  table = new Map<string, Price>([
-    [M.tsla, { usd: 250, change24h: 2.5, updatedAt: NOW - 60_000 }],
-    [M.nvda, { usd: 140, change24h: null, updatedAt: NOW - 60_000 }],
-    [SOL_MINT, { usd: 180, change24h: -1, updatedAt: NOW - 30_000 }],
-    [M.usdc, { usd: 1, change24h: 0, updatedAt: NOW - 30_000 }],
+function token(mint: string, over: Partial<JupiterToken> = {}): JupiterToken {
+  return {
+    mint,
+    symbol: 'TKN',
+    name: 'Token',
+    decimals: 6,
+    logoUri: `https://img.example/${mint.slice(0, 6)}.png`,
+    verified: true,
+    stable: false,
+    usdPrice: 1,
+    change24h: 0,
+    mcap: 5_000_000,
+    liquidity: 800_000,
+    holderCount: 12_000,
+    organicScore: 80,
+    mintAuthorityOff: true,
+    freezeAuthorityOff: true,
+    topHoldersPct: 15,
+    devPct: 0,
+    launchedAt: new Date('2026-01-01T00:00:00Z'),
+    ...over,
+  };
+}
+
+const ALT_KEYS = Array.from({ length: 20 }, () => new PublicKey(addr()));
+const ALT = new AddressLookupTableAccount({
+  key: new PublicKey(addr()),
+  state: { deactivationSlot: BigInt('18446744073709551615'), lastExtendedSlot: 0, lastExtendedSlotStartIndex: 0, addresses: ALT_KEYS },
+});
+
+class FakeJupiter implements Jupiter {
+  table = new Map<string, JupiterToken>([
+    [WSOL, token(WSOL, { symbol: 'SOL', name: 'Wrapped SOL', decimals: 9, usdPrice: SOL_USD, logoUri: null })],
+    [M.meme, token(M.meme, { symbol: 'MEME', name: 'Meme Coin', usdPrice: 0.004 })],
+    [M.dog, token(M.dog, { symbol: 'DOG', name: 'Dog', usdPrice: 0.02 })],
+    [M.usdc, token(M.usdc, { symbol: 'USDC', name: 'USD Coin', stable: true, usdPrice: 1 })],
+    [
+      M.rug,
+      token(M.rug, { symbol: 'RUG', name: 'Rug', verified: false, usdPrice: 0.0001, liquidity: 900, mintAuthorityOff: false, launchedAt: new Date(NOW - 3_600_000), organicScore: 3 }),
+    ],
   ]);
-  async prices(req: PriceRequest[]) {
-    this.calls.push(req);
-    return new Map(req.flatMap((r) => (this.table.has(r.mint) ? [[r.mint, this.table.get(r.mint)!] as const] : [])));
+  down = false;
+  quotes: QuoteParams[] = [];
+  swapProgram = JUPITER_PROGRAM_ID.toBase58();
+  async tokens(mints: string[]) {
+    if (this.down) throw new Error('down');
+    return mints.flatMap((m) => (this.table.has(m) ? [this.table.get(m)!] : []));
+  }
+  async search(q: string) {
+    if (this.down) throw new Error('down');
+    return [...this.table.values()].filter((t) => t.symbol.toLowerCase().includes(q.toLowerCase()) || t.mint === q);
+  }
+  async quote(p: QuoteParams): Promise<JupiterQuote> {
+    this.quotes.push(p);
+    const buy = p.inputMint === WSOL;
+    // 1 SOL = 50,000 MEME (6 decimals) both ways.
+    const out = buy ? (p.amount * 50_000n * 10n ** 6n) / 10n ** 9n : (p.amount * 10n ** 9n) / (50_000n * 10n ** 6n);
+    return {
+      inputMint: p.inputMint,
+      outputMint: p.outputMint,
+      inAmount: p.amount.toString(),
+      outAmount: out.toString(),
+      otherAmountThreshold: ((out * BigInt(10_000 - p.slippageBps)) / 10_000n).toString(),
+      priceImpactPct: '0.0012',
+      slippageBps: p.slippageBps,
+      routePlan: [{ swapInfo: { label: 'Whirlpool' } }, { swapInfo: { label: 'Raydium' } }],
+    };
+  }
+  async swapInstructions(_q: JupiterQuote, wallet: string): Promise<JupiterSwapInstructions> {
+    const ix = (i: ReturnType<typeof ComputeBudgetProgram.setComputeUnitLimit>): JupiterInstruction => ({
+      programId: i.programId.toBase58(),
+      accounts: i.keys.map((k) => ({ pubkey: k.pubkey.toBase58(), isSigner: k.isSigner, isWritable: k.isWritable })),
+      data: Buffer.from(i.data).toString('base64'),
+    });
+    return {
+      computeBudgetInstructions: [ix(ComputeBudgetProgram.setComputeUnitLimit({ units: 169_090 })), ix(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1000 }))],
+      setupInstructions: [{ programId: ASSOCIATED_TOKEN_PROGRAM_ID.toBase58(), accounts: [{ pubkey: wallet, isSigner: true, isWritable: true }], data: '' }],
+      swapInstruction: {
+        programId: this.swapProgram,
+        accounts: [{ pubkey: wallet, isSigner: true, isWritable: true }, ...ALT_KEYS.map((k) => ({ pubkey: k.toBase58(), isSigner: false, isWritable: false }))],
+        data: Buffer.from([1, 2, 3]).toString('base64'),
+      },
+      cleanupInstruction: null,
+      otherInstructions: [],
+      addressLookupTableAddresses: [ALT.key.toBase58()],
+      computeUnitLimit: 169_090,
+    };
   }
 }
 
-function mintAccount(decimals: number, supply: bigint, authority: PublicKey | null): AccountInfo<Buffer> {
-  const data = Buffer.alloc(MINT_SIZE);
-  MintLayout.encode(
-    {
-      mintAuthorityOption: authority ? 1 : 0,
-      mintAuthority: authority ?? PublicKey.default,
-      supply,
-      decimals,
-      isInitialized: true,
-      freezeAuthorityOption: 0,
-      freezeAuthority: PublicKey.default,
-    },
-    data,
-  );
-  return { owner: TOKEN_PROGRAM_ID, data, executable: false, lamports: 1, rentEpoch: 0 };
+class FakeTrackerRpc implements TrackerRpc {
+  txs = new Map<string, RawTx>();
+  sigs = new Map<string, SignatureInfo[]>();
+  add(s: FakeSwap) {
+    this.txs.set(s.signature, fakeSwapTx(s));
+    const list = this.sigs.get(s.wallet) ?? [];
+    list.push({ signature: s.signature, slot: 0, err: null, blockTime: s.blockTime });
+    list.sort((a, b) => (b.blockTime ?? 0) - (a.blockTime ?? 0));
+    this.sigs.set(s.wallet, list);
+  }
+  async getTransaction(signature: string) {
+    return this.txs.get(signature) ?? null;
+  }
+  async getSignatures(address: string, o: { limit: number; until?: string; before?: string }) {
+    let list = this.sigs.get(address) ?? [];
+    if (o.before) list = list.slice(list.findIndex((s) => s.signature === o.before) + 1);
+    if (o.until) {
+      const i = list.findIndex((s) => s.signature === o.until);
+      if (i >= 0) list = list.slice(0, i);
+    }
+    return list.slice(0, o.limit);
+  }
 }
 
-class FakeRpc {
-  async getTransaction() {
-    return null;
-  }
+const system = (lamports = 1e9): AccountInfo<Buffer> => ({ owner: SystemProgram.programId, data: Buffer.alloc(0), executable: false, lamports });
+
+class FakeChain {
   accounts = new Map<string, AccountInfo<Buffer>>();
+  held = new Map<string, [string, number][]>();
+  treasuryLamports = 5_000_000;
   down = false;
   async getSlot() {
     if (this.down) throw new Error('down');
-    return 123_456;
-  }
-  async getSupply() {
-    if (this.down) throw new Error('down');
-    return { value: { circulating: 560_000_000 * 1e9 } };
+    return 463_000_000;
   }
   async getAccountInfo(k: PublicKey) {
     if (this.down) throw new Error('down');
     return this.accounts.get(k.toBase58()) ?? null;
   }
-  async getMultipleAccountsInfo(ks: PublicKey[]) {
-    if (this.down) throw new Error('down');
-    return ks.map((k) => this.accounts.get(k.toBase58()) ?? null);
+  async getLatestBlockhash() {
+    return { blockhash: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', lastValidBlockHeight: 441_000_000 };
+  }
+  async getAddressLookupTable(k: PublicKey) {
+    return { context: { slot: 1 }, value: k.equals(ALT.key) ? ALT : null };
+  }
+  async getBalance(k: PublicKey) {
+    return k.toBase58() === TREASURY ? this.treasuryLamports : 2e9;
+  }
+  async getMinimumBalanceForRentExemption() {
+    return 890_880;
+  }
+  async getSignatureStatuses(sigs: string[]) {
+    return { context: { slot: 1 }, value: sigs.map(() => ({ slot: 1, confirmations: null, err: null, confirmationStatus: 'confirmed' as const })) };
+  }
+  async sendRawTransaction() {
+    return sig();
+  }
+  async getParsedTokenAccountsByOwner(owner: PublicKey, filter: { programId?: PublicKey; mint?: PublicKey }) {
+    // Only the classic token program holds these test tokens.
+    if (filter.programId && !filter.programId.equals(TOKEN_PROGRAM_ID)) return { context: { slot: 1 }, value: [] };
+    const rows = (this.held.get(owner.toBase58()) ?? []).filter(([m]) => !filter.mint || filter.mint.toBase58() === m);
+    return {
+      context: { slot: 1 },
+      value: rows.map(([mint, uiAmount]) => ({ pubkey: new PublicKey(addr()), account: { data: { parsed: { info: { mint, tokenAmount: { uiAmount } } } } } })),
+    };
   }
 }
 
-describe.skipIf(!ready)('Oxbow API', () => {
+const SOL = 1_000_000_000n;
+const TOK = 1_000_000n; // one MEME/DOG/RUG in raw units
+
+describe.skipIf(!ready)('Oxbow tracker API', () => {
   let db: PrismaClient;
   let redis: Redis;
-  let prices: FakePrices;
-  let rpc: FakeRpc;
+  let jup: FakeJupiter;
+  let chain: FakeChain;
+  let rpc: FakeTrackerRpc;
+  let ingestor: Ingestor;
+  let published: FeedTrade[];
   let built: Awaited<ReturnType<typeof buildApp>>;
   const app = () => built.app;
   const get = async (url: string, headers?: Record<string, string>) => {
     const res = await app().inject({ method: 'GET', url, headers });
     return { status: res.statusCode, body: res.json() as unknown, headers: res.headers };
   };
+  const post = async (url: string, payload: unknown, ip = '203.0.113.7') => {
+    const res = await app().inject({ method: 'POST', url, payload: payload as object, headers: { 'x-forwarded-for': ip } });
+    return { status: res.statusCode, body: res.json() as Record<string, unknown> };
+  };
+  const wallet = (address: string) => db.trackedWallet.findUniqueOrThrow({ where: { address } });
+
+  async function rebuild(extra: Partial<Parameters<typeof buildApp>[0]> = {}) {
+    await built?.app.close();
+    built = await buildApp({
+      db,
+      redis,
+      rpc: chain as unknown as ChainReader,
+      jupiter: jup,
+      swap: { treasury: TREASURY, feeBps: 50 },
+      now: () => NOW,
+      fetchJson: async () => null,
+      ...extra,
+    });
+  }
 
   beforeAll(async () => {
     db = createDb(TEST_DATABASE_URL);
     redis = new Redis(TEST_REDIS_URL, { maxRetriesPerRequest: 1 });
-    await seedFixtures(db, NOW, ids);
+    await db.$executeRawUnsafe('TRUNCATE "WalletTrade", "TrackedWallet", "TokenMeta" RESTART IDENTITY CASCADE');
+    jup = new FakeJupiter();
+    chain = new FakeChain();
+    rpc = new FakeTrackerRpc();
+    published = [];
+    const tokens = new TokenBook(db, jup, { now: () => NOW });
+    ingestor = new Ingestor({ db, rpc, tokens, now: () => NOW, publish: async (t) => void published.push(...t) });
+
+    await db.trackedWallet.createMany({
+      data: [
+        { address: W.alpha, label: 'Alpha', featured: true },
+        { address: W.beta, featured: false },
+        { address: W.quiet, featured: false },
+      ],
+    });
+    // Alpha: buys MEME twice, sells half at a profit; buys DOG with USDC.
+    rpc.add({ wallet: W.alpha, signature: sig(), blockTime: T(300), mint: M.meme, tokenDelta: 100_000n * TOK, quoteDelta: -2n * SOL, opensAccount: true });
+    rpc.add({ wallet: W.alpha, signature: sig(), blockTime: T(240), mint: M.meme, tokenDelta: 100_000n * TOK, quoteDelta: -2n * SOL });
+    rpc.add({ wallet: W.alpha, signature: sig(), blockTime: T(120), mint: M.meme, tokenDelta: -100_000n * TOK, quoteDelta: 3n * SOL });
+    rpc.add({ wallet: W.alpha, signature: sig(), blockTime: T(60), mint: M.dog, tokenDelta: 5_000n * TOK, quoteDelta: -100n * TOK, quoteMint: M.usdc, opensAccount: true });
+    // Beta: buys MEME and RUG, sells all of RUG at a loss.
+    rpc.add({ wallet: W.beta, signature: sig(), blockTime: T(200), mint: M.meme, tokenDelta: 50_000n * TOK, quoteDelta: -1n * SOL, opensAccount: true });
+    rpc.add({ wallet: W.beta, signature: sig(), blockTime: T(90), mint: M.rug, tokenDelta: 1_000_000n * TOK, quoteDelta: -SOL / 2n, opensAccount: true });
+    rpc.add({ wallet: W.beta, signature: sig(), blockTime: T(30), mint: M.rug, tokenDelta: -1_000_000n * TOK, quoteDelta: SOL / 10n, opensAccount: true });
+
+    for (const a of [W.alpha, W.beta, W.quiet]) await ingestor.catchUp(await wallet(a));
+    chain.held.set(W.alpha, [
+      [M.meme, 100_000],
+      [M.dog, 5_000],
+    ]);
   });
 
   beforeEach(async () => {
     await redis.flushdb();
-    await built?.app.close();
-    prices = new FakePrices();
-    rpc = new FakeRpc();
-    built = await buildApp({ db, redis, prices, rpc: rpc as unknown as ChainReader, cluster: 'devnet', now: () => NOW, fetchJson: async () => null });
+    jup.down = false;
+    chain.down = false;
+    chain.treasuryLamports = 5_000_000;
+    jup.swapProgram = JUPITER_PROGRAM_ID.toBase58();
+    await rebuild();
   });
 
   afterAll(async () => {
@@ -124,383 +296,325 @@ describe.skipIf(!ready)('Oxbow API', () => {
     redis?.disconnect();
   });
 
-  it('answers health checks', async () => {
-    expect((await get('/health')).body).toEqual({ ok: true });
-    expect((await get('/api/health')).body).toEqual({ ok: true });
-  });
-
-  describe('assets', () => {
-    it('lists quote assets: stocks in seed order, then SOL, then USDC, priced', async () => {
-      const { status, body } = await get('/api/quotes');
-      expect(status).toBe(200);
-      const quotes = z.array(QuoteAssetSchema).parse(body);
-      expect(quotes.map((q) => q.symbol)).toEqual(['TSLAx', 'NVDAx', 'SOL', 'USDC']);
-      expect(quotes[0]).toMatchObject({ kind: 'STOCK', priceUsd: 250, change24h: 2.5, issuer: 'Backed', logoUri: '/tokens/tslax.svg' });
-      expect(quotes[1]!.notice).toBe('Stock split 10:1 on Nov 3');
-      expect(quotes[2]).toMatchObject({ kind: 'SOL', priceUsd: 180, logoUri: '/tokens/sol.svg', market: null });
-      // Stocks carry the US market state; the fixed clock is a weekday afternoon in New York.
-      expect(quotes[0]!.market?.status).toBe('OPEN');
-      // Pyth feeds are asked for by feed id, Jupiter by mint.
-      const req = prices.calls[0]!;
-      expect(req).toContainEqual({ mint: M.nvda, source: 'pyth', feedId: 'ab'.repeat(32) });
-      expect(req).toContainEqual({ mint: M.tsla, source: 'jupiter', feedId: null });
+  describe('ingestion', () => {
+    it('reads each wallet’s history once and bookmarks the newest signature', async () => {
+      const alpha = await wallet(W.alpha);
+      expect(alpha.backfilledAt).not.toBeNull();
+      expect(alpha.lastSignature).toBe(rpc.sigs.get(W.alpha)![0]!.signature);
+      expect(await db.walletTrade.count({ where: { wallet: W.alpha } })).toBe(4);
+      expect(await db.walletTrade.count({ where: { wallet: W.beta } })).toBe(3);
+      // A wallet with no transactions still counts as read.
+      expect((await wallet(W.quiet)).backfilledAt).not.toBeNull();
+      // History isn't news: nothing went out live.
+      expect(published).toEqual([]);
+      // Nothing new: nothing read again.
+      expect(await ingestor.catchUp(alpha)).toBe(0);
     });
 
-    it('lists stocks with pool counts and records price snapshots at most every 5 minutes', async () => {
-      await db.stockSnapshot.deleteMany();
-      const stocks = z.array(StockInfoSchema).parse((await get('/api/stocks')).body);
-      expect(stocks.find((s) => s.symbol === 'TSLAx')).toMatchObject({ poolCount: 1, orb: '#E82127' });
-      expect(stocks.find((s) => s.symbol === 'NVDAx')?.poolCount).toBe(0);
-      expect(await db.stockSnapshot.count()).toBe(2);
-      // A second read inside 5 minutes (cache cleared) writes nothing new.
+    it('prices SOL trades at the SOL price and leaves out token-account rent', async () => {
+      const first = await db.walletTrade.findFirstOrThrow({ where: { wallet: W.alpha }, orderBy: { ts: 'asc' } });
+      expect(Number(first.usd)).toBeCloseTo(2 * SOL_USD);
+      expect(Number(first.amount)).toBe(100_000);
+      expect(Number(first.priceUsd)).toBeCloseTo(0.004);
+      const dog = await db.walletTrade.findFirstOrThrow({ where: { mint: M.dog } });
+      expect(dog).toMatchObject({ side: 'BUY', quoteMint: M.usdc });
+      expect(Number(dog.usd)).toBeCloseTo(100);
+    });
+
+    it('publishes new trades live and retries a transaction it could not read yet', async () => {
+      const late = sig();
+      const missing: FakeSwap = { wallet: W.beta, signature: late, blockTime: T(2), mint: M.dog, tokenDelta: 10n * TOK, quoteDelta: -SOL / 100n };
+      rpc.add(missing);
+      rpc.txs.delete(late);
+      rpc.add({ wallet: W.beta, signature: sig(), blockTime: T(1), mint: M.dog, tokenDelta: 20n * TOK, quoteDelta: -SOL / 50n });
+      const before = (await wallet(W.beta)).lastSignature;
+      expect(await ingestor.catchUp(await wallet(W.beta))).toBe(0);
+      // Stopped at the unreadable one: the bookmark didn't move past it.
+      expect((await wallet(W.beta)).lastSignature).toBe(before);
+
+      rpc.txs.set(late, fakeSwapTx(missing));
+      expect(await ingestor.catchUp(await wallet(W.beta))).toBe(2);
+      expect(published.map((t) => t.amount)).toEqual([10, 20]);
+      expect(published.every((t) => FeedTradeSchema.safeParse(t).success)).toBe(true);
+      // Back to the suite's data set.
+      await db.walletTrade.deleteMany({ where: { mint: M.dog, wallet: W.beta } });
+      published.length = 0;
+    });
+
+    it('stores nothing (so it is retried) when there is no SOL price', async () => {
+      const blind = new TokenBook(db, { ...jup, tokens: async () => [] } as unknown as Jupiter, { now: () => NOW + 864e5 });
+      await db.tokenMeta.update({ where: { mint: WSOL }, data: { usdPrice: null } });
+      const s = sig();
+      rpc.add({ wallet: W.quiet, signature: s, blockTime: T(5), mint: M.meme, tokenDelta: TOK, quoteDelta: -SOL });
+      const ing = new Ingestor({ db, rpc, tokens: blind, now: () => NOW });
+      await expect(ing.ingest(await wallet(W.quiet), s)).rejects.toThrow(/no USD price/);
+      await db.tokenMeta.update({ where: { mint: WSOL }, data: { usdPrice: SOL_USD, updatedAt: new Date(NOW) } });
+      rpc.sigs.delete(W.quiet);
+      rpc.txs.delete(s);
+    });
+  });
+
+  describe('feed', () => {
+    it('lists trades newest first with token and wallet details', async () => {
+      const { status, body } = await get('/api/feed');
+      expect(status).toBe(200);
+      const page = FeedPageSchema.parse(body);
+      expect(page.trades).toHaveLength(7);
+      expect(page.trades.map((t) => t.ts)).toEqual([...page.trades.map((t) => t.ts)].sort().reverse());
+      const sell = page.trades.find((t) => t.side === 'SELL' && t.wallet === W.alpha)!;
+      expect(sell).toMatchObject({ walletLabel: 'Alpha', featured: true, quoteSymbol: 'SOL', quoteAmount: 3, amount: 100_000, token: { symbol: 'MEME', verified: true } });
+      expect(sell.usd).toBeCloseTo(600);
+      expect(page.trades.find((t) => t.token.symbol === 'DOG')!.quoteSymbol).toBe('USDC');
+    });
+
+    it('pages with a cursor and filters by wallet, token, side and size', async () => {
+      const first = FeedPageSchema.parse((await get('/api/feed?limit=3')).body);
+      expect(first.trades).toHaveLength(3);
+      const second = FeedPageSchema.parse((await get(`/api/feed?limit=3&cursor=${first.nextCursor}`)).body);
+      const third = FeedPageSchema.parse((await get(`/api/feed?limit=3&cursor=${second.nextCursor}`)).body);
+      const all = [...first.trades, ...second.trades, ...third.trades];
+      expect(new Set(all.map((t) => t.id)).size).toBe(7);
+      expect(third.nextCursor).toBeNull();
+
+      const beta = FeedPageSchema.parse((await get(`/api/feed?wallets=${W.beta}`)).body);
+      expect(beta.trades.length).toBe(3);
+      expect(beta.trades.every((t) => t.wallet === W.beta)).toBe(true);
+      expect(FeedPageSchema.parse((await get(`/api/feed?mint=${M.rug}`)).body).trades).toHaveLength(2);
+      expect(FeedPageSchema.parse((await get('/api/feed?side=SELL')).body).trades).toHaveLength(2);
+      expect(FeedPageSchema.parse((await get('/api/feed?minUsd=500')).body).trades.map((t) => t.usd)).toEqual([600]);
+      expect((await get('/api/feed?cursor=bad')).status).toBe(400);
+      expect((await get('/api/feed?wallets=notanaddress')).status).toBe(400);
+    });
+
+    it('keeps followed wallets tracked when their feed is read', async () => {
+      await db.trackedWallet.update({ where: { address: W.quiet }, data: { active: false, lastViewedAt: new Date(NOW - 30 * 864e5) } });
+      await get(`/api/feed?wallets=${W.quiet}`);
+      expect(await wallet(W.quiet)).toMatchObject({ active: true });
+    });
+  });
+
+  describe('wallets', () => {
+    it('ranks featured wallets first with PnL and win rate', async () => {
+      const rows = z.array(WalletSummarySchema).parse((await get('/api/wallets')).body);
+      expect(rows[0]).toMatchObject({ address: W.alpha, label: 'Alpha', featured: true });
+      // Sold 100k MEME (cost $400 of the $800 paid) for $600.
+      expect(rows[0]!.stats.realizedPnlUsd).toBeCloseTo(200);
+      expect(rows[0]!.stats).toMatchObject({ trades: 4, wins: 1, losses: 0, winRate: 1, tokensTraded: 2 });
+      const beta = rows.find((r) => r.address === W.beta)!;
+      expect(beta.stats.realizedPnlUsd).toBeCloseTo(-80);
+      expect(beta.stats.winRate).toBe(0);
+    });
+
+    it('shows holdings at today’s prices, capped by the balance on chain', async () => {
+      const d = WalletDetailSchema.parse((await get(`/api/wallets/${W.alpha}`)).body);
+      expect(d.backfilledAt).not.toBeNull();
+      const meme = d.holdings.find((h) => h.token.symbol === 'MEME')!;
+      expect(meme.amount).toBe(100_000);
+      expect(meme.costUsd).toBeCloseTo(400);
+      expect(meme.valueUsd).toBeCloseTo(400);
+      expect(d.stats.unrealizedPnlUsd).toBeCloseTo(0);
+
+      chain.held.set(W.alpha, [[M.meme, 25_000]]);
       await redis.flushdb();
-      await get('/api/stocks');
-      expect(await db.stockSnapshot.count()).toBe(2);
+      const capped = WalletDetailSchema.parse((await get(`/api/wallets/${W.alpha}`)).body);
+      expect(capped.holdings.map((h) => [h.token.symbol, h.amount])).toEqual([['MEME', 25_000]]);
+      chain.held.set(W.alpha, [
+        [M.meme, 100_000],
+        [M.dog, 5_000],
+      ]);
+
+      const beta = WalletDetailSchema.parse((await get(`/api/wallets/${W.beta}`)).body);
+      expect(beta.closed).toMatchObject([{ token: { symbol: 'RUG' } }]);
+      expect(beta.closed[0]!.realizedPnlUsd).toBeCloseTo(-80);
     });
 
-    it('falls back to the last snapshot when a price source is down', async () => {
-      prices.table.delete(M.nvda);
-      const quotes = z.array(QuoteAssetSchema).parse((await get('/api/quotes')).body);
-      expect(quotes.find((q) => q.symbol === 'NVDAx')?.priceUsd).toBe(140);
-    });
-  });
-
-  describe('pools', () => {
-    it('lists pools by 24h volume with the shared schema', async () => {
-      const { status, body, headers } = await get('/api/pools');
-      expect(status).toBe(200);
-      expect(headers['cache-control']).toContain('public');
-      const page = PoolsPageSchema.parse(body);
-      expect(page.total).toBe(3);
-      expect(page.items.map((p) => p.address)).toEqual([P.stock, P.sol, P.usdc]);
-      const first = page.items[0]!;
-      expect(first.quote.symbol).toBe('TSLAx');
-      expect(first.priceQuote).toBeCloseTo(0.00002 / 250);
-      // Fee APR = vol × fee × 365 ÷ TVL × 100
-      expect(first.feeAprPct).toBeCloseTo(((50_000 * 0.0025 * 365) / 200_000) * 100);
-      expect(first.marketCapUsd).toBeCloseTo(0.00002 * 1e9);
-      expect(first.spark7d.length).toBeGreaterThan(2);
+    it('answers 404 for wallets it does not track', async () => {
+      expect((await get(`/api/wallets/${addr()}`)).status).toBe(404);
     });
 
-    it('filters by pair asset, locked liquidity, search text and address', async () => {
-      const ids = async (qs: string) => PoolsPageSchema.parse((await get(`/api/pools?${qs}`)).body).items.map((p) => p.address);
-      expect(await ids('quote=stock')).toEqual([P.stock]);
-      expect(await ids('quote=SOL')).toEqual([P.sol]);
-      expect(await ids('quote=USDC')).toEqual([P.usdc]);
-      expect(await ids('locked=true')).toEqual([P.stock, P.usdc]);
-      expect(await ids('q=wif')).toEqual([P.sol]);
-      expect(await ids('q=dogwif')).toEqual([P.sol]);
-      // Searching a stock symbol finds pools paired with it.
-      expect(await ids('q=TSLA')).toContain(P.stock);
-      expect(await ids(`q=${M.bonk}`)).toEqual([P.stock]);
-      expect(await ids(`q=${P.usdc}`)).toEqual([P.usdc]);
-      expect(await ids(`addresses=${P.sol},${P.usdc}`)).toEqual([P.sol, P.usdc]);
+    it('lists one wallet’s trades', async () => {
+      expect(FeedPageSchema.parse((await get(`/api/wallets/${W.alpha}/trades`)).body).trades).toHaveLength(4);
     });
 
-    it('sorts by TVL, change, APR and age, and pages with a cursor', async () => {
-      const ids = async (qs: string) => PoolsPageSchema.parse((await get(`/api/pools?${qs}`)).body).items.map((p) => p.address);
-      expect(await ids('sort=tvl')).toEqual([P.stock, P.usdc, P.sol]);
-      expect(await ids('sort=chg')).toEqual([P.usdc, P.stock, P.sol]);
-      expect(await ids('sort=apr')).toEqual([P.sol, P.stock, P.usdc]);
-      expect(await ids('sort=new')).toEqual([P.sol, P.usdc, P.stock]);
-      const one = PoolsPageSchema.parse((await get('/api/pools?limit=2')).body);
-      expect(one.items).toHaveLength(2);
-      expect(one.nextCursor).toBeTruthy();
-      const two = PoolsPageSchema.parse((await get(`/api/pools?limit=2&cursor=${one.nextCursor}`)).body);
-      expect(two.items.map((p) => p.address)).toEqual([P.usdc]);
-      expect(two.nextCursor).toBeNull();
+    it('adds a wallet only when it is a plain wallet, and tells the worker', async () => {
+      const sub = redis.duplicate();
+      const heard: string[] = [];
+      sub.on('message', (_c, m: string) => heard.push(m));
+      await sub.subscribe(WALLETS_CHANNEL);
+
+      expect((await post('/api/wallets', { address: 'nope' })).status).toBe(400);
+      expect((await post('/api/wallets', { address: addr() })).body.error).toBe('no_activity');
+      const tokenAccount = addr();
+      chain.accounts.set(tokenAccount, { ...system(), owner: TOKEN_PROGRAM_ID });
+      expect((await post('/api/wallets', { address: tokenAccount })).body.error).toBe('not_a_wallet');
+
+      const fresh = addr();
+      chain.accounts.set(fresh, system());
+      expect(await post('/api/wallets', { address: fresh })).toEqual({ status: 201, body: { address: fresh, created: true } });
+      expect((await post('/api/wallets', { address: fresh })).body).toEqual({ address: fresh, created: false });
+      await new Promise((r) => setTimeout(r, 100));
+      expect(heard).toContain(fresh);
+      expect(await wallet(fresh)).toMatchObject({ active: true, featured: false, label: null });
+      await sub.quit();
+      await db.trackedWallet.delete({ where: { address: fresh } });
     });
 
-    it('rejects bad query strings', async () => {
-      expect((await get('/api/pools?sort=hot')).status).toBe(400);
-      expect((await get('/api/pools?limit=1000')).status).toBe(400);
-      expect((await get('/api/pools?addresses=nope')).status).toBe(400);
-    });
-
-    it('computes safety flags from token facts and creator history', async () => {
-      const page = PoolsPageSchema.parse((await get('/api/pools')).body);
-      const by = (a: string) => page.items.find((p) => p.address === a)!.safety;
-      expect(by(P.stock)).toMatchObject({ level: 'DANGER', holderCount: 900, creatorPools: 3, creatorPulled: 1 });
-      expect(by(P.stock).flags).toEqual(['CREATOR_PULLED_BEFORE']);
-      expect(by(P.sol).flags).toEqual(expect.arrayContaining(['MINTABLE', 'LP_UNLOCKED', 'CONCENTRATED', 'NEW_TOKEN', 'LOW_LIQUIDITY']));
-      // "tslax" copies a verified stock's symbol.
-      expect(by(P.usdc).flags).toContain('DUPLICATE_SYMBOL');
-    });
-
-    it('returns pool detail, 404 for unknown pools and 400 for bad addresses', async () => {
-      const { status, body } = await get(`/api/pools/${P.stock}`);
-      expect(status).toBe(200);
-      const d = PoolDetailSchema.parse(body);
-      expect(d).toMatchObject({ creator, reserveQuote: 1000 });
-      // The malformed slice is dropped.
-      expect(d.holders).toEqual([{ kind: 'BURNED', pct: 100, unlockAt: null, proof: { kind: 'tx', id: expect.any(String) } }]);
-      expect((await get(`/api/pools/${addr()}`)).status).toBe(404);
-      expect((await get('/api/pools/not-an-address')).status).toBe(400);
-    });
-
-    it('builds charts from snapshots, flat when there is no history', async () => {
-      const c = ChartSeriesSchema.parse((await get(`/api/pools/${P.stock}/chart?tf=1D`)).body);
-      expect(c.tf).toBe('1D');
-      expect(c.candles.length).toBeGreaterThan(80);
-      expect(c.candles.at(-1)!.c).toBeCloseTo(0.00001 + 23 * 0.0000005);
-      for (const k of c.candles) expect(k.h).toBeGreaterThanOrEqual(k.l);
-      const flat = ChartSeriesSchema.parse((await get(`/api/pools/${P.sol}/chart?tf=1H`)).body);
-      expect(flat.points).toHaveLength(2);
-      expect(flat.points[0]!.p).toBe(1.8);
-      expect((await get(`/api/pools/${P.sol}/chart?tf=5Y`)).status).toBe(400);
-    });
-
-    it('lists recent trades newest first', async () => {
-      const trades = z.array(TradeSchema).parse((await get(`/api/pools/${P.stock}/trades`)).body);
-      expect(trades.map((t) => t.side)).toEqual(['BUY', 'SELL']);
-      expect(trades[0]!.priceUsd).toBeCloseTo(500 / 25_000_000);
-    });
-  });
-
-  describe('home', () => {
-    it('serves stats, ticker and movers', async () => {
-      const stats = StatsSchema.parse((await get('/api/stats')).body);
-      expect(stats).toMatchObject({ vol24hUsd: 60_000, tvlUsd: 284_000, marketCount: 3 });
-      expect(stats.topGainer?.pool.address).toBe(P.usdc);
-      expect(stats.sparks.tvl.length).toBeGreaterThan(10);
-
-      const ticker = z.array(TickerItemSchema).parse((await get('/api/ticker')).body);
-      expect(ticker.filter((t) => t.kind === 'stock').map((t) => t.asset.symbol)).toEqual(['TSLAx', 'NVDAx']);
-      expect(ticker.filter((t) => t.kind === 'pool')).toHaveLength(3);
-
-      const movers = z.array(PoolSummarySchema).parse((await get('/api/movers')).body);
-      expect(movers.map((p) => p.address)).toEqual([P.usdc, P.stock, P.sol]);
-    });
-
-    it('serves recent activity for the live feed', async () => {
-      const items = z.array(ActivityItemSchema).parse((await get('/api/activity/recent')).body);
-      expect(items[0]).toMatchObject({ kind: 'BUY', wallet: trader, amountUsd: 50 });
-      expect(items.map((i) => i.kind)).toEqual(expect.arrayContaining(['BUY', 'SELL', 'ADD_LP', 'POOL']));
+    it('refuses new wallets when the tracker is full, and limits adds per IP', async () => {
+      await rebuild({ maxWallets: 3 });
+      const a = addr();
+      chain.accounts.set(a, system());
+      expect((await post('/api/wallets', { address: a }, '203.0.113.20')).body.error).toBe('tracker_full');
+      await rebuild();
+      for (let i = 0; i < 9; i++) await post('/api/wallets', { address: 'bad' }, '203.0.113.21');
+      expect((await post('/api/wallets', { address: 'bad' }, '203.0.113.21')).status).toBe(400);
+      expect((await post('/api/wallets', { address: 'bad' }, '203.0.113.21')).status).toBe(429);
     });
   });
 
   describe('tokens', () => {
-    it('reads a mint from the chain and flags a taken symbol', async () => {
-      const mint = Keypair.generate().publicKey;
-      rpc.accounts.set(mint.toBase58(), mintAccount(6, 5_000_000n * 10n ** 6n, mint));
-      const { status, body } = await get(`/api/tokens/${mint.toBase58()}`);
-      expect(status).toBe(200);
-      const t = TokenInfoSchema.parse(body);
-      expect(t).toMatchObject({ decimals: 6, supply: 5_000_000, tokenProgram: 'spl-token', mintAuthority: mint.toBase58(), risk: { mintable: true } });
-      expect(t.symbolTaken).toBe(false);
-      // The old path still works for the web app's sample-data mode.
-      expect((await get(`/api/token/${mint.toBase58()}`)).status).toBe(200);
+    it('lists what tracked wallets are buying', async () => {
+      const hot = z.array(HotTokenSchema).parse((await get('/api/tokens/hot')).body);
+      expect(hot[0]).toMatchObject({ token: { symbol: 'MEME' }, buyers: 2, sellers: 1 });
+      expect(hot[0]!.buyUsd).toBeCloseTo(1000);
+      // Stablecoins are money, not picks.
+      expect(hot.map((h) => h.token.symbol)).not.toContain('USDC');
     });
 
-    it('uses the listed token record for symbol checks and creation time', async () => {
-      rpc.accounts.set(M.wif, mintAccount(6, 10n ** 14n, null));
-      const t = TokenInfoSchema.parse((await get(`/api/tokens/${M.wif}`)).body);
-      expect(t.createdAt).toBe(new Date(NOW - DAY).toISOString());
+    it('shows a token with safety flags and the tracked wallets in it', async () => {
+      const meme = TokenDetailSchema.parse((await get(`/api/tokens/${M.meme}`)).body);
+      expect(meme).toMatchObject({ symbol: 'MEME', usdPrice: 0.004, safety: { level: 'OK', flags: [] } });
+      expect(meme.traders.map((t) => t.address).sort()).toEqual([W.alpha, W.beta].sort());
+      expect(meme.traders.find((t) => t.address === W.alpha)).toMatchObject({ netAmount: 100_000, lastSide: 'SELL', label: 'Alpha' });
+
+      const rug = TokenDetailSchema.parse((await get(`/api/tokens/${M.rug}`)).body);
+      expect(rug.safety.level).toBe('DANGER');
+      expect(rug.safety.flags).toEqual(['MINTABLE', 'LOW_LIQUIDITY', 'NEW_TOKEN', 'LOW_ORGANIC', 'UNVERIFIED']);
     });
 
-    it('gives wrapped SOL its logo and the circulating SOL supply', async () => {
-      rpc.accounts.set(SOL_MINT, mintAccount(9, 0n, null));
-      const t = TokenInfoSchema.parse((await get(`/api/tokens/${SOL_MINT}`)).body);
-      expect(t).toMatchObject({ logoUri: '/tokens/sol.svg', supply: 560_000_000, decimals: 9 });
+    it('answers 404 for a mint no source knows', async () => {
+      expect((await get(`/api/tokens/${addr()}`)).status).toBe(404);
     });
 
-    it('uses a verified stock’s logo when its metadata has none', async () => {
-      rpc.accounts.set(M.tsla, mintAccount(8, 10n ** 12n, null));
-      expect(TokenInfoSchema.parse((await get(`/api/tokens/${M.tsla}`)).body).logoUri).toBe('/tokens/tslax.svg');
-    });
-
-    it('answers 404 for missing mints and 502 when the RPC is down, without caching the failure', async () => {
-      const missing = addr();
-      expect((await get(`/api/tokens/${missing}`)).body).toEqual({ error: 'not_found' });
-      const other = Keypair.generate().publicKey;
-      rpc.down = true;
-      expect((await get(`/api/tokens/${other.toBase58()}`)).status).toBe(502);
-      rpc.down = false;
-      rpc.accounts.set(other.toBase58(), mintAccount(9, 1n, null));
-      expect((await get(`/api/tokens/${other.toBase58()}`)).status).toBe(200);
-      expect((await get('/api/tokens/xyz')).status).toBe(400);
+    it('searches by ticker or CA, verified first, and says when search is down', async () => {
+      expect(z.array(TokenSearchResultSchema).parse((await get('/api/tokens/search?q=me')).body).map((r) => r.symbol)).toEqual(['MEME']);
+      expect(z.array(TokenSearchResultSchema).parse((await get(`/api/tokens/search?q=${M.rug}`)).body)[0]).toMatchObject({ symbol: 'RUG', verified: false });
+      jup.down = true;
+      expect((await get('/api/tokens/search?q=zzz')).body).toEqual({ error: 'search_unavailable' });
     });
   });
 
-  describe('wallet', () => {
-    it('lists a wallet’s trades and liquidity events, newest first, uncached', async () => {
-      const { body, headers } = await get(`/api/wallet/${trader}/activity`);
-      expect(headers['cache-control']).toBe('no-store');
-      const items = z.array(WalletActivitySchema).parse(body);
-      expect(items.map((i) => i.kind)).toEqual(['SWAP', 'SWAP', 'ADD']);
-      expect(items[0]!.pool.quote.symbol).toBe('SOL');
+  describe('swaps', () => {
+    it('takes the fee out of the SOL a buy puts in', async () => {
+      jup.quotes = [];
+      const q = SwapQuoteSchema.parse((await get(`/api/swap/quote?inputMint=${WSOL}&outputMint=${M.meme}&amount=1000000000&slippageBps=100`)).body);
+      expect(jup.quotes[0]!.amount).toBe(995_000_000n);
+      expect(q).toMatchObject({ feeLamports: '5000000', feeBps: 50, inAmount: '995000000', outAmount: String(49_750n * TOK), route: ['Whirlpool', 'Raydium'] });
+      expect(q.priceImpactPct).toBeCloseTo(0.12);
     });
 
-    it('returns no positions until pools can be created', async () => {
-      expect((await get(`/api/wallet/${trader}/positions`)).body).toEqual([]);
-      expect((await get('/api/wallet/nope/positions')).status).toBe(400);
+    it('takes the fee from the SOL a sale returns', async () => {
+      const q = SwapQuoteSchema.parse((await get(`/api/swap/quote?inputMint=${M.meme}&outputMint=${WSOL}&amount=${50_000n * TOK}`)).body);
+      expect(q).toMatchObject({ feeLamports: '5000000', outAmount: '995000000', minOutAmount: String(990_000_000n - 5_000_000n) });
+    });
+
+    it('charges nothing without a treasury that can receive SOL', async () => {
+      chain.treasuryLamports = 1000;
+      await rebuild();
+      expect(SwapQuoteSchema.parse((await get(`/api/swap/quote?inputMint=${WSOL}&outputMint=${M.meme}&amount=1000000000`)).body).feeBps).toBe(0);
+      await rebuild({ swap: { feeBps: 50 } });
+      expect(SwapQuoteSchema.parse((await get(`/api/swap/quote?inputMint=${WSOL}&outputMint=${M.meme}&amount=1000000000`)).body).feeLamports).toBe('0');
+    });
+
+    it('only swaps against SOL', async () => {
+      expect((await get(`/api/swap/quote?inputMint=${M.dog}&outputMint=${M.meme}&amount=1000`)).body).toEqual({ error: 'sol_side_required' });
+      expect((await get(`/api/swap/quote?inputMint=${WSOL}&outputMint=${WSOL}&amount=1000`)).body).toEqual({ error: 'sol_side_required' });
+    });
+
+    it('builds an unsigned transaction that ends with the fee transfer to the treasury', async () => {
+      const trader = addr();
+      const res = await app().inject({ method: 'POST', url: '/api/swap/build', payload: { wallet: trader, inputMint: WSOL, outputMint: M.meme, amount: '1000000000', slippageBps: 100 } });
+      expect(res.statusCode).toBe(200);
+      const built = BuiltSwapSchema.parse(res.json());
+      const tx = VersionedTransaction.deserialize(Buffer.from(built.transaction, 'base64'));
+      expect(tx.signatures.every((s) => s.every((b) => b === 0))).toBe(true);
+      const msg = TransactionMessage.decompile(tx.message, { addressLookupTableAccounts: [ALT] });
+      expect(msg.payerKey.toBase58()).toBe(trader);
+      const last = msg.instructions[msg.instructions.length - 1]!;
+      expect(SystemInstruction.decodeTransfer(last)).toEqual({ fromPubkey: new PublicKey(trader), toPubkey: new PublicKey(TREASURY), lamports: 5_000_000n });
+      // Jupiter's compute limit plus room for the transfer, and no duplicate limit instruction.
+      expect(msg.instructions[0]!.data.readUInt32LE(1)).toBe(170_090);
+      expect(msg.instructions.filter((i) => i.programId.equals(ComputeBudgetProgram.programId))).toHaveLength(2);
+      expect(built.quote.feeLamports).toBe('5000000');
+    });
+
+    it('refuses to pass on instructions for programs it does not know', async () => {
+      jup.swapProgram = addr();
+      const res = await app().inject({ method: 'POST', url: '/api/swap/build', payload: { wallet: addr(), inputMint: WSOL, outputMint: M.meme, amount: '1000000000' } });
+      expect(res.json()).toEqual({ error: 'unknown_program' });
     });
   });
 
-  it('validates pool registration and waits for the transaction to confirm', async () => {
-    const post = (payload: Record<string, string>) => app().inject({ method: 'POST', url: '/api/pools/register', payload });
-    expect((await post({ signature: '5'.repeat(88), venue: 'RAYDIUM_CPMM' })).statusCode).toBe(409);
-    expect((await post({ signature: 'short', venue: 'RAYDIUM_CPMM' })).statusCode).toBe(400);
-    expect((await post({ signature: '5'.repeat(88), venue: 'UNISWAP' })).statusCode).toBe(400);
-  });
-
-  it('serves popular token picks: Solana-native mints only, without the pair assets', async () => {
-    const other = Keypair.generate().publicKey.toBase58();
-    const bridged = Keypair.generate().publicKey;
-    const stock2022 = Keypair.generate().publicKey;
-    rpc.accounts.set(other, mintAccount(5, 10n ** 14n, null));
-    // A bridge keeps the mint authority; a tokenized stock lives on Token-2022.
-    rpc.accounts.set(bridged.toBase58(), mintAccount(8, 10n ** 12n, bridged));
-    rpc.accounts.set(stock2022.toBase58(), { ...mintAccount(8, 10n ** 12n, null), owner: TOKEN_2022_PROGRAM_ID });
-    rpc.accounts.set(M.tsla, mintAccount(8, 10n ** 12n, null));
-    await built.app.close();
-    built = await buildApp({
-      db,
-      redis,
-      prices,
-      rpc: rpc as unknown as ChainReader,
-      cluster: 'devnet',
-      now: () => NOW,
-      popular: async () => [
-        { mint: M.tsla, symbol: 'TSLAx', name: 'Tesla xStock', logoUri: null },
-        { mint: other, symbol: 'BONK', name: 'Bonk', logoUri: 'https://arweave.net/b.png' },
-        { mint: bridged.toBase58(), symbol: 'HYPE', name: 'Hyperliquid (bridged)', logoUri: null },
-        { mint: stock2022.toBase58(), symbol: 'SPCX', name: 'Stock token', logoUri: null },
-      ],
+  describe('transactions', () => {
+    it('reports status and refuses garbage', async () => {
+      expect((await get(`/api/tx/${sig()}`)).body).toEqual({ status: 'confirmed' });
+      expect((await post('/api/tx/send', { transaction: 'not-a-tx' })).body.error).toBe('bad_transaction');
     });
-    const list = z.array(PopularTokenSchema).parse((await get('/api/tokens/popular')).body);
-    expect(list).toEqual([{ mint: other, symbol: 'BONK', name: 'Bonk', logoUri: 'https://arweave.net/b.png' }]);
   });
 
-  it('searches tokens by name or ticker, caches the answer and says when search is down', async () => {
-    const sol = Keypair.generate().publicKey.toBase58();
-    let calls = 0;
-    let down = false;
-    await built.app.close();
-    built = await buildApp({
-      db,
-      redis,
-      prices,
-      rpc: rpc as unknown as ChainReader,
-      cluster: 'devnet',
-      now: () => NOW,
-      search: async (q) => {
-        calls++;
-        if (down) throw new Error('down');
-        return q.toLowerCase() === 'sol' ? [{ mint: sol, symbol: 'SOL', name: 'Wrapped SOL', logoUri: null, verified: true }] : [];
-      },
+  describe('status', () => {
+    it('reports the tracker from its heartbeat', async () => {
+      let s = StatusSchema.parse((await get('/api/status')).body);
+      expect(s.tracker).toMatchObject({ state: 'DOWN', lagSec: null, wallets: 3 });
+      expect(s.lastTradeAt).not.toBeNull();
+      await redis.flushdb();
+      await redis.set(TRACKER_HEARTBEAT_KEY, String(NOW - 10_000));
+      await redis.set(TRACKER_LIVE_KEY, '1');
+      s = StatusSchema.parse((await get('/api/status')).body);
+      expect(s).toMatchObject({ api: 'OK', swaps: 'OK', rpc: { state: 'OK' }, tracker: { state: 'OK', lagSec: 10, live: true } });
     });
-    const list = z.array(TokenSearchResultSchema).parse((await get('/api/tokens/search?q=SOL')).body);
-    expect(list).toEqual([{ mint: sol, symbol: 'SOL', name: 'Wrapped SOL', logoUri: null, verified: true }]);
-    await get('/api/tokens/search?q=sol');
-    expect(calls).toBe(1);
-    expect((await get('/api/tokens/search?q=s')).status).toBe(400);
-    down = true;
-    expect((await get('/api/tokens/search?q=bonk')).body).toEqual({ error: 'search_unavailable' });
   });
 
-  it('falls back to the project logo Jupiter lists when the metadata has no image', async () => {
-    const mint = Keypair.generate().publicKey;
-    rpc.accounts.set(mint.toBase58(), mintAccount(5, 10n ** 14n, null));
-    await built.app.close();
-    built = await buildApp({
-      db,
-      redis,
-      prices,
-      rpc: rpc as unknown as ChainReader,
-      cluster: 'devnet',
-      now: () => NOW,
-      fetchJson: async () => null,
-      popular: async () => [{ mint: mint.toBase58(), symbol: 'BONK', name: 'Bonk', logoUri: 'https://arweave.net/bonk.png' }],
+  describe('live stream', () => {
+    it('streams trades published on Redis over SSE and drops junk', async () => {
+      await app().listen({ port: 0, host: '127.0.0.1' });
+      const { port } = app().server.address() as { port: number };
+      const ctrl = new AbortController();
+      const res = await fetch(`http://127.0.0.1:${port}/api/feed/stream`, { signal: ctrl.signal });
+      expect(res.headers.get('content-type')).toContain('text/event-stream');
+      const reader = res.body!.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      const until = async (needle: string) => {
+        while (!buf.includes(needle)) {
+          const { value, done } = await reader.read();
+          if (done) throw new Error('stream ended');
+          buf += dec.decode(value);
+        }
+      };
+      await until('retry:');
+      const trade = FeedPageSchema.parse((await get('/api/feed?limit=1')).body).trades[0]!;
+      await new Promise((r) => setTimeout(r, 200));
+      await redis.publish(TRADES_CHANNEL, '{"not":"a trade"}');
+      await tradePublisher(redis)([trade]);
+      await until('event: trade');
+      await until('\n\n');
+      const data = buf.split('\n').find((l) => l.startsWith('data: '))!;
+      expect(JSON.parse(data.slice(6))).toEqual(trade);
+      expect(buf).not.toContain('"not"');
+      ctrl.abort();
+      await reader.cancel().catch(() => {});
     });
-    expect(TokenInfoSchema.parse((await get(`/api/tokens/${mint.toBase58()}`)).body).logoUri).toBe('https://arweave.net/bonk.png');
-  });
 
-  it('reports service health on /api/status', async () => {
-    const s = StatusSchema.parse((await get('/api/status')).body);
-    expect(s).toMatchObject({ api: 'OK', sampleData: false, rpc: { state: 'OK', slot: 123_456 }, prices: { state: 'OK' } });
-    // Pools exist but no indexer heartbeat yet.
-    expect(s.indexer.state).toBe('DEGRADED');
-    await redis.flushdb();
-    rpc.down = true;
-    prices.table.clear();
-    await db.stockSnapshot.deleteMany();
-    const down = StatusSchema.parse((await get('/api/status')).body);
-    expect(down.rpc.state).toBe('DOWN');
-    expect(down.prices.state).toBe('DOWN');
-    await redis.set('oxbow:indexer:heartbeat', String(NOW - 10_000));
-    await redis.del('status:v1');
-    expect(StatusSchema.parse((await get('/api/status')).body).indexer).toEqual({ state: 'OK', lagSec: 10 });
-  });
-
-  it('limits reads to 60 a minute per client IP, keyed on the address nginx forwards', async () => {
-    const as = (ip: string) => ({ 'x-forwarded-for': ip });
-    for (let i = 0; i < 60; i++) expect((await get('/api/quotes', as('203.0.113.9'))).status).toBe(200);
-    const over = await get('/api/quotes', as('203.0.113.9'));
-    expect(over.status).toBe(429);
-    expect(over.body).toEqual({ error: 'rate_limited' });
-    // Another client is unaffected, and so is the web server on this machine.
-    expect((await get('/api/quotes', as('198.51.100.4'))).status).toBe(200);
-    expect((await get('/api/quotes')).status).toBe(200);
-    // A client can't spoof its address unless the hop is local.
-    const spoof = await app().inject({ method: 'GET', url: '/api/quotes', remoteAddress: '203.0.113.9', headers: as('10.9.9.9') });
-    expect(spoof.statusCode).toBe(429);
-  });
-
-  it('limits registration to 10 a minute', async () => {
-    const post = () => app().inject({ method: 'POST', url: '/api/pools/register', payload: { signature: '5'.repeat(88), venue: 'RAYDIUM_CPMM' }, headers: { 'x-forwarded-for': '203.0.113.50' } });
-    for (let i = 0; i < 10; i++) expect((await post()).statusCode).toBe(409);
-    expect((await post()).statusCode).toBe(429);
-  });
-
-  it('streams activity published on Redis over SSE', async () => {
-    await app().listen({ port: 0, host: '127.0.0.1' });
-    const { port } = app().server.address() as { port: number };
-    const ctrl = new AbortController();
-    const res = await fetch(`http://127.0.0.1:${port}/api/activity/stream`, { signal: ctrl.signal });
-    expect(res.headers.get('content-type')).toContain('text/event-stream');
-    const reader = res.body!.getReader();
-    const dec = new TextDecoder();
-    let buf = '';
-    const until = async (needle: string) => {
-      while (!buf.includes(needle)) {
-        const { value, done } = await reader.read();
-        if (done) throw new Error('stream ended');
-        buf += dec.decode(value);
-      }
-    };
-    await until('retry:');
-    const item: ActivityItem = {
-      id: 'x1',
-      kind: 'BUY',
-      pool: { address: P.stock, base: { mint: M.bonk, symbol: 'BONK', name: 'Bonk', logoUri: null, brand: null }, quote: { mint: M.tsla, symbol: 'TSLAx', name: 'Tesla xStock', logoUri: null, brand: null } },
-      wallet: trader,
-      amountUsd: 42,
-      ts: NOW,
-    };
-    // Give the subscription a moment to register, then publish junk and a real item.
-    await new Promise((r) => setTimeout(r, 200));
-    await redis.publish(ACTIVITY_CHANNEL, '{"not":"an item"}');
-    await redis.publish(ACTIVITY_CHANNEL, JSON.stringify(item));
-    await until('event: activity');
-    await until('\n\n');
-    const data = buf.split('\n').find((l) => l.startsWith('data: '))!;
-    expect(JSON.parse(data.slice(6))).toEqual(item);
-    expect(buf).not.toContain('not');
-    ctrl.abort();
-    await reader.cancel().catch(() => {});
-  });
-
-  it('caps open activity streams per IP', async () => {
-    await built.app.close();
-    built = await buildApp({ db, redis, prices, rpc: rpc as unknown as ChainReader, cluster: 'devnet', now: () => NOW, streamsPerIp: 1 });
-    await app().listen({ port: 0, host: '127.0.0.1' });
-    const { port } = app().server.address() as { port: number };
-    const ctrl = new AbortController();
-    const first = await fetch(`http://127.0.0.1:${port}/api/activity/stream`, { signal: ctrl.signal });
-    expect(first.status).toBe(200);
-    const second = await fetch(`http://127.0.0.1:${port}/api/activity/stream`);
-    expect(second.status).toBe(429);
-    ctrl.abort();
+    it('caps open streams per IP', async () => {
+      await rebuild({ streamsPerIp: 1 });
+      await app().listen({ port: 0, host: '127.0.0.1' });
+      const { port } = app().server.address() as { port: number };
+      const ctrl = new AbortController();
+      const first = await fetch(`http://127.0.0.1:${port}/api/feed/stream`, { signal: ctrl.signal });
+      expect(first.status).toBe(200);
+      const second = await fetch(`http://127.0.0.1:${port}/api/feed/stream`);
+      expect(second.status).toBe(429);
+      ctrl.abort();
+    });
   });
 });

@@ -2,8 +2,14 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
+import { useLiveStream } from '@/lib/live';
 import { initMonitoring, reportError } from '@/lib/monitoring';
-import { useWatchlist } from '@/lib/store/watchlist';
+import { useFollow } from '@/lib/store/follow';
+
+function Live() {
+  useLiveStream();
+  return null;
+}
 
 export function Providers({ children }: { children: ReactNode }) {
   const [qc] = useState(
@@ -16,7 +22,7 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    useWatchlist.getState().load();
+    useFollow.getState().load();
     void initMonitoring();
     const onError = (e: ErrorEvent) => reportError(e.error ?? e.message);
     const onRejection = (e: PromiseRejectionEvent) => reportError(e.reason);
@@ -28,5 +34,10 @@ export function Providers({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={qc}>
+      <Live />
+      {children}
+    </QueryClientProvider>
+  );
 }

@@ -23,10 +23,7 @@ export function LegalPage({ eyebrow, title, lede, sections }: { eyebrow: string;
         <article className="card legal" lang="en">
           <div className="note mid" lang={locale}>
             <WarnIcon />
-            <span>
-              {t.legal.draft}
-              {t.legal.english && <> {t.legal.english}</>}
-            </span>
+            <span>{t.legal.draft}</span>
           </div>
           <p className="fine" lang={locale}>
             {t.legal.updated(fmtDateL(legal.updated, locale))}

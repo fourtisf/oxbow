@@ -5,13 +5,14 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
 `oxbowflow.com`.
 
 - `nginx/oxbowflow.conf`: public entry point. `/api/` goes to the API on
-  `127.0.0.1:4000` (the live activity stream unbuffered), everything else to
+  `127.0.0.1:4000` (the live trade stream unbuffered), everything else to
   the web app on `127.0.0.1:3000`. Overwrites `X-Forwarded-For` (both apps
   rate-limit by it) and drops any client-sent `CF-IPCountry` (the region
   notice trusts it; set it here from GeoIP2 if you turn region blocking on).
   Certbot adds HTTPS on top.
 - `ecosystem.config.cjs`: PM2 processes `oxbow-web` (`next start`) and, once
-  `apps/api/.env` exists, `oxbow-api` (Fastify through tsx), both on localhost.
+  `apps/api/.env` exists, `oxbow-api` (Fastify through tsx) and `oxbow-worker`
+  (the wallet tracker), all on localhost.
 - `setup-data.sh`: one-time PostgreSQL + Redis install, `oxbow` database with
   a generated password, `apps/api/.env`.
 - `deploy.sh`: update in one step: pull, install, database migrations, build,
@@ -31,44 +32,35 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
    on boot, install the Nginx site, then
    `certbot --nginx -d oxbowflow.com -d www.oxbowflow.com --redirect`.
 
-## Live data (M2)
+## The tracker
 
-1. As root, the database and Redis:
+1. As root, the database and Redis (skip if `apps/api/.env` already exists):
 
    ```bash
    sudo bash /home/oxbow/oxbow/infra/setup-data.sh
    ```
 
-2. As root, put the RPC provider URL (with its key) after `RPC_URL=`. The file
-   is readable only by the `oxbow` user:
+2. As root, put the RPC URL (with its key) after `RPC_URL=` and the wallet that
+   receives the swap fee after `OXBOW_TREASURY=`. The file is readable only by
+   the `oxbow` user:
 
    ```bash
    nano /home/oxbow/oxbow/apps/api/.env
    ```
 
-3. As `oxbow`: deploy once (applies the migrations and starts `oxbow-api`):
+   The treasury needs a little SOL in it (at least 0.001) before the fee
+   switches on: a transfer to an empty account would fail, so until then swaps
+   go through fee-free and `/api/status` shows swaps as degraded.
+
+3. As `oxbow`: deploy (applies the migrations, starts `oxbow-api` and
+   `oxbow-worker`):
 
    ```bash
    sudo -iu oxbow bash /home/oxbow/oxbow/infra/deploy.sh
    ```
 
-4. As `oxbow`: copy `apps/api/stocks.example.json` to `apps/api/stocks.json`,
-   fill every `mint` and `source` from the issuer's official list (and the
-   USDC mint from Circle's), then check it and compare the table with the
-   official list:
-
-   ```bash
-   cd /home/oxbow/oxbow && pnpm --filter @oxbow/api seed:stocks
-   ```
-
-   When every mint matches, save it:
-
-   ```bash
-   cd /home/oxbow/oxbow && pnpm --filter @oxbow/api seed:stocks --write
-   ```
-
-5. As root: the new Nginx site (adds `/api`), then HTTPS again, since the copy
-   replaces certbot's edits:
+4. As root: the Nginx site (the live stream path), then HTTPS again, since the
+   copy replaces certbot's edits:
 
    ```bash
    cp /home/oxbow/oxbow/infra/nginx/oxbowflow.conf /etc/nginx/sites-available/oxbowflow.conf
@@ -82,40 +74,29 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
    nginx -t && systemctl reload nginx
    ```
 
-6. As `oxbow`: switch the web app to live data and rebuild:
+5. As `oxbow`: add the featured wallets, one per command, with a public label.
+   Only addresses you have checked yourself:
 
    ```bash
-   echo 'NEXT_PUBLIC_LIVE_DATA=1' >> /home/oxbow/oxbow/apps/web/.env.production.local
+   cd /home/oxbow/oxbow && pnpm --filter @oxbow/api wallets add WALLET_ADDRESS --label "Name" --featured
    ```
 
    ```bash
-   sudo -iu oxbow bash /home/oxbow/oxbow/infra/deploy.sh
+   cd /home/oxbow/oxbow && pnpm --filter @oxbow/api wallets list
    ```
 
-Check: `curl -s https://oxbowflow.com/api/status` shows `"sampleData":false`
-and the RPC slot; `pm2 ls` shows both processes online; `pm2 logs oxbow-api`
-shows price-source warnings, if any.
+   Each new wallet's recent trades are read within a minute ("reading history"
+   in the list until then). `wallets unfeature`, `wallets remove` undo it.
 
-## Pool creation (M3)
+Check: `curl -s https://oxbowflow.com/api/status` shows the RPC slot and
+`"tracker":{"state":"OK",...,"live":true}`; `pm2 ls` shows three processes
+online; `pm2 logs oxbow-worker` shows each wallet catching up and live trades
+as they happen.
 
-Off until a treasury is set. First run the devnet test (see the root README),
-then, as root, put the wallet that receives the Oxbow fee in the API's env
-and restart the API:
-
-```bash
-sed -i 's|^OXBOW_TREASURY=.*|OXBOW_TREASURY=YOUR_WALLET_ADDRESS|' /home/oxbow/oxbow/apps/api/.env
-```
-
-```bash
-grep -q '^OXBOW_TREASURY=' /home/oxbow/oxbow/apps/api/.env || echo 'OXBOW_TREASURY=YOUR_WALLET_ADDRESS' >> /home/oxbow/oxbow/apps/api/.env
-```
-
-```bash
-sudo -iu oxbow pm2 restart oxbow-api --update-env
-```
-
-`curl -s https://oxbowflow.com/api/venues` then shows `"createEnabled":true`
-and Raydium's fee tiers. The fee is `OXBOW_FEE_LAMPORTS` (default 0.1 SOL).
+RPC use: one websocket subscription per tracked wallet, one transaction read
+per trade, and a catch-up call per wallet every `TRACKER_RESYNC_SEC` (5 min).
+Jupiter's free API is rate-limited; at scale, get a key at portal.jup.ag and
+set `JUPITER_API_BASE=https://api.jup.ag` and `JUPITER_API_KEY`.
 
 ## Backups
 
@@ -130,11 +111,11 @@ sudo bash /home/oxbow/oxbow/infra/install-backup.sh
 The dumps stay on the same server, so also copy the newest one off it now and
 then (SFTP, as root: `/var/backups/oxbow`), or turn on Hostinger's VPS backups.
 
-Restore one (stops the API meanwhile). The dumps are readable by root only,
+Restore one (stops the API and the tracker meanwhile). The dumps are readable by root only,
 so the file goes in through `<`, which the root shell opens:
 
 ```bash
-sudo -iu oxbow pm2 stop oxbow-api
+sudo -iu oxbow pm2 stop oxbow-api oxbow-worker
 ```
 
 ```bash
@@ -142,7 +123,7 @@ sudo -u postgres pg_restore --clean --if-exists --no-owner --role=oxbow -d oxbow
 ```
 
 ```bash
-sudo -iu oxbow pm2 start oxbow-api
+sudo -iu oxbow pm2 start oxbow-api oxbow-worker
 ```
 
 ## Updates

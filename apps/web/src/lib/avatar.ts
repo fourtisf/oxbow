@@ -6,7 +6,15 @@
  * otherwise a mirrored pixel identicon seeded by the symbol. Drawn on a canvas
  * once per symbol and cached as a data URL.
  */
-import { hash, rng, type Brand } from '@oxbow/shared';
+import { hash, rng } from '@oxbow/shared';
+
+/** A drawn tile with a monogram (kept for SOL-style brand tiles); identicons pass null. */
+export interface Brand {
+  a: string;
+  b: string;
+  monogram: string;
+  stock: boolean;
+}
 
 const N = 128;
 const cache = new Map<string, string>();

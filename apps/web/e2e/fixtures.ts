@@ -1,4 +1,4 @@
-import { test as base, expect, type Locator, type Page } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 
 /** Fails the test on any console error or uncaught page error. */
 export const test = base.extend<{ errors: string[] }>({
@@ -19,31 +19,4 @@ export { expect };
 export async function acceptTermsIfAsked(page: Page) {
   const box = page.getByRole('dialog', { name: 'Select wallet' }).locator('#termsOk');
   if (await box.isVisible()) await box.check();
-}
-
-/** Connects the mock wallet through the "Select wallet" dialog. */
-export async function connectWallet(page: Page, name = 'Phantom') {
-  await page.getByRole('button', { name: 'Select Wallet' }).first().click();
-  const dialog = page.getByRole('dialog', { name: 'Select wallet' });
-  await expect(dialog).toBeVisible();
-  await acceptTermsIfAsked(page);
-  await dialog.getByRole('button', { name: new RegExp(name) }).click();
-  await expect(page.getByText('Connected ' + name)).toBeVisible();
-  await expect(dialog).toBeHidden();
-}
-
-/** True when the build under test targets mainnet (NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta), read from the network pill. */
-export async function isMainnet(page: Page): Promise<boolean> {
-  const label = await page.getByText(/^Solana (mainnet|devnet)$/).first().textContent();
-  return label === 'Solana mainnet';
-}
-
-/** True while the app runs on sample data (the banner above the ticker is shown). */
-export async function isSampleData(page: Page): Promise<boolean> {
-  return (await page.locator('.samplebar').count()) > 0;
-}
-
-/** The URL an outbound link opens: `href`, or `data-href` when it is disabled on sample data. */
-export async function outboundUrl(link: Locator): Promise<string | null> {
-  return (await link.getAttribute('href')) ?? (await link.getAttribute('data-href'));
 }

@@ -10,7 +10,7 @@
     "./token": "./src/token-info.ts",
     "./safe-fetch": "./src/safe-fetch.ts",
     "./rpc": "./src/rpc.ts",
-    "./raydium": "./src/raydium-cpmm.ts"
+    "./swap": "./src/swap.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -19,14 +19,11 @@
   },
   "dependencies": {
     "@oxbow/shared": "workspace:*",
-    "@raydium-io/raydium-sdk-v2": "0.2.74-alpha",
     "@solana/spl-token": "0.4.15",
     "@solana/spl-token-metadata": "0.1.6",
-    "@solana/web3.js": "1.99.0",
-    "bn.js": "5.2.1"
+    "@solana/web3.js": "1.99.0"
   },
   "devDependencies": {
-    "@types/bn.js": "5.2.0",
     "@types/node": "22.20.5",
     "typescript": "5.9.3",
     "vitest": "3.2.7"

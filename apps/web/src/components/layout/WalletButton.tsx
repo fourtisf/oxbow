@@ -6,7 +6,6 @@ import { useT } from '@/i18n/client';
 import { track } from '@/lib/analytics';
 import { copyText } from '@/lib/copy';
 import { toast } from '@/lib/store/toast';
-import { SAMPLE_DATA } from '@/lib/api/mode';
 import { acceptTerms, termsAccepted, useWallet } from '@/lib/store/wallet';
 import { useInstalledWallets, WalletError, WALLETS } from '@/lib/wallets';
 import { CloseIcon, ExternalIcon } from '../ui/Icons';
@@ -126,7 +125,7 @@ export function WalletModal() {
               </label>
             </div>
           )}
-          <p className="fine wdemo">{SAMPLE_DATA ? t.wallet.demoNote : t.wallet.liveNote}</p>
+          <p className="fine wdemo">{t.wallet.liveNote}</p>
           <div className="wlist" aria-disabled={gated || undefined}>
             {list.map((w) => (
               <div key={w.name} className={cx('witem', gated && 'off')}>

@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useSyncExternalStore } from 'react';
-import type { AssetRef, Brand } from '@oxbow/shared';
-import { avatarSrc, avatarStore } from '@/lib/avatar';
+import { avatarSrc, avatarStore, type Brand } from '@/lib/avatar';
 import { useHydrated } from '@/lib/hooks';
 
-export type AvatarAsset = Pick<AssetRef, 'symbol' | 'logoUri'> & { brand?: Brand | null };
+export type AvatarAsset = { symbol: string; logoUri: string | null; brand?: Brand | null };
 
 /**
  * Token avatar (`av`): the token's logo when it has one, otherwise a drawn
@@ -46,19 +45,4 @@ export function TokenAvatar({ asset, size = 30, eager = false }: { asset: Avatar
   const sq = asset.brand ? 'av sq' : 'av';
   if (!hydrated) return <span className={sq} style={dim} />;
   return <img className={sq} src={avatarSrc(asset.symbol, asset.brand ?? null)} width={size} height={size} alt="" />;
-}
-
-/** Overlapping base + quote avatars (`pairAv`). */
-export function PairAvatar({ base, quote, size = 32 }: { base: AvatarAsset | null; quote: AvatarAsset | null; size?: number }) {
-  const off = Math.round(size * 0.62);
-  return (
-    <span className="pairav" style={{ width: size + off, height: size }}>
-      <span style={{ position: 'absolute', left: 0, top: 0 }}>
-        <TokenAvatar asset={base} size={size} />
-      </span>
-      <span style={{ position: 'absolute', left: off, top: 0 }}>
-        <TokenAvatar asset={quote} size={size} />
-      </span>
-    </span>
-  );
 }

@@ -32,30 +32,30 @@ All in `apps/web/public/brand/social/`, and on the site after deploy at
 
 ## X profile
 
-- Bio (126 characters):
-  > Pick a meme. Pair a stock. Stock-paired liquidity pools on Solana. CA coming soon: only ever posted here and on oxbowflow.com.
+- Bio (118 characters):
+  > Follow smart money on Solana. Copy any trade in one tap. CA coming soon: only ever posted here and on oxbowflow.com.
 - Bio, Indonesian (134):
-  > Pick a meme. Pair a stock. Pool likuiditas berpasangan saham di Solana. CA segera hadir: hanya diumumkan di sini dan di oxbowflow.com.
+  > Ikuti smart money di Solana. Salin trade apa pun dengan satu ketukan. CA segera hadir: hanya diumumkan di sini dan di oxbowflow.com.
 - Location: `Solana`. Website: `oxbowflow.com`.
 
 ## Telegram channel
 
 - Title: `Oxbow`
-- Description (208 of 255 characters):
-  > Official Oxbow announcements. Stock-paired liquidity pools for any token on Solana: oxbowflow.com. Admins never DM first and never ask for a seed phrase. The CA is only posted here, on X and on oxbowflow.com.
-- Description, Indonesian (226):
-  > Pengumuman resmi Oxbow. Pool likuiditas berpasangan saham untuk token apa pun di Solana: oxbowflow.com. Admin tidak pernah DM duluan dan tidak pernah meminta seed phrase. CA hanya diumumkan di sini, di X, dan di oxbowflow.com.
+- Description (212 of 255 characters):
+  > Official Oxbow announcements. Follow smart wallets on Solana and copy their trades from your own wallet: oxbowflow.com. Admins never DM first and never ask for a seed phrase. The CA is only posted here, on X and on oxbowflow.com.
+- Description, Indonesian (231):
+  > Pengumuman resmi Oxbow. Pantau dompet pintar di Solana dan salin trade mereka dari dompetmu sendiri: oxbowflow.com. Admin tidak pernah DM duluan dan tidak pernah meminta seed phrase. CA hanya diumumkan di sini, di X, dan di oxbowflow.com.
 
 ## Pinned post (X and Telegram, with the 16:9 card)
 
 Fits X's 280 characters, counting the link as 23.
 
 ```
-Pick a meme. Pair a stock.
+Follow the wallets that move first.
 
-Oxbow lets anyone pair a Solana token with a tokenized stock, SOL or USDC in its own liquidity pool, and shows who holds every pool's liquidity.
+Oxbow shows every buy and sell from top Solana wallets seconds after it lands on chain, and lets you copy any trade in one tap from your own wallet.
 
-Coming soon: oxbowflow.com
+Live: oxbowflow.com
 
 No CA yet. Any "Oxbow token" before we post it here is fake.
 ```
@@ -63,11 +63,11 @@ No CA yet. Any "Oxbow token" before we post it here is fake.
 Indonesian:
 
 ```
-Pick a meme. Pair a stock.
+Ikuti dompet yang bergerak duluan.
 
-Di Oxbow, siapa pun bisa memasangkan token Solana dengan token saham, SOL, atau USDC, dan melihat siapa pemegang likuiditas tiap pool.
+Oxbow menampilkan setiap beli dan jual dari dompet top Solana beberapa detik setelah masuk on-chain, dan kamu bisa salin trade apa pun dengan satu ketukan dari dompetmu sendiri.
 
-Segera hadir: oxbowflow.com
+Live: oxbowflow.com
 
 Belum ada CA. "Token Oxbow" sebelum kami umumkan di sini = palsu.
 ```
@@ -78,20 +78,18 @@ One every day or two, square card or none. Each line is something the
 product already does, so nothing has to be walked back later.
 
 1. ```
-   Memecoins and tokenized stocks, in one pool.
-
-   Pair any Solana token with TSLAx, NVDAx, SOL or USDC. Coming soon.
+   Paste any Solana wallet into Oxbow. It reads the wallet's recent trades, then shows every new one live.
    ```
 2. ```
-   Every pool on Oxbow shows who holds its liquidity: burned, locked, or still with the creator.
+   Every token page runs a safety check first: mint and freeze authority, top holders, developer share, organic volume.
 
-   Check before you trade.
+   Check before you copy.
    ```
 3. ```
-   Stock tokens on Oxbow are checked before anyone can pair with them: a live price feed and real liquidity, or they stay off the list.
+   Follow a wallet, turn on alerts, and your browser pings you the moment it buys.
    ```
 4. ```
-   Oxbow never holds your funds. You approve every transaction in your own wallet.
+   Oxbow never holds your funds. Every trade is one transaction you approve in your own wallet.
    ```
 
 ## House rules (pin in the Telegram group when it opens)
@@ -105,5 +103,5 @@ product already does, so nothing has to be walked back later.
 ## Words to avoid
 
 No price targets, returns, "guaranteed", "risk-free" or "investment".
-Stock tokens are not available in every country: don't promise US users
-access, and keep the Risk page link handy when people ask.
+Never call a wallet's next trade a sure thing or present featured wallets as
+advice; keep the Risk page link handy when people ask.

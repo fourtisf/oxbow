@@ -1,7 +1,9 @@
 import { expect, test } from './fixtures';
+import { mockApi } from './mock-api';
 
 async function openPicker(page: import('@playwright/test').Page) {
-  await page.goto('/explore');
+  await mockApi(page);
+  await page.goto('/docs');
   await page.getByRole('button', { name: 'Select Wallet' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Select wallet' });
   await expect(dialog).toBeVisible();
@@ -22,7 +24,7 @@ test.describe('wallet picker', () => {
     // Nothing is installed in the test browser: no false "Detected".
     await expect(dialog.locator('.wstate', { hasText: 'Detected' })).toHaveCount(0);
     await expect(dialog.getByRole('link', { name: 'Install Bitget Wallet (opens its site)' })).toHaveAttribute('href', 'https://web3.bitget.com');
-    await expect(dialog.getByText('Demo: picking a wallet connects a simulated one.', { exact: false })).toBeVisible();
+    await expect(dialog.getByText('Every trade asks your wallet to approve it.', { exact: false })).toBeVisible();
   });
 
   test('detects injected and Wallet Standard wallets and lists them first', async ({ page }) => {

@@ -1,44 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import { safetyFlags, safetyLevel, type SafetyInputs } from './safety';
-import { PoolsQuerySchema } from './schemas';
 
+const NOW = Date.parse('2026-10-30T12:00:00Z');
 const clean: SafetyInputs = {
-  duplicateSymbol: false,
-  tokenAgeDays: 120,
-  top10Pct: 22,
-  mintable: false,
-  freezable: false,
-  transferFee: false,
-  transferHook: false,
-  permanentDelegate: false,
-  creatorPulled: 0,
-  lpUnlocked: false,
-  tvlUsd: 250_000,
+  mintAuthorityOff: true,
+  freezeAuthorityOff: true,
+  liquidityUsd: 400_000,
+  topHoldersPct: 18,
+  devPct: 0,
+  launchedAt: '2026-01-01T00:00:00Z',
+  organicScore: 88,
+  verified: true,
 };
 
 describe('safety', () => {
   it('a clean token is OK', () => {
-    expect(safetyFlags(clean)).toEqual([]);
+    expect(safetyFlags(clean, NOW)).toEqual([]);
     expect(safetyLevel([])).toBe('OK');
   });
-  it('soft risks are CAUTION', () => {
-    const f = safetyFlags({ ...clean, duplicateSymbol: true, top10Pct: 61, tokenAgeDays: 1, lpUnlocked: true, tvlUsd: 900 });
-    expect(f).toEqual(['DUPLICATE_SYMBOL', 'LP_UNLOCKED', 'CONCENTRATED', 'NEW_TOKEN', 'LOW_LIQUIDITY']);
+  it('market-shape risks are CAUTION', () => {
+    const f = safetyFlags(
+      { ...clean, liquidityUsd: 900, topHoldersPct: 61, devPct: 12, launchedAt: '2026-10-30T02:00:00Z', organicScore: 4, verified: false },
+      NOW,
+    );
+    expect(f).toEqual(['LOW_LIQUIDITY', 'CONCENTRATED', 'DEV_HOLDS_MUCH', 'NEW_TOKEN', 'LOW_ORGANIC', 'UNVERIFIED']);
     expect(safetyLevel(f)).toBe('CAUTION');
   });
-  it('freeze authority or a creator who pulled liquidity before is DANGER', () => {
-    expect(safetyLevel(safetyFlags({ ...clean, freezable: true }))).toBe('DANGER');
-    expect(safetyLevel(safetyFlags({ ...clean, creatorPulled: 2 }))).toBe('DANGER');
+  it('a live mint or freeze authority is DANGER', () => {
+    expect(safetyLevel(safetyFlags({ ...clean, mintAuthorityOff: false }, NOW))).toBe('DANGER');
+    expect(safetyLevel(safetyFlags({ ...clean, freezeAuthorityOff: false }, NOW))).toBe('DANGER');
   });
-  it('unknown token age does not count as new', () => {
-    expect(safetyFlags({ ...clean, tokenAgeDays: null })).toEqual([]);
+  it('unknown inputs raise nothing', () => {
+    const unknown: SafetyInputs = { mintAuthorityOff: null, freezeAuthorityOff: null, liquidityUsd: null, topHoldersPct: null, devPct: null, launchedAt: null, organicScore: null, verified: true };
+    expect(safetyFlags(unknown, NOW)).toEqual([]);
   });
-});
-
-describe('PoolsQuerySchema addresses', () => {
-  it('splits and validates a comma list', () => {
-    const a = 'So11111111111111111111111111111111111111112';
-    expect(PoolsQuerySchema.parse({ addresses: `${a},${a}` }).addresses).toEqual([a, a]);
-    expect(() => PoolsQuerySchema.parse({ addresses: 'nope' })).toThrow();
+  it('stablecoins only answer for their authorities', () => {
+    expect(safetyFlags({ ...clean, freezeAuthorityOff: false, liquidityUsd: 1, verified: false, stable: true }, NOW)).toEqual(['FREEZABLE']);
   });
 });

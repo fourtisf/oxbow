@@ -6,12 +6,11 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "worker": "tsx src/worker.ts",
+    "wallets": "tsx scripts/wallets.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "vitest run",
-    "seed:stocks": "tsx scripts/seed-stocks.ts",
-    "e2e:fixtures": "tsx scripts/e2e-fixtures.ts",
-    "devnet:create": "tsx scripts/devnet-create-test.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@fastify/rate-limit": "11.2.1",
@@ -25,10 +24,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@raydium-io/raydium-sdk-v2": "0.2.74-alpha",
-    "@types/bn.js": "5.2.0",
     "@types/node": "22.20.5",
-    "bn.js": "5.2.1",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "3.2.7"

@@ -1,79 +1,41 @@
 'use client';
 
-import {
-  keepPreviousData,
-  useInfiniteQuery,
-  useQuery,
-  type QueryClient,
-} from '@tanstack/react-query';
-import { isAddress, type PoolsQueryInput, type Timeframe } from '@oxbow/shared';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { isAddress, type FeedQueryInput } from '@oxbow/shared';
 import { api } from './index';
 import { qk } from './keys';
 
 export { qk };
 
-export const useStats = () => useQuery({ queryKey: qk.stats(), queryFn: () => api.stats() });
-export const useTicker = () => useQuery({ queryKey: qk.ticker(), queryFn: () => api.ticker() });
-export const useMovers = () => useQuery({ queryKey: qk.movers(), queryFn: () => api.movers() });
-export const useStocks = () => useQuery({ queryKey: qk.stocks(), queryFn: () => api.stocks() });
-export const useQuotes = () => useQuery({ queryKey: qk.quotes(), queryFn: () => api.quotes() });
-export const useTokenSearch = (q: string) =>
-  useQuery({ queryKey: qk.search(q), queryFn: () => api.searchTokens(q), enabled: q.trim().length >= 2, staleTime: 5 * 60_000, retry: false });
-export const usePopularTokens = () => useQuery({ queryKey: qk.popular(), queryFn: () => api.popularTokens(), staleTime: 10 * 60_000 });
-export const useVenues = () => useQuery({ queryKey: qk.venues(), queryFn: () => api.venues(), staleTime: 60_000 });
-
-export const usePools = (q: PoolsQueryInput) =>
-  useQuery({ queryKey: qk.pools(q), queryFn: () => api.pools(q), placeholderData: keepPreviousData });
-
-export const usePoolsInfinite = (q: Omit<PoolsQueryInput, 'cursor'>) =>
+/** The feed, paged backwards with "Load more". Live trades are merged in by useLiveFeed. */
+export const useFeed = (q: Omit<FeedQueryInput, 'cursor'>, enabled = true, refetchMs: number | false = false) =>
   useInfiniteQuery({
-    queryKey: qk.poolsInfinite(q),
-    queryFn: ({ pageParam }) => api.pools({ ...q, cursor: pageParam ?? undefined }),
+    queryKey: qk.feed(q),
+    queryFn: ({ pageParam }) => api.feed({ ...q, cursor: pageParam ?? undefined }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
     placeholderData: keepPreviousData,
+    enabled,
+    refetchInterval: refetchMs,
   });
 
-export const usePool = (address: string | null | undefined) =>
+export const useWallets = () => useQuery({ queryKey: qk.wallets(), queryFn: () => api.wallets(), staleTime: 60_000 });
+
+export const useWalletDetail = (address: string) =>
   useQuery({
-    queryKey: qk.pool(address ?? ''),
-    queryFn: () => api.pool(address!),
-    enabled: !!address,
+    queryKey: qk.wallet(address),
+    queryFn: () => api.wallet(address),
+    enabled: isAddress(address),
+    // While its history is being read, ask again every few seconds.
+    refetchInterval: (q) => (q.state.data && !q.state.data.backfilledAt ? 3000 : 30_000),
   });
 
-export const useChart = (address: string | null | undefined, tf: Timeframe) =>
-  useQuery({
-    queryKey: qk.chart(address ?? '', tf),
-    queryFn: () => api.chart(address!, tf),
-    enabled: !!address,
-    placeholderData: keepPreviousData,
-  });
+export const useHot = () => useQuery({ queryKey: qk.hot(), queryFn: () => api.hot(), refetchInterval: 60_000 });
 
 export const useToken = (mint: string) =>
-  useQuery({
-    queryKey: qk.token(mint),
-    queryFn: () => api.token(mint),
-    enabled: isAddress(mint),
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
+  useQuery({ queryKey: qk.token(mint), queryFn: () => api.token(mint), enabled: isAddress(mint), refetchInterval: 30_000, retry: false });
 
-export const usePositions = (wallet: string | null | undefined) =>
-  useQuery({
-    queryKey: qk.positions(wallet ?? ''),
-    queryFn: () => api.positions(wallet!),
-    enabled: !!wallet,
-  });
-
-/** After a (mock) transaction: refetch everything that might have changed. */
-export function invalidateAfterTx(qc: QueryClient) {
-  return qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'token' });
-}
-
-export const useTrades = (address: string | null | undefined) =>
-  useQuery({ queryKey: qk.trades(address ?? ''), queryFn: () => api.trades(address!), enabled: !!address });
-
-export const useWalletActivity = (wallet: string | null | undefined) =>
-  useQuery({ queryKey: qk.activity(wallet ?? ''), queryFn: () => api.walletActivity(wallet!), enabled: !!wallet });
+export const useTokenSearch = (q: string) =>
+  useQuery({ queryKey: qk.search(q), queryFn: () => api.searchTokens(q), enabled: q.trim().length >= 2, staleTime: 5 * 60_000, retry: false });
 
 export const useStatus = () => useQuery({ queryKey: qk.status(), queryFn: () => api.status(), refetchInterval: 30_000 });

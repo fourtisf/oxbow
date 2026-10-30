@@ -1,16 +1,12 @@
 'use client';
 
 import { create } from 'zustand';
-import { b58, hash, rng } from '@oxbow/shared';
-import { SAMPLE_DATA } from '../api/mode';
-import { seedMockPositions } from '../chain/mock';
 import { connectWallet, disconnectWallet, waitForWallet, watchWallet } from '../wallets';
 
 /**
- * The connected wallet, with the prototype's "Select wallet" flow. On sample
- * data the connection is simulated; with live data it asks the real wallet
- * for its public address (read-only). M3 adds signing through
- * @solana/wallet-adapter behind this same interface.
+ * The connected wallet, with the "Select wallet" flow. Connecting asks the
+ * wallet for its public address; trades are signed through the Wallet
+ * Standard (see wallets.ts).
  */
 export interface ConnectedWallet {
   name: string;
@@ -79,13 +75,7 @@ export const useWallet = create<WalletState>((set, get) => ({
     set({ connecting: name });
     let address: string;
     try {
-      if (SAMPLE_DATA) {
-        await new Promise((r) => setTimeout(r, 850));
-        seedMockPositions();
-        address = b58(rng(hash(name + Date.now())), 44);
-      } else {
-        address = await connectWallet(name);
-      }
+      address = await connectWallet(name);
     } catch (e) {
       set({ connecting: null });
       throw e;
@@ -93,21 +83,21 @@ export const useWallet = create<WalletState>((set, get) => ({
     const after = get().after;
     const wallet = { name, address };
     set({ wallet, connecting: null, modal: null, after: null });
-    if (!SAMPLE_DATA) follow(name);
+    follow(name);
     after?.();
     return wallet;
   },
   disconnect: () => {
     const w = get().wallet;
     set({ wallet: null, modal: null });
-    if (!SAMPLE_DATA && w) {
+    if (w) {
       unwatch();
       remember(null);
       void disconnectWallet(w.name);
     }
   },
   restore: async () => {
-    if (SAMPLE_DATA || get().wallet || get().connecting || !termsAccepted()) return;
+    if (get().wallet || get().connecting || !termsAccepted()) return;
     let name: string | null = null;
     try {
       name = localStorage.getItem(LAST_KEY);

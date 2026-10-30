@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures';
+import { mockApi } from './mock-api';
 
 const PAGES: [string, string][] = [
   ['/terms', 'Terms of Service'],
@@ -15,7 +16,21 @@ for (const [path, heading] of PAGES) {
 }
 
 test('the wallet dialog asks for the terms once', async ({ page }) => {
-  await page.goto('/explore');
+  await mockApi(page);
+  await page.addInitScript(() => {
+    // An installed Phantom, so connecting works without the extension.
+    const acct = { address: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', publicKey: new Uint8Array(32), chains: ['solana:mainnet'], features: [] };
+    const wallet = {
+      version: '1.0.0',
+      name: 'Phantom',
+      icon: 'data:image/svg+xml;base64,PHN2Zy8+',
+      chains: ['solana:mainnet'],
+      accounts: [] as unknown[],
+      features: { 'standard:connect': { version: '1.0.0', connect: async () => ({ accounts: [acct] }) }, 'standard:events': { version: '1.0.0', on: () => () => {} } },
+    };
+    window.addEventListener('wallet-standard:app-ready', (e) => (e as CustomEvent).detail.register(wallet));
+  });
+  await page.goto('/wallets');
   await page.getByRole('button', { name: 'Select Wallet' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Select wallet' });
   const phantom = dialog.getByRole('button', { name: /Phantom/ });
@@ -35,19 +50,16 @@ test('sitemap, robots and share images', async ({ request }) => {
   const sitemap = await request.get('/sitemap.xml');
   expect(sitemap.status()).toBe(200);
   const xml = await sitemap.text();
-  expect(xml).toContain('/explore</loc>');
-  const pool = xml.match(/\/pool\/(\w+)<\/loc>/)?.[1];
-  expect(pool).toBeTruthy();
+  expect(xml).toContain('/wallets</loc>');
+  expect(xml).toContain('/docs</loc>');
 
   const robots = await (await request.get('/robots.txt')).text();
-  expect(robots).toContain('Disallow: /dashboard');
+  expect(robots).toContain('Disallow: /following');
   expect(robots).toContain('Sitemap:');
 
-  for (const path of ['/opengraph-image', `/pool/${pool}/opengraph-image`]) {
-    const img = await request.get(path);
-    expect(img.status(), path).toBe(200);
-    expect(img.headers()['content-type']).toBe('image/png');
-  }
+  const img = await request.get('/opengraph-image');
+  expect(img.status()).toBe(200);
+  expect(img.headers()['content-type']).toBe('image/png');
 });
 
 test.describe('restricted regions', () => {
@@ -55,7 +67,7 @@ test.describe('restricted regions', () => {
   test.use({ extraHTTPHeaders: { 'cf-ipcountry': 'XX' } });
 
   test('app pages show the notice; docs and legal pages stay open', async ({ page }) => {
-    await page.goto('/explore');
+    await page.goto('/wallets');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Oxbow is not available in your region');
     await page.goto('/docs');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('How Oxbow works');

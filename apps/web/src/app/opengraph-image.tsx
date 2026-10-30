@@ -4,9 +4,9 @@ import { OG_SIZE, siteOgImage } from '@/lib/og';
 export const runtime = 'nodejs';
 export const size = OG_SIZE;
 export const contentType = 'image/png';
-export const alt = 'Oxbow: stock-paired pools on Solana';
+export const alt = 'Oxbow: follow smart money on Solana';
 
 export default function Image() {
   const t = getT();
-  return siteOgImage('Stock-paired pools on Solana', t.home.lede);
+  return siteOgImage('Follow smart money on Solana', t.home.lede);
 }

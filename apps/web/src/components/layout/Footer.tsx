@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { getT } from '@/i18n/server';
-import { SAMPLE_DATA } from '@/lib/api/mode';
 import { social } from '@/lib/site';
 import { BrandMark } from './BrandMark';
 
@@ -19,9 +18,9 @@ export function Footer() {
           </div>
           <div>
             <h2>{t.footer.product}</h2>
-            <Link href="/explore">{t.footer.explore}</Link>
-            <Link href="/create">{t.footer.create}</Link>
-            <Link href="/dashboard">{t.footer.dashboard}</Link>
+            <Link href="/">{t.footer.feed}</Link>
+            <Link href="/wallets">{t.footer.wallets}</Link>
+            <Link href="/following">{t.footer.following}</Link>
             <Link href="/status">{t.footer.status}</Link>
           </div>
           <div>
@@ -40,7 +39,6 @@ export function Footer() {
           </div>
         </div>
         <div className="fbot">
-          {SAMPLE_DATA && <span>{t.footer.sample}</span>}
           <span>{t.footer.nfa}</span>
         </div>
       </div>

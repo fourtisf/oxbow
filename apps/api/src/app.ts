@@ -1,94 +1,91 @@
 /**
- * The Oxbow API (brief section 6). Every route reads from Postgres through
- * Market, caches in Redis, and validates its input with the shared zod
- * schemas. Rate limits: 60/min per IP for reads, 10/min for register, kept in
- * Redis so they hold across processes. Requests from this machine (the web
- * server rendering pages) are not limited; nginx in front sets the client IP.
+ * The Oxbow API: the smart-wallet feed, wallet and token pages, token search,
+ * and copy-trade swaps. Reads come from Postgres (filled by the tracker
+ * worker) and Jupiter, cached in Redis; every input is validated with the
+ * shared zod schemas. Rate limits are kept in Redis so they hold across
+ * processes. Requests from this machine (the web server rendering pages) are
+ * not limited; nginx in front sets the client IP.
  */
-import Fastify, { type FastifyBaseLogger, type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyBaseLogger } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import type { Redis } from 'ioredis';
 import { z, ZodError } from 'zod';
 import {
   AddressSchema,
-  PoolsQuerySchema,
-  TimeframeSchema,
-  TokenInfoSchema,
-  type ActivityItem,
+  AddWalletBodySchema,
+  FeedQuerySchema,
+  SendTxBodySchema,
+  SignatureSchema,
+  SOL_MINT,
+  type FeedTrade,
   type HealthState,
   type Status,
-  type TokenInfo,
+  type TokenSearchResult,
+  type TxStatus,
 } from '@oxbow/shared';
 import type { PrismaClient } from '@oxbow/db';
-import { lookupToken, type AccountReader } from '@oxbow/solana/token';
 import { fetchJsonSafely } from '@oxbow/solana/safe-fetch';
-import { SOL_MINT, type Cluster } from '@oxbow/solana/rpc';
-import { PublicKey, type Connection } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID, unpackMint } from '@solana/spl-token';
-import { ActivityHub } from './activity';
+import type { AccountReader } from '@oxbow/solana/token';
+import { PublicKey, SystemProgram, VersionedTransaction, type Connection } from '@solana/web3.js';
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Cache } from './cache';
-import { registerCreateRoutes, type CreateConfig } from './create';
 import { HttpError, priv, pub, withTimeout } from './http';
-import { Market } from './market';
-import type { PopularSource, SearchSource } from './popular';
-import type { PriceSource } from './prices';
+import { TRACKER_HEARTBEAT_KEY, TRACKER_LIVE_KEY, TradeHub, WALLETS_CHANNEL } from './hub';
+import type { Jupiter } from './jupiter';
+import { registerSwapRoutes, type SwapConfig } from './swap';
+import { Reader } from './tracker/read';
+import { TokenBook } from './tracker/tokens';
 
 /** The RPC calls the API makes (a web3.js Connection in production). */
 export type ChainReader = AccountReader &
   Pick<
     Connection,
     | 'getSlot'
-    | 'getSupply'
-    | 'getMultipleAccountsInfo'
     | 'getLatestBlockhash'
-    | 'getTransaction'
+    | 'getAddressLookupTable'
     | 'getSignatureStatuses'
     | 'sendRawTransaction'
-    | 'simulateTransaction'
     | 'getBalance'
-    | 'getTokenAccountBalance'
+    | 'getMinimumBalanceForRentExemption'
     | 'getParsedTokenAccountsByOwner'
   >;
 
 export interface Deps {
   db: PrismaClient;
   redis: Redis | null;
-  prices: PriceSource;
   rpc: ChainReader;
-  cluster: Cluster;
-  /** Pool creation settings; creation stays off without a treasury. */
-  create?: CreateConfig;
+  jupiter: Jupiter;
+  swap?: SwapConfig;
+  /** Most wallets tracked at once; adding more is refused until some go quiet. */
+  maxWallets?: number;
   ipfsGateway?: string;
-  /** Metadata JSON fetcher for token logos (SSRF-safe by default). */
+  /** Metadata JSON fetcher for tokens Jupiter doesn't list (SSRF-safe by default). */
   fetchJson?: (url: string) => Promise<unknown | null>;
   now?: () => number;
   logger?: boolean | FastifyBaseLogger | Record<string, unknown>;
-  /** Max open activity streams per IP. */
+  /** Max open feed streams per IP. */
   streamsPerIp?: number;
-  /** Most-traded tokens for create step 1 (Jupiter in production). */
-  popular?: PopularSource;
-  /** Token search by name or ticker for create step 1 (Jupiter in production). */
-  search?: SearchSource;
 }
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const MAX_STREAMS = 5000;
 const HEARTBEAT_MS = 20_000;
 const RPC_TIMEOUT_MS = 5000;
+/** Seen within this long: a wallet's page visit doesn't need to be written down again. */
+const TOUCH_MS = 3_600_000;
 
 const Address = z.object({ address: AddressSchema });
 const Mint = z.object({ mint: AddressSchema });
-const ChartQuery = z.object({ tf: TimeframeSchema.default('1D') });
-
-type TokenLookup = { status: 'found'; token: TokenInfo } | { status: 'not_found' | 'not_a_mint' } | { status: 'unreadable' };
 
 export async function buildApp(deps: Deps) {
   const now = deps.now ?? Date.now;
   const cache = new Cache(deps.redis);
-  const market = new Market(deps.db, deps.prices, cache, now);
-  const hub = new ActivityHub(deps.redis);
+  const hub = new TradeHub(deps.redis);
   const fetchJson = deps.fetchJson ?? ((u: string) => fetchJsonSafely(u));
+  const tokens = new TokenBook(deps.db, deps.jupiter, { chain: deps.rpc, fetchJson, ipfsGateway: deps.ipfsGateway, now });
+  const reader = new Reader(deps.db, tokens, now);
   const streamsPerIp = deps.streamsPerIp ?? 4;
+  const maxWallets = deps.maxWallets ?? 1000;
   const openStreams = new Map<string, number>();
 
   const app = Fastify({
@@ -100,7 +97,7 @@ export async function buildApp(deps: Deps) {
 
   await app.register(rateLimit, {
     global: true,
-    max: 60,
+    max: 90,
     timeWindow: '1 minute',
     redis: deps.redis ?? undefined,
     nameSpace: 'oxbow:rl:',
@@ -130,193 +127,23 @@ export async function buildApp(deps: Deps) {
   app.get('/health', { config: { rateLimit: false } }, health);
   app.get('/api/health', { config: { rateLimit: false } }, health);
 
-  // ------------------------------------------------------------ market
+  // ------------------------------------------------------------ feed
 
-  app.get('/api/stats', async (_req, reply) => {
-    pub(reply, 15);
-    return cache.wrap('stats:v1', 20, () => market.stats());
-  });
-
-  app.get('/api/ticker', async (_req, reply) => {
-    pub(reply, 15);
-    return cache.wrap('ticker:v1', 20, () => market.ticker());
-  });
-
-  app.get('/api/movers', async (_req, reply) => {
-    pub(reply, 15);
-    return cache.wrap('movers:v1', 20, () => market.movers());
-  });
-
-  app.get('/api/pools', async (req, reply) => {
-    const q = PoolsQuerySchema.parse(req.query);
-    pub(reply, 10);
-    return cache.wrap(`pools:v1:${JSON.stringify(q)}`, 15, () => market.pools(q));
-  });
-
-  app.get('/api/pools/:address', async (req, reply) => {
-    const { address } = Address.parse(req.params);
-    const pool = await cache.wrap(`pool:v1:${address}`, 15, () => market.pool(address));
-    if (!pool) throw new HttpError(404, 'not_found');
-    pub(reply, 10);
-    return pool;
-  });
-
-  app.get('/api/pools/:address/chart', async (req, reply) => {
-    const { address } = Address.parse(req.params);
-    const { tf } = ChartQuery.parse(req.query);
-    pub(reply, 30);
-    return cache.wrap(`chart:v1:${address}:${tf}`, tf === '1H' ? 30 : 60, () => market.chart(address, tf));
-  });
-
-  app.get('/api/pools/:address/trades', async (req, reply) => {
-    const { address } = Address.parse(req.params);
+  app.get('/api/feed', async (req, reply) => {
+    const q = FeedQuerySchema.parse(req.query);
+    if (q.wallets) {
+      // Someone follows these: keep them tracked (wallets nobody looks at go quiet after a while).
+      await deps.db.trackedWallet
+        .updateMany({ where: { address: { in: q.wallets }, lastViewedAt: { lt: new Date(now() - TOUCH_MS) } }, data: { lastViewedAt: new Date(now()), active: true } })
+        .catch(() => {});
+      priv(reply);
+      return reader.feed(q);
+    }
     pub(reply, 5);
-    return cache.wrap(`trades:v1:${address}`, 10, () => market.trades(address));
+    return cache.wrap(`feed:v1:${JSON.stringify(q)}`, 5, () => reader.feed(q));
   });
 
-  app.get('/api/stocks', async (_req, reply) => {
-    pub(reply, 30);
-    return cache.wrap('stocks:v1', 30, () => market.stocks());
-  });
-
-  app.get('/api/quotes', async (_req, reply) => {
-    pub(reply, 30);
-    return market.quotes();
-  });
-
-  // ------------------------------------------------------------ tokens
-
-  /** Jupiter's most-traded verified tokens, cached half an hour (two minutes when the list came back empty). */
-  const popularList = () => (deps.popular ? cache.wrap('popular:v2', (v: unknown[]) => (v.length ? 1800 : 120), () => solanaNative(deps.popular!)) : Promise.resolve([]));
-
-  /**
-   * Keeps tokens that are Solana's own: a classic SPL mint whose mint and freeze authorities are
-   * revoked. That drops bridged coins (their bridge keeps minting), tokenized stocks (the issuer
-   * mints, often on Token-2022) and anything that can still be frozen. One RPC call for the lot.
-   */
-  async function solanaNative(source: PopularSource) {
-    const list = await source();
-    if (!list.length) return [];
-    try {
-      const infos = await withTimeout(deps.rpc.getMultipleAccountsInfo(list.map((p) => new PublicKey(p.mint))), RPC_TIMEOUT_MS);
-      return list.filter((p, i) => {
-        const a = infos[i];
-        if (!a || !a.owner.equals(TOKEN_PROGRAM_ID)) return false;
-        try {
-          const m = unpackMint(new PublicKey(p.mint), a, TOKEN_PROGRAM_ID);
-          return !m.mintAuthority && !m.freezeAuthority;
-        } catch {
-          return false;
-        }
-      });
-    } catch {
-      return [];
-    }
-  }
-
-  async function token(req: FastifyRequest, reply: FastifyReply) {
-    const { mint } = Mint.parse(req.params);
-    const found = await cache.wrap<TokenLookup>(
-      `token:v1:${mint}`,
-      (v) => (v.status === 'found' ? 600 : 60),
-      async () => {
-        let r: Awaited<ReturnType<typeof lookupToken>>;
-        try {
-          r = await withTimeout(lookupToken(deps.rpc, mint, { fetchJson, ipfsGateway: deps.ipfsGateway }), 12_000);
-        } catch {
-          // RPC down: not cached, so the next request asks again.
-          throw new HttpError(502, 'rpc_unavailable');
-        }
-        if (r.status !== 'found') return { status: r.status };
-        const parsed = TokenInfoSchema.safeParse(r.token);
-        return parsed.success ? { status: 'found', token: parsed.data } : { status: 'unreadable' };
-      },
-    );
-    if (found.status === 'unreadable') throw new HttpError(502, 'unreadable_metadata');
-    if (found.status !== 'found') {
-      reply.header('cache-control', 'public, max-age=60');
-      return reply.code(404).send({ error: found.status });
-    }
-    const [listed, book] = await Promise.all([deps.db.token.findUnique({ where: { mint }, select: { mintCreatedAt: true } }), market.quoteBook()]);
-    const isSol = mint === SOL_MINT;
-    let supply = found.token.supply;
-    if (isSol) {
-      try {
-        supply = await cache.wrap('sol-supply:v1', 3600, async () => {
-          // Slow on some providers (it totals the non-circulating accounts), hence the longer wait.
-          const s = await withTimeout(deps.rpc.getSupply({ excludeNonCirculatingAccountsList: true }), 15_000);
-          return s.value.circulating / 1e9;
-        });
-      } catch (e) {
-        // Keep the mint account's figure, and say why.
-        req.log.warn(`SOL supply unavailable: ${(e as Error).message}`);
-      }
-    }
-    pub(reply, 120);
-    return {
-      ...found.token,
-      supply,
-      // When the token's metadata has no image: the pair asset's or verified stock's own logo, then the
-      // project logo Jupiter lists for it, then SOL's for wrapped SOL (whose metadata has none).
-      logoUri:
-        found.token.logoUri ?? book.assets[mint]?.logoUri ?? (await popularList()).find((p) => p.mint === mint)?.logoUri ?? (isSol ? '/tokens/sol.svg' : null),
-      symbolTaken: await market.symbolTaken(found.token.symbol, mint),
-      createdAt: listed?.mintCreatedAt?.toISOString() ?? found.token.createdAt,
-    } satisfies TokenInfo;
-  }
-  // Each lookup costs RPC calls and a metadata fetch.
-  const tokenOpts = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
-  // "Popular on Solana" quick picks, minus the pair assets themselves.
-  app.get('/api/tokens/popular', async (_req, reply) => {
-    const list = await popularList();
-    const book = await market.quoteBook();
-    pub(reply, 300);
-    return list.filter((p) => !book.assets[p.mint]).slice(0, 8);
-  });
-  // Search by name or ticker. Typing fires it, so it gets a higher limit than other reads.
-  app.get('/api/tokens/search', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const { q } = z.object({ q: z.string().trim().min(2).max(40) }).parse(req.query);
-    if (!deps.search) return [];
-    let results: Awaited<ReturnType<SearchSource>>;
-    try {
-      results = await cache.wrap(`search:v1:${q.toLowerCase()}`, 300, () => deps.search!(q));
-    } catch {
-      throw new HttpError(502, 'search_unavailable');
-    }
-    pub(reply, 120);
-    return results.slice(0, 8);
-  });
-  app.get('/api/tokens/:mint', tokenOpts, token);
-  // The web app's sample-data mode calls the old path.
-  app.get('/api/token/:mint', tokenOpts, token);
-
-  // ------------------------------------------------------------ wallet
-
-  app.get('/api/wallet/:address/positions', async (req, reply) => {
-    Address.parse(req.params);
-    priv(reply);
-    // Read live from the pool programs once pools can be created (M3/M4).
-    return [];
-  });
-
-  app.get('/api/wallet/:address/activity', async (req, reply) => {
-    const { address } = Address.parse(req.params);
-    priv(reply);
-    return market.walletActivity(address);
-  });
-
-  // ------------------------------------------------------------ register
-
-  registerCreateRoutes(app, { db: deps.db, rpc: deps.rpc, cluster: deps.cluster, cache, market, hub, now, config: deps.create, fetchJson, ipfsGateway: deps.ipfsGateway });
-
-  // ------------------------------------------------------------ activity
-
-  app.get('/api/activity/recent', async (_req, reply) => {
-    pub(reply, 5);
-    return cache.wrap('activity:v1', 5, () => market.recentActivity(20));
-  });
-
-  app.get('/api/activity/stream', async (req, reply) => {
+  app.get('/api/feed/stream', async (req, reply) => {
     const ip = req.ip;
     const mine = openStreams.get(ip) ?? 0;
     if (hub.size >= MAX_STREAMS || mine >= streamsPerIp) return reply.code(429).send({ error: 'too_many_streams' });
@@ -332,7 +159,7 @@ export async function buildApp(deps: Deps) {
       'x-accel-buffering': 'no',
     });
     res.write('retry: 5000\n\n');
-    const send = (item: ActivityItem) => res.write(`event: activity\ndata: ${JSON.stringify(item)}\n\n`);
+    const send = (t: FeedTrade) => res.write(`event: trade\ndata: ${JSON.stringify(t)}\n\n`);
     const stop = hub.listen(send);
     const beat = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);
     beat.unref();
@@ -351,11 +178,187 @@ export async function buildApp(deps: Deps) {
     res.on('error', close);
   });
 
+  // ------------------------------------------------------------ wallets
+
+  app.get('/api/wallets', async (_req, reply) => {
+    pub(reply, 30);
+    return cache.wrap('wallets:v1', 60, () => reader.wallets());
+  });
+
+  /** The wallet's token balances on chain (both token programs), so holdings never show what it no longer has. */
+  async function balances(owner: string): Promise<Map<string, number> | null> {
+    try {
+      const rows = await cache.wrap(`held:v1:${owner}`, 60, async () => {
+        const key = new PublicKey(owner);
+        const lists = await Promise.all(
+          [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((programId) => withTimeout(deps.rpc.getParsedTokenAccountsByOwner(key, { programId }), RPC_TIMEOUT_MS)),
+        );
+        const out: [string, number][] = [];
+        for (const l of lists)
+          for (const a of l.value) {
+            const info = (a.account.data.parsed as { info?: { mint?: string; tokenAmount?: { uiAmount?: number | null } } }).info;
+            if (info?.mint) out.push([info.mint, Number(info.tokenAmount?.uiAmount ?? 0)]);
+          }
+        return out;
+      });
+      const m = new Map<string, number>();
+      for (const [mint, amt] of rows) m.set(mint, (m.get(mint) ?? 0) + amt);
+      return m;
+    } catch {
+      return null;
+    }
+  }
+
+  app.get('/api/wallets/:address', async (req, reply) => {
+    const { address } = Address.parse(req.params);
+    const detail = await cache.wrap(`wallet:v1:${address}`, 20, async () => reader.wallet(address, await balances(address)));
+    if (!detail) throw new HttpError(404, 'not_tracked');
+    await deps.db.trackedWallet
+      .updateMany({ where: { address, lastViewedAt: { lt: new Date(now() - TOUCH_MS) } }, data: { lastViewedAt: new Date(now()), active: true } })
+      .catch(() => {});
+    // Still reading its history: ask again soon.
+    pub(reply, detail.backfilledAt ? 15 : 3);
+    return detail;
+  });
+
+  app.get('/api/wallets/:address/trades', async (req, reply) => {
+    const { address } = Address.parse(req.params);
+    const q = FeedQuerySchema.omit({ wallets: true }).parse(req.query);
+    pub(reply, 5);
+    return reader.feed({ ...q, wallets: [address] });
+  });
+
+  // Each new wallet costs a history read (about a hundred RPC calls).
+  app.post('/api/wallets', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const { address } = AddWalletBodySchema.parse(req.body);
+    priv(reply);
+    const existing = await deps.db.trackedWallet.findUnique({ where: { address }, select: { active: true } });
+    if (existing) {
+      if (!existing.active) {
+        await assertRoom();
+        await deps.db.trackedWallet.update({ where: { address }, data: { active: true, lastViewedAt: new Date(now()) } });
+        await deps.redis?.publish(WALLETS_CHANNEL, address).catch(() => 0);
+      }
+      return { address, created: false };
+    }
+    await assertRoom();
+    let acct;
+    try {
+      acct = await withTimeout(deps.rpc.getAccountInfo(new PublicKey(address)), RPC_TIMEOUT_MS);
+    } catch {
+      throw new HttpError(502, 'rpc_unavailable');
+    }
+    // Wallets are plain system accounts; token accounts, mints and programs never sign trades.
+    if (!acct) throw new HttpError(400, 'no_activity');
+    if (!acct.owner.equals(SystemProgram.programId)) throw new HttpError(400, 'not_a_wallet');
+    await deps.db.trackedWallet.upsert({ where: { address }, create: { address }, update: { active: true } });
+    await deps.redis?.publish(WALLETS_CHANNEL, address).catch(() => 0);
+    await cache.drop('wallets:v1');
+    return reply.code(201).send({ address, created: true });
+  });
+
+  async function assertRoom() {
+    const count = await deps.db.trackedWallet.count({ where: { active: true } });
+    if (count >= maxWallets) throw new HttpError(503, 'tracker_full');
+  }
+
+  // ------------------------------------------------------------ tokens
+
+  app.get('/api/tokens/hot', async (_req, reply) => {
+    pub(reply, 30);
+    return cache.wrap('hot:v1', 30, () => reader.hot());
+  });
+
+  // Search by name, ticker or CA. Typing fires it, so it gets a higher limit than other reads.
+  app.get('/api/tokens/search', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const { q } = z.object({ q: z.string().trim().min(2).max(60) }).parse(req.query);
+    let results: TokenSearchResult[];
+    try {
+      results = await cache.wrap(`search:v2:${q.toLowerCase()}`, 300, async () => {
+        const found = await deps.jupiter.search(q);
+        const list = found.map((t) => ({ mint: t.mint, symbol: t.symbol, name: t.name, logoUri: t.logoUri, verified: t.verified }));
+        // Jupiter's own ranking within each group.
+        return [...list.filter((r) => r.verified), ...list.filter((r) => !r.verified)];
+      });
+    } catch {
+      throw new HttpError(502, 'search_unavailable');
+    }
+    pub(reply, 120);
+    return results.slice(0, 8);
+  });
+
+  app.get('/api/tokens/:mint', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const { mint } = Mint.parse(req.params);
+    const detail = await cache.wrap(`token:v2:${mint}`, (v) => (v ? 30 : 60), () => reader.token(mint));
+    if (!detail) throw new HttpError(404, 'not_found');
+    pub(reply, 20);
+    return detail;
+  });
+
+  // ------------------------------------------------------------ swaps
+
+  const swaps = registerSwapRoutes(app, { jup: deps.jupiter, rpc: deps.rpc, config: deps.swap ?? { feeBps: 0 }, now, log: (m) => app.log.warn(m) });
+
+  app.post('/api/tx/send', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const { transaction } = SendTxBodySchema.parse(req.body);
+    priv(reply);
+    let bytes: Buffer;
+    try {
+      bytes = Buffer.from(transaction, 'base64');
+      VersionedTransaction.deserialize(bytes);
+    } catch {
+      throw new HttpError(400, 'bad_transaction');
+    }
+    try {
+      const signature = await withTimeout(deps.rpc.sendRawTransaction(bytes, { skipPreflight: false, maxRetries: 3 }), 12_000);
+      return { signature };
+    } catch (e) {
+      throw new HttpError(400, 'send_failed', { detail: (e as Error).message.slice(0, 200) });
+    }
+  });
+
+  app.get('/api/tx/:signature', async (req, reply): Promise<TxStatus> => {
+    const { signature } = z.object({ signature: SignatureSchema }).parse(req.params);
+    priv(reply);
+    const { value } = await withTimeout(deps.rpc.getSignatureStatuses([signature]), RPC_TIMEOUT_MS);
+    const s = value[0];
+    if (!s) return { status: 'pending' };
+    if (s.err) return { status: 'failed' };
+    return { status: s.confirmationStatus === 'processed' ? 'pending' : 'confirmed' };
+  });
+
+  app.get('/api/wallet/:address/balances', async (req, reply) => {
+    const { address } = Address.parse(req.params);
+    const { mints } = z
+      .object({
+        mints: z
+          .string()
+          .max(10 * 45)
+          .transform((v) => [...new Set(v.split(',').filter(Boolean))])
+          .pipe(z.array(AddressSchema).min(1).max(10)),
+      })
+      .parse(req.query);
+    priv(reply);
+    const owner = new PublicKey(address);
+    const out: Record<string, number> = {};
+    await Promise.all(
+      mints.map(async (mint) => {
+        if (mint === SOL_MINT) {
+          out[mint] = (await withTimeout(deps.rpc.getBalance(owner), RPC_TIMEOUT_MS)) / 1e9;
+          return;
+        }
+        const res = await withTimeout(deps.rpc.getParsedTokenAccountsByOwner(owner, { mint: new PublicKey(mint) }), RPC_TIMEOUT_MS);
+        out[mint] = res.value.reduce((s, a) => s + Number((a.account.data.parsed as { info?: { tokenAmount?: { uiAmount?: number } } }).info?.tokenAmount?.uiAmount ?? 0), 0);
+      }),
+    );
+    return out;
+  });
+
   // ------------------------------------------------------------ status
 
   app.get('/api/status', async (_req, reply) => {
     priv(reply);
-    return cache.wrap('status:v1', 15, async (): Promise<Status> => {
+    return cache.wrap('status:v2', 15, async (): Promise<Status> => {
       const checkedAt = new Date(now()).toISOString();
       let dbOk = true;
       try {
@@ -380,32 +383,30 @@ export async function buildApp(deps: Deps) {
         // stays DOWN
       }
 
-      let prices: Status['prices'] = { state: 'DOWN', updatedAt: null };
-      let indexer: Status['indexer'] = { state: 'DOWN', lagSec: null };
-      if (dbOk) {
-        const quotes = await market.quotes();
-        const priced = quotes.filter((q) => Date.parse(q.priceUpdatedAt) > 0);
-        const newest = Math.max(0, ...priced.map((q) => Date.parse(q.priceUpdatedAt)));
-        const state: HealthState = !quotes.length || !priced.length ? 'DOWN' : priced.length < quotes.length ? 'DEGRADED' : 'OK';
-        prices = { state, updatedAt: newest ? new Date(newest).toISOString() : null };
+      const [beat, live] = deps.redis ? await Promise.all([deps.redis.get(TRACKER_HEARTBEAT_KEY), deps.redis.get(TRACKER_LIVE_KEY)]).catch(() => [null, null]) : [null, null];
+      const lagSec = beat ? Math.max(0, Math.round((now() - Number(beat)) / 1000)) : null;
+      const wallets = dbOk ? await deps.db.trackedWallet.count({ where: { active: true } }) : 0;
+      const last = dbOk ? await deps.db.walletTrade.findFirst({ orderBy: { ts: 'desc' }, select: { ts: true } }) : null;
+      const trackerState: HealthState = lagSec === null || lagSec > 300 ? 'DOWN' : lagSec > 90 || live !== '1' ? 'DEGRADED' : 'OK';
 
-        // The indexer (worker) writes a heartbeat; with no pools there is nothing to index yet.
-        const beat = deps.redis ? await deps.redis.get('oxbow:indexer:heartbeat').catch(() => null) : null;
-        const lagSec = beat ? Math.max(0, Math.round((now() - Number(beat)) / 1000)) : null;
-        const pools = await deps.db.pool.count();
-        indexer = lagSec !== null ? { state: lagSec > 120 ? 'DEGRADED' : 'OK', lagSec } : { state: pools ? 'DEGRADED' : 'OK', lagSec: null };
+      let swapState: HealthState = 'OK';
+      try {
+        await withTimeout(deps.jupiter.tokens([SOL_MINT]), 4000);
+      } catch {
+        swapState = 'DOWN';
       }
+      if (swapState === 'OK' && deps.swap?.treasury && (await swaps.feeBps()) === 0) swapState = 'DEGRADED';
 
       return {
         checkedAt,
         api: dbOk && redisOk ? 'OK' : dbOk ? 'DEGRADED' : 'DOWN',
         rpc,
-        indexer,
-        prices,
-        sampleData: false,
+        tracker: { state: trackerState, lagSec, wallets, live: live === '1' },
+        lastTradeAt: last?.ts.toISOString() ?? null,
+        swaps: swapState,
       };
     });
   });
 
-  return { app, market, hub, cache };
+  return { app, hub, cache, tokens, reader };
 }

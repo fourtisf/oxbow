@@ -11,9 +11,9 @@ export default function NotFound() {
           {t.errors.notFoundBody}
         </PageHeader>
         <div className="cta" style={{ marginTop: 0 }}>
-          <ButtonLink href="/explore">{t.errors.exploreMarkets}</ButtonLink>
-          <ButtonLink variant="glass" href="/create">
-            {t.errors.createPool}
+          <ButtonLink href="/">{t.errors.backToFeed}</ButtonLink>
+          <ButtonLink variant="glass" href="/wallets">
+            {t.errors.browseWallets}
           </ButtonLink>
         </div>
       </div>

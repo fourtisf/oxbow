@@ -53,7 +53,7 @@ const OUT = [
       500,
       `<div style="width:1500px;height:500px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;${BG}">
         ${sized(logo, 'height:104px;width:auto')}
-        <div style="font:500 34px Geist;color:#A9C4E4;letter-spacing:-.01em">Pick a meme. Pair a stock. Stock-paired pools on Solana.</div>
+        <div style="font:500 34px Geist;color:#A9C4E4;letter-spacing:-.01em">Follow smart money on Solana. Copy any trade in one tap.</div>
         <div style="font:500 24px GeistMono;color:#6FB2FF;letter-spacing:.12em">OXBOWFLOW.COM</div>
       </div>`,
     ),
@@ -77,8 +77,8 @@ function announce(w, h) {
         <div style="display:inline-flex;align-items:center;gap:14px;padding:12px 22px;border-radius:999px;background:rgba(111,178,255,.1);box-shadow:inset 0 0 0 1.5px rgba(111,178,255,.35);font:500 22px GeistMono;letter-spacing:.2em;color:#9ECFFF">
           <span style="width:12px;height:12px;border-radius:50%;background:#3DDC97;box-shadow:0 0 18px #3DDC97"></span>COMING SOON
         </div>
-        <div style="margin:34px 0 26px;font:600 ${head}px/.98 Geist;letter-spacing:-.045em">Pick a meme.<br><span style="background:linear-gradient(92deg,#E4F2FF 0%,#9ECFFF 45%,#6FB2FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent">Pair a stock.</span></div>
-        <div style="font:500 ${square ? 32 : 34}px/1.35 Geist;color:#A9B8CB;max-width:${square ? 860 : 980}px">Stock-paired liquidity pools for any token on Solana. Pair your memecoin with tokenized stocks, SOL or USDC.</div>
+        <div style="margin:34px 0 26px;font:600 ${head}px/.98 Geist;letter-spacing:-.045em">Follow the wallets<br><span style="background:linear-gradient(92deg,#E4F2FF 0%,#9ECFFF 45%,#6FB2FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent">that move first.</span></div>
+        <div style="font:500 ${square ? 32 : 34}px/1.35 Geist;color:#A9B8CB;max-width:${square ? 860 : 980}px">Every buy and sell from top Solana wallets, seconds after it lands. Copy any trade in one tap from your own wallet.</div>
       </div>
       <div style="margin-top:${square ? 56 : 64}px;display:flex;justify-content:space-between;align-items:center;font:500 24px GeistMono;letter-spacing:.14em;color:#6FB2FF">
         <span>OXBOWFLOW.COM</span><span style="color:#6B7C92">BUILT ON SOLANA</span>

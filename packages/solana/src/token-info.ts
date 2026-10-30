@@ -18,7 +18,22 @@ import {
   unpackMint,
 } from '@solana/spl-token';
 import { unpack as unpackTokenMetadata } from '@solana/spl-token-metadata';
-import { LogoUriSchema, type TokenInfo } from '@oxbow/shared';
+import { LogoUriSchema } from '@oxbow/shared';
+
+/** A token as the chain describes it. `symbol`/`name` are untrusted metadata text. */
+export interface ChainToken {
+  mint: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  supply: number;
+  tokenProgram: 'spl-token' | 'token-2022';
+  mintAuthority: string | null;
+  freezeAuthority: string | null;
+  logoUri: string | null;
+  extensions: string[];
+  risk: { mintable: boolean; freezable: boolean; transferFee: boolean; transferHook: boolean; permanentDelegate: boolean };
+}
 
 /** Metaplex Token Metadata program. */
 export const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
@@ -41,7 +56,7 @@ export interface LookupOptions {
   ipfsGateway?: string;
 }
 
-export type LookupResult = { status: 'found'; token: TokenInfo } | { status: 'not_found' } | { status: 'not_a_mint' };
+export type LookupResult = { status: 'found'; token: ChainToken } | { status: 'not_found' } | { status: 'not_a_mint' };
 
 interface RawMetadata {
   name: string;
@@ -167,10 +182,6 @@ export async function lookupToken(rpc: AccountReader, mint: string, opts: Lookup
         transferHook: isSet(hook?.programId),
         permanentDelegate: isSet(delegate?.delegate),
       },
-      // The caller knows which symbols are already listed.
-      symbolTaken: false,
-      // Needs a transaction history scan; the API indexer fills it in later.
-      createdAt: null,
     },
   };
 }

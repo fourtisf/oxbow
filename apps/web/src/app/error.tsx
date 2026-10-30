@@ -20,7 +20,7 @@ export default function ErrorPage({ error, reset }: { error: Error & { digest?: 
         </PageHeader>
         <div className="cta" style={{ marginTop: 0 }}>
           <Button onClick={reset}>{t.errors.retry}</Button>
-          <ButtonLink variant="glass" href="/explore">
+          <ButtonLink variant="glass" href="/">
             {t.errors.home}
           </ButtonLink>
         </div>

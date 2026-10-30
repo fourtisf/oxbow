@@ -6,9 +6,9 @@ import { GeistSans } from 'geist/font/sans';
 import { Footer } from '@/components/layout/Footer';
 import { MobileTabs, Nav } from '@/components/layout/Nav';
 import { Providers } from '@/components/layout/Providers';
-import { SampleBanner } from '@/components/layout/SampleBanner';
 import { Ticker } from '@/components/layout/Ticker';
 import { WalletModal } from '@/components/layout/WalletButton';
+import { TradePanel } from '@/components/trade/TradePanel';
 import { Toaster } from '@/components/ui/Toaster';
 import { I18nProvider } from '@/i18n/client';
 import { getLocale, getT } from '@/i18n/server';
@@ -35,22 +35,22 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-// Mock data is computed per request (ages, lock countdowns). Revisit caching with real data in M2.
+// Every page shows live data.
 export const dynamic = 'force-dynamic';
 
 /**
  * Lite mode for phones with ≤4 GB of memory, very slow CPUs and data-saver:
- * drops backdrop blur, grain and the city animation. Runs before paint so
+ * drops backdrop blur and grain. Runs before paint so
  * nothing flashes. iPhones don't report memory and handle blur well.
  */
 const LITE = `try{var n=navigator,c=n.connection,touch=matchMedia('(pointer: coarse)').matches;if((c&&c.saveData)||(touch&&n.deviceMemory&&n.deviceMemory<=4)||(n.hardwareConcurrency&&n.hardwareConcurrency<=2)||matchMedia('(prefers-reduced-data: reduce)').matches)document.documentElement.classList.add('lite')}catch(e){}`;
 
 const PLAUSIBLE = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN;
 
-export default async function RootLayout({ children, drawer }: { children: ReactNode; drawer: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
   const locale = getLocale();
   const pf = new Prefetch();
-  await pf.ticker();
+  await pf.hot();
   return (
     // suppressHydrationWarning: the lite-mode script may add a class before React hydrates.
     <html lang={locale} className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
@@ -62,7 +62,6 @@ export default async function RootLayout({ children, drawer }: { children: React
         <div className="grain" aria-hidden="true" />
         <I18nProvider locale={locale}>
           <Providers>
-            <SampleBanner />
             <Hydrate state={pf.state()}>
               <Ticker />
             </Hydrate>
@@ -70,7 +69,7 @@ export default async function RootLayout({ children, drawer }: { children: React
             <MobileTabs />
             <main>{children}</main>
             <Footer />
-            {drawer}
+            <TradePanel />
             <WalletModal />
             <Toaster />
           </Providers>

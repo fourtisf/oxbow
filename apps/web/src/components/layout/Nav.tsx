@@ -3,27 +3,26 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useT } from '@/i18n/client';
-import { networkLabel } from '@/lib/env';
 import { NAV, social } from '@/lib/site';
-import { BookIcon, DashIcon, PlusIcon, SearchIcon, XLogo } from '../ui/Icons';
+import { BookIcon, PulseIcon, StarIcon, WalletIcon, XLogo } from '../ui/Icons';
 import { BrandMark } from './BrandMark';
 import { WalletButton } from './WalletButton';
 
 const ICONS = {
-  '/explore': (m: boolean) => <SearchIcon sw={m ? 1.8 : 1.7} />,
-  '/create': (m: boolean) => <PlusIcon sw={m ? 1.8 : 1.7} />,
-  '/dashboard': (m: boolean) => <DashIcon sw={m ? 1.7 : 1.6} />,
+  '/': () => <PulseIcon />,
+  '/wallets': () => <WalletIcon width={18} height={18} />,
+  '/following': () => <StarIcon width={17} height={17} />,
   '/docs': (m: boolean) => <BookIcon sw={m ? 1.7 : 1.6} />,
 };
 
-const isActive = (path: string, href: string) => path === href || path.startsWith(href + '/');
+const isActive = (path: string, href: string) => (href === '/' ? path === '/' : path === href || path.startsWith(href + '/'));
 
 function useNavLabels() {
   const t = useT();
   return {
-    '/explore': [t.nav.explore, t.nav.explore],
-    '/create': [t.nav.create, t.nav.createShort],
-    '/dashboard': [t.nav.dashboard, t.nav.dashboard],
+    '/': [t.nav.feed, t.nav.feed],
+    '/wallets': [t.nav.wallets, t.nav.wallets],
+    '/following': [t.nav.following, t.nav.following],
     '/docs': [t.nav.docs, t.nav.docs],
   } as const;
 }
@@ -55,7 +54,7 @@ export function Nav() {
         <div className="nav-end">
           <span className="netpill">
             <span className="live" aria-hidden="true" />
-            {networkLabel}
+            {t.nav.mainnet}
           </span>
           <WalletButton />
         </div>

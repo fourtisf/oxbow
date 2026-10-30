@@ -1,14 +1,11 @@
-import type { MarketState } from '@oxbow/shared';
 import { INTL_TAG, type Locale } from './config';
 import type { Messages } from './en';
 
-/** "Jan 5, 2027" / "5 Jan 2027" */
+/** "Jan 5, 2027" */
 export const fmtDateL = (at: string | number | Date, locale: Locale) =>
   new Date(at).toLocaleDateString(INTL_TAG[locale], { month: 'short', day: 'numeric', year: 'numeric' });
 
-export const dateInL = (days: number, locale: Locale, now = Date.now()) => fmtDateL(now + days * 864e5, locale);
-
-/** Relative time in the catalog's words ("17s ago" / "17 dtk lalu"). */
+/** Relative time in the catalog's words ("17s ago"). */
 export function relTimeL(ts: number, t: Messages, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - ts) / 1000));
   if (s < 3) return t.common.rel.justNow;
@@ -20,19 +17,12 @@ export function relTimeL(ts: number, t: Messages, now = Date.now()): string {
   return t.common.rel.d(Math.round(h / 24));
 }
 
-/** "Mon 9:30 AM ET" / "Sen 09.30 ET" — market times are always shown in New York time. */
-export function marketWhen(iso: string, locale: Locale): string {
-  const s = new Date(iso).toLocaleString(INTL_TAG[locale], {
-    weekday: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: 'America/New_York',
-  });
-  return `${s} ET`;
-}
-
-/** Why the market is closed, in words ("weekend", "Good Friday"). */
-export function marketReason(m: MarketState, t: Messages): string {
-  if (m.reason === 'HOLIDAY' && m.holiday) return t.market.holidays[m.holiday] ?? m.holiday;
-  return m.reason ? t.market.reason[m.reason] : '';
+/** Short age for a token: "3h", "12d", "2y". */
+export function ageShort(iso: string, now = Date.now()): string {
+  const h = Math.max(0, (now - Date.parse(iso)) / 36e5);
+  if (h < 1) return `${Math.max(1, Math.round(h * 60))}m`;
+  if (h < 48) return `${Math.round(h)}h`;
+  const d = h / 24;
+  if (d < 365) return `${Math.round(d)}d`;
+  return `${+(d / 365).toFixed(1)}y`;
 }

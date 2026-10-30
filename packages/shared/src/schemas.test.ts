@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { isAddress } from './address';
-import { PoolsQuerySchema, RegisterPoolBodySchema } from './schemas';
+import { AddWalletBodySchema, FeedQuerySchema, SwapQuoteQuerySchema } from './schemas';
+
+const A = 'So11111111111111111111111111111111111111112';
 
 describe('address validation', () => {
   it('accepts base58 of 32–44 chars', () => {
-    expect(isAddress('So11111111111111111111111111111111111111112')).toBe(true);
+    expect(isAddress(A)).toBe(true);
     expect(isAddress('Pebb5Rk3vT9wZpXq2LmNa8bYcDe4FgHjKs7uVwXy')).toBe(true);
   });
   it('rejects 0, O, I, l and bad lengths', () => {
@@ -15,26 +17,32 @@ describe('address validation', () => {
   });
 });
 
-describe('PoolsQuerySchema', () => {
+describe('FeedQuerySchema', () => {
   it('fills defaults', () => {
-    expect(PoolsQuerySchema.parse({})).toEqual({ quote: 'all', locked: false, sort: 'vol', limit: 25 });
+    expect(FeedQuerySchema.parse({})).toEqual({ limit: 40 });
   });
-  it('parses query-string values', () => {
-    const q = PoolsQuerySchema.parse({ q: '  mochi ', quote: 'SOL', locked: 'true', sort: 'apr', limit: '10' });
-    expect(q).toMatchObject({ q: 'mochi', quote: 'SOL', locked: true, sort: 'apr', limit: 10 });
-    expect(PoolsQuerySchema.parse({ locked: 'false' }).locked).toBe(false);
+  it('splits, dedupes and validates the wallet list', () => {
+    expect(FeedQuerySchema.parse({ wallets: `${A},${A}` }).wallets).toEqual([A]);
+    expect(() => FeedQuerySchema.parse({ wallets: 'nope' })).toThrow();
   });
-  it('rejects unknown filters and oversized limits', () => {
-    expect(() => PoolsQuerySchema.parse({ quote: 'BTC' })).toThrow();
-    expect(() => PoolsQuerySchema.parse({ limit: 1000 })).toThrow();
+  it('takes only well-formed cursors', () => {
+    expect(FeedQuerySchema.parse({ cursor: '1793363692000_42' }).cursor).toBe('1793363692000_42');
+    expect(() => FeedQuerySchema.parse({ cursor: "1'; drop" })).toThrow();
   });
 });
 
-describe('RegisterPoolBodySchema', () => {
-  it('requires a signature-shaped string and a known venue', () => {
-    const sig = '5'.repeat(88);
-    expect(RegisterPoolBodySchema.parse({ signature: sig, venue: 'RAYDIUM_CPMM' }).venue).toBe('RAYDIUM_CPMM');
-    expect(() => RegisterPoolBodySchema.parse({ signature: 'abc', venue: 'RAYDIUM_CPMM' })).toThrow();
-    expect(() => RegisterPoolBodySchema.parse({ signature: sig, venue: 'UNISWAP' })).toThrow();
+describe('AddWalletBodySchema', () => {
+  it('wants an address and nothing else', () => {
+    expect(AddWalletBodySchema.parse({ address: A, label: 'ignored' })).toEqual({ address: A });
+    expect(() => AddWalletBodySchema.parse({ address: 'x' })).toThrow();
+  });
+});
+
+describe('SwapQuoteQuerySchema', () => {
+  it('wants a positive integer amount and bounded slippage', () => {
+    expect(SwapQuoteQuerySchema.parse({ inputMint: A, outputMint: A, amount: '1000' }).slippageBps).toBe(100);
+    expect(() => SwapQuoteQuerySchema.parse({ inputMint: A, outputMint: A, amount: '0' })).toThrow();
+    expect(() => SwapQuoteQuerySchema.parse({ inputMint: A, outputMint: A, amount: '1.5' })).toThrow();
+    expect(() => SwapQuoteQuerySchema.parse({ inputMint: A, outputMint: A, amount: '10', slippageBps: '9000' })).toThrow();
   });
 });

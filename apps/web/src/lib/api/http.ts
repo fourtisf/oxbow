@@ -1,23 +1,15 @@
 import { z } from 'zod';
 import {
-  ActivityItemSchema,
-  ChartSeriesSchema,
-  PoolDetailSchema,
-  PoolsPageSchema,
-  PoolSummarySchema,
-  PositionSchema,
-  QuoteAssetSchema,
-  StatsSchema,
+  AddWalletResultSchema,
+  FeedPageSchema,
+  FeedTradeSchema,
+  HotTokenSchema,
   StatusSchema,
-  StockInfoSchema,
-  TickerItemSchema,
-  TokenInfoSchema,
-  PopularTokenSchema,
+  TokenDetailSchema,
   TokenSearchResultSchema,
-  TradeSchema,
-  VenuesSchema,
-  WalletActivitySchema,
-  type PoolsQueryInput,
+  WalletDetailSchema,
+  WalletSummarySchema,
+  type FeedQueryInput,
 } from '@oxbow/shared';
 import type { OxbowApi } from './types';
 
@@ -57,13 +49,13 @@ export async function get<S extends z.ZodTypeAny>(path: string, schema: S, opts:
 export async function post<S extends z.ZodTypeAny>(path: string, body: unknown, schema: S): Promise<z.output<S>> {
   const res = await fetch(base() + path, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) });
   const json = (await res.json().catch(() => null)) as ({ error?: string } & Record<string, unknown>) | null;
-  if (!res.ok) throw new ApiError(res.status, json?.error ?? 'error', json ?? {});
+  if (!res.ok) throw new ApiError(res.status, json?.error ?? (res.status === 429 ? 'rate_limited' : 'error'), json ?? {});
   return schema.parse(json);
 }
 
 const enc = encodeURIComponent;
 
-function poolsQs(q: PoolsQueryInput): string {
+export function qs(q: Record<string, unknown>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(q)) {
     if (v === undefined || v === null || v === '') continue;
@@ -75,31 +67,23 @@ function poolsQs(q: PoolsQueryInput): string {
 
 /** The Oxbow API over HTTP. Every response is checked against the shared schemas. */
 export const httpApi: OxbowApi = {
-  stats: () => get('/api/stats', StatsSchema),
-  ticker: () => get('/api/ticker', z.array(TickerItemSchema)),
-  movers: () => get('/api/movers', z.array(PoolSummarySchema)),
-  pools: (q) => get(`/api/pools${poolsQs(q)}`, PoolsPageSchema),
-  pool: (address) => get(`/api/pools/${enc(address)}`, PoolDetailSchema.nullable(), { nullOn404: true }),
-  chart: (address, tf) => get(`/api/pools/${enc(address)}/chart?tf=${tf}`, ChartSeriesSchema),
-  trades: (address) => get(`/api/pools/${enc(address)}/trades`, z.array(TradeSchema)),
-  stocks: () => get('/api/stocks', z.array(StockInfoSchema)),
-  quotes: () => get('/api/quotes', z.array(QuoteAssetSchema)),
-  venues: () => get('/api/venues', VenuesSchema),
-  popularTokens: () => get('/api/tokens/popular', z.array(PopularTokenSchema)),
+  feed: (q: FeedQueryInput) => get(`/api/feed${qs(q)}`, FeedPageSchema),
+  wallets: () => get('/api/wallets', z.array(WalletSummarySchema)),
+  wallet: (address) => get(`/api/wallets/${enc(address)}`, WalletDetailSchema.nullable(), { nullOn404: true }),
+  walletTrades: (address, cursor) => get(`/api/wallets/${enc(address)}/trades${qs({ cursor })}`, FeedPageSchema),
+  addWallet: (address) => post('/api/wallets', { address }, AddWalletResultSchema),
+  hot: () => get('/api/tokens/hot', z.array(HotTokenSchema)),
+  token: (mint) => get(`/api/tokens/${enc(mint)}`, TokenDetailSchema.nullable(), { nullOn404: true }),
   searchTokens: (q) => get(`/api/tokens/search?q=${enc(q)}`, z.array(TokenSearchResultSchema)),
-  token: (mint) => get(`/api/tokens/${enc(mint)}`, TokenInfoSchema.nullable(), { nullOn404: true }),
-  positions: (wallet) => get(`/api/wallet/${enc(wallet)}/positions`, z.array(PositionSchema)),
-  walletActivity: (wallet) => get(`/api/wallet/${enc(wallet)}/activity`, z.array(WalletActivitySchema)),
   status: () => get('/api/status', StatusSchema),
-  recentActivity: () => get('/api/activity/recent', z.array(ActivityItemSchema)),
-  subscribeActivity(onItem) {
+  subscribe(onTrade) {
     if (!isBrowser || typeof EventSource === 'undefined') return () => {};
     // EventSource reconnects on its own (the server suggests 5 s).
-    const es = new EventSource('/api/activity/stream');
-    es.addEventListener('activity', (e) => {
+    const es = new EventSource('/api/feed/stream');
+    es.addEventListener('trade', (e) => {
       try {
-        const item = ActivityItemSchema.safeParse(JSON.parse((e as MessageEvent<string>).data));
-        if (item.success) onItem(item.data);
+        const t = FeedTradeSchema.safeParse(JSON.parse((e as MessageEvent<string>).data));
+        if (t.success) onTrade(t.data);
       } catch {
         // ignore malformed events
       }
