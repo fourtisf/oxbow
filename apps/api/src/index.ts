@@ -25,9 +25,10 @@ const { app } = await buildApp({
   redis,
   rpc: new Connection(config.RPC_URL, 'confirmed'),
   jupiter: jupiterClient(config.JUPITER_API_BASE, { apiKey: config.JUPITER_API_KEY }),
-  trackerRpc: jsonRpc(config.RPC_URL),
+  trackerRpc: jsonRpc(config.RPC_URL, { rps: config.RPC_RPS }),
   swap: { treasury: config.OXBOW_TREASURY, feeBps: config.OXBOW_FEE_BPS },
   maxWallets: config.MAX_TRACKED_WALLETS,
+  discoveryDailyCalls: config.DISCOVERY_DAILY_CALLS,
   ipfsGateway: config.IPFS_GATEWAY,
   logger: { level: process.env.LOG_LEVEL ?? 'info' },
 });

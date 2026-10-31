@@ -99,6 +99,12 @@ export function Feed({ mint, wallet, scopes = true, initialScope = 'all', title,
                 <span className="spin" /> <b>{t.feed.finding}</b>
               </p>
               <p>{t.feed.findingBody}</p>
+              {status && (
+                <p className="mono finding-stats">
+                  {t.feed.findingProgress(status.discovery.checked, status.discovery.found)} ·{' '}
+                  {status.discovery.running ? t.feed.findingNow : status.discovery.paused ? t.feed.findingPaused : t.feed.findingNext}
+                </p>
+              )}
             </>
           ) : (
             <p>

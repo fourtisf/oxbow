@@ -27,6 +27,7 @@ test.describe('live feed', () => {
     await mockApi(page, { empty: true });
     await page.goto('/');
     await expect(page.locator('.feedcard')).toContainText('Finding smart money');
+    await expect(page.locator('.feedcard')).toContainText('37 traders checked so far · 0 found · Searching now');
   });
 
   test('a trade from the live stream lands on top', async ({ page }) => {

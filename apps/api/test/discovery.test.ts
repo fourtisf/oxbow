@@ -145,6 +145,23 @@ describe.skipIf(!ready)('discovery, tape and limit orders', () => {
     expect(await redis.exists(`oxbow:disc:seen:${W.bot}`)).toBe(0);
     // Every candidate is checked once; a second round finds nothing new.
     expect((await discovery.run()).evaluated).toBe(0);
+    // Progress for the status page.
+    expect(await redis.hgetall('oxbow:discovery:stats')).toMatchObject({ found: '2' });
+  });
+
+  it('stops for the day when its RPC budget is spent', async () => {
+    const tight = new Discovery({ db, rpc, tokens, jup, redis, tape: new MarketTape({ rpc, tokens, redis, now: () => NOW }), ingestor: new Ingestor({ db, rpc, tokens, now: () => NOW }), now: () => NOW, config: { dailyCalls: 10 } });
+    const r = await tight.run();
+    expect(r.budget).toBe(true);
+    expect(r.promoted).toEqual([]);
+    expect(Number(await redis.get(`oxbow:discovery:calls:${new Date(NOW).toISOString().slice(0, 10)}`))).toBeGreaterThanOrEqual(10);
+    expect((await tight.run()).evaluated).toBe(0);
+  });
+
+  it('runs one round at a time', async () => {
+    await redis.set('oxbow:discovery:running', 'someone-else');
+    expect(await discovery.run()).toMatchObject({ busy: true, evaluated: 0 });
+    await redis.del('oxbow:discovery:running');
   });
 
   it('stops the bookmark before history it could not store, so the worker finishes it', async () => {

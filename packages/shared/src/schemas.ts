@@ -377,6 +377,15 @@ export const StatusSchema = z.object({
   tracker: z.object({ state: Health, lagSec: z.number().nullable(), wallets: z.number().int().nonnegative(), live: z.boolean() }),
   /** Newest trade read, any wallet. */
   lastTradeAt: z.string().datetime().nullable(),
+  /** Smart-money discovery: a round running now, wallets checked and found so far. */
+  discovery: z.object({
+    running: z.boolean(),
+    checked: z.number().int().nonnegative(),
+    found: z.number().int().nonnegative(),
+    lastRunAt: z.string().datetime().nullable(),
+    /** Today's RPC budget for discovery is spent; it resumes tomorrow (UTC). */
+    paused: z.boolean(),
+  }),
   /** Swaps can be built (Jupiter reachable). */
   swaps: Health,
 });

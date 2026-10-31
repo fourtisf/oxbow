@@ -1,8 +1,10 @@
 /**
  * The two RPC calls the tracker makes, as plain JSON-RPC so transactions come
  * back exactly as the node encodes them (the shape `parse.ts` reads, and the
- * shape of the test fixtures). Rate limits (429) and node hiccups are retried
- * a few times with backoff.
+ * shape of the test fixtures). Requests are spaced to stay under the
+ * provider's rate limit (`rps`, from RPC_RPS: Helius's free plan allows about
+ * ten a second across all processes), and a 429 or a node hiccup is retried
+ * with a growing wait.
  */
 import { PublicKey } from '@solana/web3.js';
 import type { RawTx } from './parse';
@@ -27,14 +29,26 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The node couldn't answer (network, rate limit, server error): nothing to do with the transaction asked about. */
 export class RpcError extends Error {}
 
-export function jsonRpc(url: string, opts: { timeoutMs?: number; retries?: number } = {}): TrackerRpc {
+export function jsonRpc(url: string, opts: { timeoutMs?: number; retries?: number; rps?: number } = {}): TrackerRpc {
   const timeoutMs = opts.timeoutMs ?? 15_000;
-  const retries = opts.retries ?? 3;
+  const retries = opts.retries ?? 5;
+  const gapMs = opts.rps && opts.rps > 0 ? 1000 / opts.rps : 0;
   let id = 0;
+  let nextAt = 0;
+
+  /** Waits for this process's next turn under the rate limit. */
+  async function turn() {
+    if (!gapMs) return;
+    const now = Date.now();
+    const at = Math.max(now, nextAt);
+    nextAt = at + gapMs;
+    if (at > now) await sleep(at - now);
+  }
 
   async function call<T>(method: string, params: unknown[]): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       try {
+        await turn();
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -47,7 +61,8 @@ export function jsonRpc(url: string, opts: { timeoutMs?: number; retries?: numbe
         return body.result as T;
       } catch (e) {
         if (attempt >= retries) throw e instanceof RpcError ? e : new RpcError((e as Error).message);
-        await sleep(400 * 2 ** attempt);
+        // 0.5, 1, 2, 4, 8 s: long enough for a rate limit window to pass.
+        await sleep(500 * 2 ** attempt);
       }
     }
   }

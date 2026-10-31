@@ -40,7 +40,7 @@ sub.on('error', () => {});
 
 const conn = new Connection(config.RPC_URL, { commitment: 'confirmed', wsEndpoint: config.RPC_WS_URL });
 const jup = jupiterClient(config.JUPITER_API_BASE, { apiKey: config.JUPITER_API_KEY });
-const rpc = jsonRpc(config.RPC_URL);
+const rpc = jsonRpc(config.RPC_URL, { rps: config.RPC_RPS });
 const tokens = new TokenBook(db, jup, { chain: conn, fetchJson: (u) => fetchJsonSafely(u), ipfsGateway: config.IPFS_GATEWAY, log });
 const ingestor = new Ingestor({ db, rpc, tokens, publish: tradePublisher(redis), log, backfillLimit: config.BACKFILL_LIMIT });
 const discovery = new Discovery({
@@ -58,6 +58,7 @@ const discovery = new Discovery({
     minPnlUsd: config.DISCOVERY_MIN_PNL_USD,
     minWinRate: config.DISCOVERY_MIN_WIN_RATE,
     bigWinUsd: config.DISCOVERY_BIG_WIN_USD,
+    dailyCalls: config.DISCOVERY_DAILY_CALLS,
     max: config.DISCOVERY_MAX,
   },
 });
@@ -218,6 +219,8 @@ async function discoverTick() {
 
 async function discover() {
   const r = await discovery.run();
+  if (r.busy) return log('discovery: a round is already running (started from the CLI?)');
+  if (r.budget && !r.evaluated) return log(`discovery: today's budget of ${config.DISCOVERY_DAILY_CALLS} RPC calls is spent; resuming tomorrow (DISCOVERY_DAILY_CALLS)`);
   log(`discovery: ${r.sampled} token(s) sampled, ${r.evaluated} wallet(s) checked, ${r.promoted.length} new`);
   if (r.promoted.length) await refreshWallets();
 }

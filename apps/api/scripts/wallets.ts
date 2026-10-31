@@ -7,7 +7,7 @@
  *   pnpm --filter @oxbow/api wallets remove <address>      (stops tracking; trades are kept)
  *   pnpm --filter @oxbow/api wallets list
  *   pnpm --filter @oxbow/api wallets discover               (one smart-money discovery round now)
- *   pnpm --filter @oxbow/api wallets discover --deep        (a big one-off round to fill an empty feed: ~10,000 RPC calls)
+ *   pnpm --filter @oxbow/api wallets discover --deep        (a big one-off round to fill an empty feed: ~5,000 RPC calls)
  *
  * Featured wallets are the ones you pick: they carry a public label, are
  * always tracked, and lead the leaderboard. Use only addresses you have
@@ -114,7 +114,7 @@ try {
       const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 1 });
       redis.on('error', () => {});
       const jup = jupiterClient(config.JUPITER_API_BASE, { apiKey: config.JUPITER_API_KEY });
-      const rpc = jsonRpc(config.RPC_URL);
+      const rpc = jsonRpc(config.RPC_URL, { rps: config.RPC_RPS });
       const log = (m: string) => console.log(m);
       const tokens = new TokenBook(db, jup, { log });
       const ingestor = new Ingestor({ db, rpc, tokens, publish: tradePublisher(redis), log });
@@ -134,12 +134,23 @@ try {
           minWinRate: config.DISCOVERY_MIN_WIN_RATE,
           bigWinUsd: config.DISCOVERY_BIG_WIN_USD,
           max: config.DISCOVERY_MAX,
+          dailyCalls: config.DISCOVERY_DAILY_CALLS,
           // Deep: many more trending tokens, a much bigger sample of each, and every candidate found checked.
-          ...(values.deep ? { routerSample: 800, tokens: 10, samplePerToken: 60, evalsPerRun: 60, bootstrapBelow: 0 } : {}),
+          ...(values.deep ? { routerSample: 500, tokens: 6, samplePerToken: 40, evalsPerRun: 40, bootstrapBelow: 0, dailyCalls: 0 } : {}),
         },
       });
-      if (values.deep) console.log('Deep round: this reads about 10,000 transactions and takes 10 to 20 minutes.');
+      if (values.deep) console.log(`Deep round: reads about 5,000 transactions at ${config.RPC_RPS} a second (RPC_RPS), so about ${Math.round(5000 / config.RPC_RPS / 60)} minutes.`);
       const r = await discovery.run();
+      if (r.budget && !r.evaluated) {
+        console.log(`Today's discovery budget (${config.DISCOVERY_DAILY_CALLS} RPC calls, DISCOVERY_DAILY_CALLS) is spent. Use --deep to run one anyway.`);
+        redis.disconnect();
+        break;
+      }
+      if (r.busy) {
+        console.log('A discovery round is already running (the worker starts one every 15 minutes until ten smart wallets are found). It finishes on its own: check `wallets list` in a few minutes.');
+        redis.disconnect();
+        break;
+      }
       console.log(`${r.sampled} trending token(s) sampled, ${r.evaluated} wallet(s) checked, ${r.promoted.length} new smart wallet(s).`);
       for (const a of r.promoted) await redis.publish(WALLETS_CHANNEL, a).catch(() => 0);
       redis.disconnect();

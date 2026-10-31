@@ -11,6 +11,8 @@ export const ConfigSchema = z.object({
   REDIS_URL: z.preprocess(blank, z.string().default('redis://127.0.0.1:6379')),
   /** Solana mainnet RPC (Helius or similar). Solana's public endpoint works for trying it out, slowly. */
   RPC_URL: z.preprocess(blank, z.string().url().default('https://api.mainnet-beta.solana.com')),
+  /** Requests a second each process (API, worker, CLI) sends to RPC_URL. Helius free: keep the total under 10. */
+  RPC_RPS: z.preprocess(blank, z.coerce.number().positive().max(500).default(5)),
   /** Websocket endpoint; derived from RPC_URL (https -> wss) when unset. */
   RPC_WS_URL: z.preprocess(blank, z.string().url().optional()),
   JUPITER_API_BASE: z.preprocess(blank, z.string().url().default('https://lite-api.jup.ag')),
@@ -39,6 +41,8 @@ export const ConfigSchema = z.object({
   DISCOVERY_MIN_WIN_RATE: z.preprocess(blank, z.coerce.number().min(0).max(1).default(0.5)),
   /** ...or this much realized profit with no more losses than wins (whales close few positions). */
   DISCOVERY_BIG_WIN_USD: z.preprocess(blank, z.coerce.number().nonnegative().default(1500)),
+  /** RPC calls discovery may spend a day; the tracker needs the rest of the plan (Helius free: ~33,000 a day in all). 0 = no limit. */
+  DISCOVERY_DAILY_CALLS: z.preprocess(blank, z.coerce.number().int().min(0).default(15_000)),
   DISCOVERY_MAX: z.preprocess(blank, z.coerce.number().int().min(0).default(50)),
   /** Days a wallet nobody follows or opens stays tracked (featured and discovered wallets always are). */
   WALLET_IDLE_DAYS: z.preprocess(blank, z.coerce.number().int().positive().default(14)),

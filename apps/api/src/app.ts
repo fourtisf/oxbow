@@ -37,6 +37,7 @@ import { registerLimitRoutes } from './limit';
 import { registerSwapRoutes, type SwapConfig } from './swap';
 import { Reader } from './tracker/read';
 import type { TrackerRpc } from './tracker/rpc';
+import { callsKey, DISCOVERY_LOCK, DISCOVERY_STATS } from './tracker/discovery';
 import { MarketTape, orderFlow } from './tracker/tape';
 import { STALE, TokenBook } from './tracker/tokens';
 
@@ -64,6 +65,8 @@ export interface Deps {
   swap?: SwapConfig;
   /** Most wallets tracked at once; adding more is refused until some go quiet. */
   maxWallets?: number;
+  /** Discovery's daily RPC budget (DISCOVERY_DAILY_CALLS), to say when it is paused until tomorrow. 0 = none. */
+  discoveryDailyCalls?: number;
   ipfsGateway?: string;
   /** Metadata JSON fetcher for tokens Jupiter doesn't list (SSRF-safe by default). */
   fetchJson?: (url: string) => Promise<unknown | null>;
@@ -486,8 +489,29 @@ export async function buildApp(deps: Deps) {
       }
       if (swapState === 'OK' && deps.swap?.treasury && (await swaps.feeBps()) === 0) swapState = 'DEGRADED';
 
+      let stats: Record<string, string> = {};
+      let running = 0;
+      let spent = 0;
+      if (deps.redis) {
+        try {
+          let raw: string | null;
+          [stats, running, raw] = await Promise.all([deps.redis.hgetall(DISCOVERY_STATS), deps.redis.exists(DISCOVERY_LOCK), deps.redis.get(callsKey(new Date(now()).toISOString().slice(0, 10)))]);
+          spent = Number(raw) || 0;
+        } catch {
+          // shown as nothing yet
+        }
+      }
+      const budget = deps.discoveryDailyCalls ?? 0;
+      const lastRun = Number(stats.lastRunAt) || 0;
       return {
         checkedAt,
+        discovery: {
+          running: running === 1,
+          checked: Number(stats.checked) || 0,
+          found: Number(stats.found) || 0,
+          lastRunAt: lastRun ? new Date(lastRun).toISOString() : null,
+          paused: budget > 0 && spent >= budget,
+        },
         api: dbOk && redisOk ? 'OK' : dbOk ? 'DEGRADED' : 'DOWN',
         rpc,
         tracker: { state: trackerState, lagSec, wallets, live: live === '1' },

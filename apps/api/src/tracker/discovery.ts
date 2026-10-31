@@ -52,10 +52,12 @@ export interface DiscoveryConfig {
   /** Most discovered wallets tracked at once. */
   max: number;
   bootstrapBelow: number;
+  /** RPC calls discovery may spend a day (UTC), so it never eats the plan the tracker needs. 0 = no limit. */
+  dailyCalls: number;
 }
 
 export const DEFAULT_DISCOVERY: DiscoveryConfig = {
-  routerSample: 150,
+  routerSample: 300,
   tokens: 6,
   samplePerToken: 40,
   evalsPerRun: 10,
@@ -64,9 +66,10 @@ export const DEFAULT_DISCOVERY: DiscoveryConfig = {
   minWinRate: 0.5,
   minClosed: 3,
   bigWinUsd: 1500,
-  minTradeUsd: 100,
+  minTradeUsd: 50,
   max: 50,
   bootstrapBelow: 10,
+  dailyCalls: 15_000,
 };
 
 export interface Candidate {
@@ -89,6 +92,12 @@ const SEEN_TTL_SEC: Record<string, number> = { sandwich: 30 * 86_400, too_fast: 
 /** Close calls (few closed, low win rate or profit) are checked again the next day: positions get closed. */
 const SEEN_TTL_DEFAULT_SEC = 86_400;
 const seenKey = (a: string) => `oxbow:disc:seen:${a}`;
+/** One round at a time across the worker and the CLI: two at once only trip the RPC rate limit. */
+export const DISCOVERY_LOCK = 'oxbow:discovery:running';
+/** Running totals for the status page and the empty feed: checked, found, lastRunAt. */
+export const DISCOVERY_STATS = 'oxbow:discovery:stats';
+/** RPC calls discovery spent on a day (UTC). */
+export const callsKey = (day: string) => `oxbow:discovery:calls:${day}`;
 /** More than this many transactions an hour on average reads as a bot (MEV bots do thousands; busy traders on trading bots stay under). */
 const MAX_TX_PER_HOUR = 120;
 /** Three or more fills in one token's short sample: a bot's rhythm, not a person's. */
@@ -105,6 +114,10 @@ export interface Evaluation {
 }
 
 export class Discovery {
+  /** RPC calls this process spent in the current round, not yet added to today's total. */
+  private spent = 0;
+  private readonly rpc: TrackerRpc;
+
   constructor(
     private readonly d: {
       db: PrismaClient;
@@ -118,7 +131,17 @@ export class Discovery {
       log?: (m: string) => void;
       now?: () => number;
     },
-  ) {}
+  ) {
+    const count = <A extends unknown[], R>(fn: (...a: A) => Promise<R>) => (...a: A) => {
+      this.spent++;
+      return fn(...a);
+    };
+    this.rpc = {
+      getTransaction: count((s: string) => d.rpc.getTransaction(s)),
+      getSignatures: count((a: string, o: { limit: number; until?: string; before?: string }) => d.rpc.getSignatures(a, o)),
+      getTopHolders: count((m: string) => d.rpc.getTopHolders(m)),
+    };
+  }
 
   private get cfg(): DiscoveryConfig {
     return { ...DEFAULT_DISCOVERY, ...this.d.config };
@@ -150,13 +173,13 @@ export class Discovery {
     const sigs: SignatureInfo[] = [];
     let before: string | undefined;
     while (sigs.length < this.cfg.routerSample) {
-      const page = await this.d.rpc.getSignatures(router, { limit: Math.min(1000, this.cfg.routerSample - sigs.length), before }).catch(() => [] as SignatureInfo[]);
+      const page = await this.rpc.getSignatures(router, { limit: Math.min(1000, this.cfg.routerSample - sigs.length), before }).catch(() => [] as SignatureInfo[]);
       if (!page.length) break;
       sigs.push(...page);
       before = page[page.length - 1]!.signature;
     }
     const ok = sigs.filter((s) => !s.err);
-    const read = await mapLimit(ok, READ_CONCURRENCY, (s) => this.d.rpc.getTransaction(s.signature).catch(() => null));
+    const read = await mapLimit(ok, READ_CONCURRENCY, (s) => this.rpc.getTransaction(s.signature).catch(() => null));
     const txs = read.filter((t): t is RawTx => !!t);
     const decimals = new Map<string, number>();
     for (const tx of txs) {
@@ -198,6 +221,8 @@ export class Discovery {
       let fills;
       try {
         fills = await this.d.tape.refresh(mint, this.cfg.samplePerToken);
+        // The tape reads with its own client: count the most it can have spent.
+        this.spent += this.cfg.samplePerToken + 1;
       } catch (e) {
         this.d.log?.(`discovery: tape ${mint.slice(0, 6)}… failed: ${(e as Error).message}`);
         continue;
@@ -234,7 +259,7 @@ export class Discovery {
     const empty: Evaluation = { verdict: { ok: false, reason: 'inactive' }, sigs: [], txs: new Map(), metas: new Map() };
     let sigs: SignatureInfo[];
     try {
-      sigs = await this.d.rpc.getSignatures(address, { limit: this.cfg.historyTxs });
+      sigs = await this.rpc.getSignatures(address, { limit: this.cfg.historyTxs });
     } catch {
       return { ...empty, verdict: { ok: false, reason: 'rpc' } };
     }
@@ -246,7 +271,7 @@ export class Discovery {
     // Cheapest check first: the signature list alone shows a bot's pace.
     if (ok.length / hours > MAX_TX_PER_HOUR) return { ...empty, sigs, verdict: { ok: false, reason: 'too_fast' } };
 
-    const read = await mapLimit(ok, READ_CONCURRENCY, (s) => this.d.rpc.getTransaction(s.signature).catch(() => null));
+    const read = await mapLimit(ok, READ_CONCURRENCY, (s) => this.rpc.getTransaction(s.signature).catch(() => null));
     const txs = new Map<string, RawTx>();
     read.forEach((tx, i) => tx && txs.set(ok[i]!.signature, tx));
     const decimals = new Map<string, number>();
@@ -318,10 +343,50 @@ export class Discovery {
     });
   }
 
-  /** One discovery round. Returns the wallets it started tracking. */
-  async run(): Promise<{ sampled: number; evaluated: number; promoted: string[] }> {
+  /** One discovery round. Returns the wallets it started tracking; `busy` when another round is running. */
+  async run(): Promise<{ sampled: number; evaluated: number; promoted: string[]; busy?: boolean; budget?: boolean }> {
+    const redis = this.d.redis;
+    const token = Math.random().toString(36).slice(2);
+    if (redis && (await redis.set(DISCOVERY_LOCK, token, 'EX', 3600, 'NX').catch(() => 'OK')) !== 'OK') return { sampled: 0, evaluated: 0, promoted: [], busy: true };
+    try {
+      return await this.round();
+    } finally {
+      await redis?.hset(DISCOVERY_STATS, 'lastRunAt', String(this.now())).catch(() => 0);
+      await redis?.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0", 1, DISCOVERY_LOCK, token).catch(() => 0);
+    }
+  }
+
+  /** Calls spent today across rounds, plus this round's so far. */
+  private async usedToday(): Promise<number> {
+    const day = new Date(this.now()).toISOString().slice(0, 10);
+    const stored = this.d.redis ? Number(await this.d.redis.get(callsKey(day)).catch(() => 0)) || 0 : 0;
+    return stored + this.spent;
+  }
+
+  private async bank() {
+    if (!this.spent) return;
+    const day = new Date(this.now()).toISOString().slice(0, 10);
+    const n = this.spent;
+    this.spent = 0;
+    await this.d.redis?.multi().incrby(callsKey(day), n).expire(callsKey(day), 2 * 86_400).exec().catch(() => 0);
+  }
+
+  private async overBudget(): Promise<boolean> {
+    return this.cfg.dailyCalls > 0 && (await this.usedToday()) >= this.cfg.dailyCalls;
+  }
+
+  private async round(): Promise<{ sampled: number; evaluated: number; promoted: string[]; budget?: boolean }> {
+    try {
+      return await this.roundInner();
+    } finally {
+      await this.bank();
+    }
+  }
+
+  private async roundInner(): Promise<{ sampled: number; evaluated: number; promoted: string[]; budget?: boolean }> {
     const active = await this.d.db.trackedWallet.count({ where: { source: 'discovered', active: true } });
     if (active >= this.cfg.max) return { sampled: 0, evaluated: 0, promoted: [] };
+    if (await this.overBudget()) return { sampled: 0, evaluated: 0, promoted: [], budget: true };
     const mints = await this.trending();
     const candidates = await this.candidates(mints);
     const budget = Math.min(candidates.length, active < this.cfg.bootstrapBelow ? this.cfg.evalsPerRun * 3 : this.cfg.evalsPerRun);
@@ -329,8 +394,10 @@ export class Discovery {
     let evaluated = 0;
     for (const c of candidates.slice(0, budget)) {
       if (active + promoted.length >= this.cfg.max) break;
+      if (await this.overBudget()) return { sampled: mints.length, evaluated, promoted, budget: true };
       const ev = await this.evaluate(c.address);
       evaluated++;
+      await this.d.redis?.hincrby(DISCOVERY_STATS, 'checked', 1).catch(() => 0);
       if (ev.verdict.ok || ev.verdict.reason !== 'rpc') {
         const why = ev.verdict.ok ? 'ok' : ev.verdict.reason;
         await this.d.redis?.set(seenKey(c.address), why, 'EX', SEEN_TTL_SEC[why] ?? SEEN_TTL_DEFAULT_SEC).catch(() => {});
@@ -342,6 +409,7 @@ export class Discovery {
       }
       await this.promote(c.address, ev);
       promoted.push(c.address);
+      await this.d.redis?.hincrby(DISCOVERY_STATS, 'found', 1).catch(() => 0);
       const s = ev.verdict.summary;
       this.d.log?.(`discovered ${c.address.slice(0, 6)}… (${ev.verdict.kind}): +$${Math.round(s.realizedPnlUsd)} realized, ${s.wins}/${s.wins + s.losses} closed in profit`);
     }

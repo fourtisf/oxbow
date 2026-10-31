@@ -213,6 +213,7 @@ export async function mockApi(page: Page, opts: { live?: unknown[]; empty?: bool
         rpc: { state: 'OK', slot: 1, latencyMs: 80 },
         tracker: { state: 'OK', lagSec: 4, wallets: opts.empty ? 0 : 2, live: true },
         lastTradeAt: iso(1),
+        discovery: { running: !!opts.empty, checked: opts.empty ? 37 : 120, found: opts.empty ? 0 : 2, lastRunAt: iso(5), paused: false },
         swaps: 'OK',
       });
     return json(route, { error: 'not_found' }, 404);

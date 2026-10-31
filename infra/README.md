@@ -106,8 +106,12 @@ RPC use: one websocket subscription per tracked wallet, one transaction read
 per trade, a catch-up call per wallet every `TRACKER_RESYNC_SEC` (5 min),
 about 1,700 calls per discovery round (every 15 minutes until ten smart
 wallets are found, then `DISCOVERY_EVERY_MIN`, 2 h), and up to
-25 per token page every 15 s while someone has it open (order flow). On
-Helius's free plan, raise `DISCOVERY_EVERY_MIN` if credits run low.
+25 per token page every 15 s while someone has it open (order flow). Every
+process spaces its calls to `RPC_RPS` (5 a second) so Helius's free plan
+(about 10 a second, about 1 million a month) isn't tripped, and discovery stops
+for the day after `DISCOVERY_DAILY_CALLS` (15,000) so it never eats what the
+tracker needs. On a paid plan raise both (for example `RPC_RPS=40`,
+`DISCOVERY_DAILY_CALLS=200000`) and smart money is found many times faster.
 Jupiter's free API is rate-limited; at scale, get a key at portal.jup.ag and
 set `JUPITER_API_BASE=https://api.jup.ag` and `JUPITER_API_KEY`.
 
