@@ -112,3 +112,5 @@ advice; keep the Risk page link handy when people ask.
 
 The headers keep the bottom left clear: X lays the profile picture over it.
 All images are rendered by `node scripts/brand-png.mjs`.
+
+Token launch day: copy and checklist in [`launch-kit.md`](launch-kit.md).
