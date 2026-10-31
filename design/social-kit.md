@@ -1,19 +1,20 @@
 # Oxbow social kit (X and Telegram)
 
-Everything needed to open the official accounts. When they exist, put the
-links in `apps/web/.env.production.local` and deploy; the footer's "Soon"
-pills turn into links and the X icon appears in the nav:
+Everything needed for the official accounts. X is live at
+[x.com/oxbowflow](https://x.com/oxbowflow) and the site links it by default.
+When the Telegram channel exists, put its link in
+`apps/web/.env.production.local` and deploy; the footer's "Soon" pill turns
+into a link:
 
 ```
-NEXT_PUBLIC_X_URL=https://x.com/yourhandle
 NEXT_PUBLIC_TELEGRAM_URL=https://t.me/yourchannel
 ```
 
 ## Names
 
 - Display name: **Oxbow** (both).
-- Handle: same on both if you can get it, in this order: `oxbowflow`
-  (matches the domain), `oxbowfi`, `useoxbow`. Availability was not checked.
+- Handle: `@oxbowflow` on X (matches the domain); the same on Telegram if
+  you can get it.
 - Telegram: start with a **public channel** for announcements (only admins
   post, so no scam replies). Add a discussion group later, once someone can
   moderate it.
@@ -27,6 +28,7 @@ All in `apps/web/public/brand/social/`, and on the site after deploy at
 | --- | --- |
 | Profile picture, X and Telegram (circle-safe) | `oxbow-profile-1024.png` |
 | X header | `oxbow-x-header-1500x500.png` |
+| X header until the token launches ("CA coming soon") | `oxbow-x-header-ca-soon-1500x500.png` |
 | Announcement post, X and Telegram (16:9) | `oxbow-coming-soon-1600x900.png` |
 | Announcement post, square | `oxbow-coming-soon-1080.png` |
 
@@ -105,3 +107,6 @@ product already does, so nothing has to be walked back later.
 No price targets, returns, "guaranteed", "risk-free" or "investment".
 Never call a wallet's next trade a sure thing or present featured wallets as
 advice; keep the Risk page link handy when people ask.
+
+The headers keep the bottom left clear: X lays the profile picture over it.
+All images are rendered by `node scripts/brand-png.mjs`.
