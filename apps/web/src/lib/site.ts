@@ -16,4 +16,4 @@ export const xHandle = (() => {
   return m ? `@${m[1]}` : undefined;
 })();
 
-export const NAV = [{ href: '/' }, { href: '/wallets' }, { href: '/following' }, { href: '/docs' }] as const;
+export const NAV = [{ href: '/' }, { href: '/wallets' }, { href: '/portfolio' }, { href: '/following' }, { href: '/docs' }] as const;

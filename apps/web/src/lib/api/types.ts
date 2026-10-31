@@ -1,4 +1,4 @@
-import type { FeedPage, FeedQueryInput, FeedTrade, HotToken, LimitOrder, OrderFlow, Status, TokenDetail, TokenSearchResult, WalletDetail, WalletSummary } from '@oxbow/shared';
+import type { FeedPage, FeedQueryInput, FeedTrade, HotToken, LimitOrder, OrderFlow, Portfolio, Status, TokenDetail, TokenSearchResult, WalletDetail, WalletSummary } from '@oxbow/shared';
 
 /** Everything the UI reads, one method per API route. */
 export interface OxbowApi {
@@ -20,6 +20,8 @@ export interface OxbowApi {
   flow(mint: string): Promise<OrderFlow>;
   /** GET /api/limit/orders?wallet= — the wallet's open limit orders. */
   limitOrders(wallet: string): Promise<LimitOrder[]>;
+  /** GET /api/portfolio/:address — any wallet's holdings and recent trades, read from the chain. */
+  portfolio(address: string): Promise<Portfolio>;
   /** GET /api/tokens/search?q= */
   searchTokens(q: string): Promise<TokenSearchResult[]>;
   /** GET /api/status */

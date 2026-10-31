@@ -9,19 +9,7 @@ import { Redis } from 'ioredis';
 import { ComputeBudgetProgram, PublicKey, SystemInstruction, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { createDb, type PrismaClient } from '@oxbow/db';
-import {
-  BuiltSwapSchema,
-  FeedPageSchema,
-  FeedTradeSchema,
-  HotTokenSchema,
-  StatusSchema,
-  SwapQuoteSchema,
-  TokenDetailSchema,
-  TokenSearchResultSchema,
-  WalletDetailSchema,
-  WalletSummarySchema,
-  type FeedTrade,
-} from '@oxbow/shared';
+import { BuiltSwapSchema, FeedPageSchema, FeedTradeSchema, HotTokenSchema, StatusSchema, SwapQuoteSchema, TokenDetailSchema, TokenSearchResultSchema, WalletDetailSchema, WalletSummarySchema, type FeedTrade, PortfolioSchema } from '@oxbow/shared';
 import { JUPITER_PROGRAM_ID } from '@oxbow/solana/swap';
 import { buildApp, type ChainReader } from '../src/app';
 import { ALT, FakeChain, FakeJupiter, FakeTrackerRpc, NOW, SOL_USD, system, token, TREASURY } from './fakes';
@@ -456,6 +444,52 @@ describe.skipIf(!ready)('Oxbow tracker API', () => {
       jup.swapProgram = addr();
       const res = await app().inject({ method: 'POST', url: '/api/swap/build', payload: { wallet: addr(), inputMint: WSOL, outputMint: M.meme, amount: '1000000000' } });
       expect(res.json()).toEqual({ error: 'unknown_program' });
+    });
+  });
+
+  describe('slippage on Auto', () => {
+    const quoteUrl = (mint: string) => `/api/swap/quote?inputMint=${WSOL}&outputMint=${mint}&amount=1000000000`;
+    it('gives deep verified tokens little room, thin ones and launchpads more, and the route carries it', async () => {
+      expect((await get(quoteUrl(M.meme))).body).toMatchObject({ autoSlippage: true, slippageBps: 100 });
+      expect((await get(quoteUrl(M.rug))).body).toMatchObject({ autoSlippage: true, slippageBps: 300 });
+      jup.routeLabels = ['Pump.fun Amm'];
+      expect((await get(quoteUrl(M.meme))).body).toMatchObject({ slippageBps: 500 });
+      jup.quotes.length = 0;
+      const res = await app().inject({ method: 'POST', url: '/api/swap/build', payload: { wallet: addr(), inputMint: WSOL, outputMint: M.meme, amount: '1000000000' } });
+      expect(BuiltSwapSchema.parse(res.json()).quote.slippageBps).toBe(500);
+      expect(jup.quotes[jup.quotes.length - 1]!.slippageBps).toBe(500);
+      jup.routeLabels = null;
+      // A chosen slippage is kept as it is.
+      expect((await get(`${quoteUrl(M.meme)}&slippageBps=50`)).body).toMatchObject({ autoSlippage: false, slippageBps: 50 });
+    });
+
+    it('quotes again once when the price moved while the trade was being built', async () => {
+      chain.simulateFailures = 1;
+      const res = await app().inject({ method: 'POST', url: '/api/swap/build', payload: { wallet: addr(), inputMint: WSOL, outputMint: M.meme, amount: '1000000000', slippageBps: 100 } });
+      expect(res.statusCode).toBe(200);
+      expect(chain.simulateFailures).toBe(0);
+    });
+  });
+
+  describe('portfolio', () => {
+    it('reads any wallet’s SOL, holdings with their cost, and recent trades from the chain, without tracking it', async () => {
+      await rebuild({ trackerRpc: rpc });
+      const p = PortfolioSchema.parse((await get(`/api/portfolio/${W.alpha}`)).body);
+      expect(p.sol).toEqual({ amount: 2, valueUsd: 400 });
+      // 200,000 MEME bought for $800, half sold for $600: 100,000 left that cost $400, worth $400 now.
+      const meme = p.holdings.find((h) => h.token.mint === M.meme)!;
+      expect(meme).toMatchObject({ amount: 100_000, costUsd: 400, valueUsd: 400, pnlUsd: 0 });
+      expect(p.holdings.find((h) => h.token.mint === M.dog)).toMatchObject({ amount: 5_000, costUsd: 100, valueUsd: 100 });
+      expect(p.realizedPnlUsd).toBeCloseTo(200);
+      expect(p.totalUsd).toBeCloseTo(900);
+      expect(p.trades.map((t) => t.token.symbol)).toEqual(['DOG', 'MEME', 'MEME', 'MEME']);
+      const stranger = addr();
+      chain.held.set(stranger, [[M.meme, 10]]);
+      const q = PortfolioSchema.parse((await get(`/api/portfolio/${stranger}`)).body);
+      // Tokens that arrived without a trade in the history show no cost.
+      expect(q.holdings[0]).toMatchObject({ amount: 10, costUsd: null, pnlUsd: null });
+      expect(await db.trackedWallet.findUnique({ where: { address: stranger } })).toBeNull();
+      await rebuild();
     });
   });
 

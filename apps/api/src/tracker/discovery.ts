@@ -32,8 +32,9 @@ import { JUPITER_PROGRAM_ID } from '@oxbow/solana/swap';
 import type { Jupiter } from '../jupiter';
 import { Ingestor, ui } from './ingest';
 import { parseTrades, walletChanges, WSOL, type RawTx } from './parse';
-import { positions, summarize, type PnlTrade, type Summary } from './pnl';
+import { positions, summarize, type Summary } from './pnl';
 import { readHistory, type HistoryEntry, type HistoryOpts, type TrackerRpc, type SignatureInfo } from './rpc';
+import { priceTrades } from './history';
 import { fillsOf, type MarketTape } from './tape';
 import { quoteUsd, STALE, type TokenBook, type TokenMeta } from './tokens';
 
@@ -371,25 +372,6 @@ export class Discovery {
     return fresh;
   }
 
-  /** Prices the trades `address` made in `entries` (its history, already read). */
-  private async readTrades(address: string, entries: HistoryEntry[]): Promise<{ txs: Map<string, RawTx>; metas: ReadonlyMap<string, TokenMeta>; trades: (PnlTrade & { slot: number })[] }> {
-    const txs = new Map<string, RawTx>();
-    for (const e of entries) if (e.tx && !e.err) txs.set(e.signature, e.tx);
-    const decimals = new Map<string, number>();
-    for (const tx of txs.values()) for (const l of walletChanges(tx, address)?.tokens ?? []) decimals.set(l.mint, l.decimals);
-    const metas = await this.d.tokens.get([...decimals.keys(), WSOL], STALE.ingest, decimals);
-    const solUsd = await this.d.tokens.solPrice();
-    const trades: (PnlTrade & { slot: number })[] = [];
-    for (const tx of txs.values()) {
-      for (const t of parseTrades(tx, address, (m) => metas.get(m)?.stable === true)) {
-        const px = quoteUsd(t.quoteMint, metas, solUsd);
-        if (px === null) continue;
-        trades.push({ ts: new Date((tx.blockTime ?? 0) * 1000), slot: tx.slot, side: t.side, mint: t.mint, amount: ui(t.amount, t.decimals), usd: ui(t.quoteAmount, t.quoteDecimals) * px });
-      }
-    }
-    return { txs, metas, trades };
-  }
-
   /** Reads `address`'s recent history and judges it. */
   async evaluate(address: string): Promise<Evaluation> {
     const empty: Evaluation = { verdict: { ok: false, reason: 'inactive' }, sigs: [], txs: new Map(), metas: new Map() };
@@ -409,7 +391,7 @@ export class Discovery {
     const hours = times.length ? Math.max((Math.max(...times) - Math.min(...times)) / 3600, 1 / 6) : 1;
     if (ok.length / hours > MAX_TX_PER_HOUR) return { ...empty, sigs, verdict: { ok: false, reason: 'too_fast' } };
 
-    const { txs, metas, trades } = await this.readTrades(address, ok);
+    const { txs, metas, trades } = await priceTrades(address, ok, this.d.tokens);
     trades.sort((a, b) => a.slot - b.slot);
     const base = { sigs, txs, metas };
     if (sandwiches(trades) >= 2) return { ...base, verdict: { ok: false, reason: 'sandwich' } };

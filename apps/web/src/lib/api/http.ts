@@ -1,18 +1,5 @@
 import { z } from 'zod';
-import {
-  AddWalletResultSchema,
-  FeedPageSchema,
-  FeedTradeSchema,
-  HotTokenSchema,
-  LimitOrderSchema,
-  OrderFlowSchema,
-  StatusSchema,
-  TokenDetailSchema,
-  TokenSearchResultSchema,
-  WalletDetailSchema,
-  WalletSummarySchema,
-  type FeedQueryInput,
-} from '@oxbow/shared';
+import { AddWalletResultSchema, FeedPageSchema, FeedTradeSchema, HotTokenSchema, LimitOrderSchema, OrderFlowSchema, StatusSchema, TokenDetailSchema, TokenSearchResultSchema, WalletDetailSchema, WalletSummarySchema, type FeedQueryInput, PortfolioSchema } from '@oxbow/shared';
 import type { OxbowApi } from './types';
 
 const isBrowser = typeof window !== 'undefined';
@@ -72,6 +59,7 @@ export const httpApi: OxbowApi = {
   feed: (q: FeedQueryInput) => get(`/api/feed${qs(q)}`, FeedPageSchema),
   wallets: () => get('/api/wallets', z.array(WalletSummarySchema)),
   wallet: (address) => get(`/api/wallets/${enc(address)}`, WalletDetailSchema.nullable(), { nullOn404: true }),
+  portfolio: (address) => get(`/api/portfolio/${enc(address)}`, PortfolioSchema),
   walletTrades: (address, cursor) => get(`/api/wallets/${enc(address)}/trades${qs({ cursor })}`, FeedPageSchema),
   addWallet: (address) => post('/api/wallets', { address }, AddWalletResultSchema),
   hot: () => get('/api/tokens/hot', z.array(HotTokenSchema)),

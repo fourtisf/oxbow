@@ -247,7 +247,14 @@ export const SwapQuoteQuerySchema = z.object({
   outputMint: AddressSchema,
   /** Raw units of the input token. */
   amount: RawAmount,
-  slippageBps: z.coerce.number().int().min(10).max(5000).default(100),
+  /** 0 = Auto: the server picks it for the route and the token (more room on launchpads and thin markets). */
+  slippageBps: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(5000)
+    .refine((v) => v === 0 || v >= 10)
+    .default(0),
 });
 export type SwapQuoteQuery = z.infer<typeof SwapQuoteQuerySchema>;
 
@@ -260,13 +267,56 @@ export const SwapQuoteSchema = z.object({
   /** Least it can return within the slippage. */
   minOutAmount: z.string(),
   priceImpactPct: z.number(),
+  /** The slippage the trade is built with (what Auto picked, when it was asked for). */
   slippageBps: z.number().int(),
+  autoSlippage: z.boolean().optional(),
   /** Oxbow's fee, in lamports of SOL. */
   feeLamports: z.string(),
   feeBps: z.number().int().nonnegative(),
   route: z.array(z.string()),
 });
 export type SwapQuote = z.infer<typeof SwapQuoteSchema>;
+
+/** A token the wallet holds, with what it cost when its buys are in the history read. */
+export const PortfolioHoldingSchema = z.object({
+  token: TokenBriefSchema,
+  amount: z.number().nonnegative(),
+  priceUsd: z.number().nonnegative().nullable(),
+  valueUsd: z.number().nonnegative().nullable(),
+  /** Null when the tokens arrived another way (a transfer, an airdrop) or before the history read. */
+  costUsd: z.number().nonnegative().nullable(),
+  pnlUsd: z.number().nullable(),
+  pnlPct: z.number().nullable(),
+});
+export type PortfolioHolding = z.infer<typeof PortfolioHoldingSchema>;
+
+export const PortfolioTradeSchema = z.object({
+  signature: SignatureSchema,
+  side: TradeSideSchema,
+  token: TokenBriefSchema,
+  amount: z.number().nonnegative(),
+  usd: z.number().nonnegative(),
+  ts: z.string().datetime(),
+});
+export type PortfolioTrade = z.infer<typeof PortfolioTradeSchema>;
+
+/** `GET /api/portfolio/:address` — any wallet's holdings and recent trades, read from the chain (it isn't tracked). */
+export const PortfolioSchema = z.object({
+  address: AddressSchema,
+  sol: z.object({ amount: z.number().nonnegative(), valueUsd: z.number().nonnegative().nullable() }),
+  totalUsd: z.number().nonnegative(),
+  /** Over holdings whose cost is known. */
+  unrealizedPnlUsd: z.number(),
+  /** Closed out within the history read. */
+  realizedPnlUsd: z.number(),
+  holdings: z.array(PortfolioHoldingSchema),
+  /** Newest first. */
+  trades: z.array(PortfolioTradeSchema),
+  /** Transactions read for trades and cost. */
+  historyTxs: z.number().int().nonnegative(),
+  updatedAt: z.string().datetime(),
+});
+export type Portfolio = z.infer<typeof PortfolioSchema>;
 
 /** `POST /api/swap/build` */
 export const SwapBuildBodySchema = SwapQuoteQuerySchema.extend({ wallet: AddressSchema });

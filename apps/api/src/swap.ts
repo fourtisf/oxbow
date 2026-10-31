@@ -12,11 +12,16 @@
  * Before the transaction goes to the wallet it is simulated against the
  * trader's real balances, so a trade that would fail (not enough SOL, price
  * already past the slippage) is refused with the reason instead of reaching a
- * wallet prompt that can only fail.
+ * wallet prompt that can only fail. A price that moved while the trade was
+ * being built gets one fresh quote before the trader hears about it.
+ *
+ * Slippage "Auto" (the default) is picked per trade: launchpad markets
+ * (pump.fun and the like) and thin or unvetted tokens move more in the seconds
+ * a signature takes than deep, verified ones do.
  */
 import type { FastifyInstance } from 'fastify';
 import { PublicKey, type AddressLookupTableAccount, type Connection, type VersionedTransaction } from '@solana/web3.js';
-import { SOL_MINT, SwapBuildBodySchema, SwapQuoteQuerySchema, txFailure, type BuiltSwap, type SwapQuote, type SwapQuoteQuery } from '@oxbow/shared';
+import { SLIPPAGE_AUTO, SOL_MINT, SwapBuildBodySchema, SwapQuoteQuerySchema, txFailure, type BuiltSwap, type SwapBuildBody, type SwapQuote, type SwapQuoteQuery } from '@oxbow/shared';
 import { composeSwapTx, feeOf, SwapAssemblyError } from '@oxbow/solana/swap';
 import { HttpError, priv, withTimeout } from './http';
 import { JupiterError, type Jupiter, type JupiterQuote } from './jupiter';
@@ -29,13 +34,44 @@ export interface SwapConfig {
   feeBps: number;
 }
 
+/** What Auto slippage needs to know about the token being traded. */
+export interface TokenFacts {
+  liquidity: number | null;
+  verified: boolean;
+  organicScore: number | null;
+}
+
 interface Ctx {
   jup: Jupiter;
   rpc: SwapRpc;
   config: SwapConfig;
   now: () => number;
   log: (msg: string) => void;
+  /** Token facts for Auto slippage; without them Auto treats every token as thin. */
+  facts?: (mint: string) => Promise<TokenFacts | null>;
 }
+
+/** Launchpad and bonding-curve markets, by Jupiter's route labels ("Pump.fun", "Pump.fun Amm", "Raydium Launchlab", "Meteora DBC"...). */
+const LAUNCHPAD = /pump\.?fun|launch|moonshot|bonding|\bdbc\b|boop|believe/i;
+/** Auto slippage, before the floor from the trade's own price impact. */
+const AUTO = { launchpad: 500, thin: 300, mid: 100, deep: 50, max: 1000 } as const;
+/** Quoted with this first when Auto is asked for (what most memecoins get). */
+const AUTO_FIRST = AUTO.thin;
+
+/**
+ * Slippage for a trade on "Auto", in basis points: room for how much this market moves while the
+ * trader signs. Never below the trade's own price impact (thin pools move more), never above 10%.
+ */
+export function autoSlippageBps(route: readonly string[], priceImpactPct: number, facts: TokenFacts | null): number {
+  let bps: number;
+  if (route.some((r) => LAUNCHPAD.test(r))) bps = AUTO.launchpad;
+  else if (!facts || (facts.liquidity ?? 0) < 100_000 || (!facts.verified && (facts.organicScore ?? 0) < 50)) bps = AUTO.thin;
+  else if ((facts.liquidity ?? 0) < 2_000_000) bps = AUTO.mid;
+  else bps = AUTO.deep;
+  return Math.min(AUTO.max, Math.max(bps, Math.ceil(priceImpactPct * 100)));
+}
+
+const routeOf = (raw: JupiterQuote) => [...new Set(raw.routePlan.map((r) => r.swapInfo.label).filter((l): l is string => !!l))].slice(0, 4);
 
 const RPC_MS = 8000;
 
@@ -93,20 +129,31 @@ export function registerSwapRoutes(app: FastifyInstance, ctx: Ctx) {
     return treasuryOk.ok ? config.feeBps : 0;
   }
 
-  async function quote(q: SwapQuoteQuery): Promise<{ quote: SwapQuote; raw: JupiterQuote; fee: bigint }> {
+  /** `forBuild`: the route must carry the slippage itself (Auto re-quotes when it picked a different one). */
+  async function quote(q: SwapQuoteQuery, forBuild = false): Promise<{ quote: SwapQuote; raw: JupiterQuote; fee: bigint }> {
     const buy = q.inputMint === SOL_MINT;
     if (buy === (q.outputMint === SOL_MINT)) throw new HttpError(400, 'sol_side_required');
     const bps = await feeBps();
     const amount = BigInt(q.amount);
     const buyFee = buy ? feeOf(amount, bps) : 0n;
+    const auto = q.slippageBps === SLIPPAGE_AUTO;
+    const ask = (slippageBps: number) => jup.quote({ inputMint: q.inputMint, outputMint: q.outputMint, amount: amount - buyFee, slippageBps });
     let raw: JupiterQuote;
+    let slippage = auto ? AUTO_FIRST : q.slippageBps;
     try {
-      raw = await jup.quote({ inputMint: q.inputMint, outputMint: q.outputMint, amount: amount - buyFee, slippageBps: q.slippageBps });
+      raw = await ask(slippage);
+      if (auto) {
+        const facts = await ctx.facts?.(buy ? q.outputMint : q.inputMint).catch(() => null);
+        const picked = autoSlippageBps(routeOf(raw), Number(raw.priceImpactPct) * 100 || 0, facts ?? null);
+        if (picked !== slippage && forBuild) raw = await ask(picked);
+        slippage = picked;
+      }
     } catch (e) {
       jupiterFailure(e);
     }
     const fee = buy ? buyFee : feeOf(BigInt(raw.outAmount), bps);
-    const threshold = BigInt(raw.otherAmountThreshold);
+    // The route's own floor, or (a quote shown with what Auto picked) the same floor worked out here.
+    const threshold = raw.slippageBps === slippage ? BigInt(raw.otherAmountThreshold) : (BigInt(raw.outAmount) * BigInt(10_000 - slippage)) / 10_000n;
     // On a sell the fee is a fixed number of lamports, paid even at the worst fill.
     const minOut = buy ? threshold : threshold > fee ? threshold - fee : 0n;
     return {
@@ -119,10 +166,11 @@ export function registerSwapRoutes(app: FastifyInstance, ctx: Ctx) {
         outAmount: buy ? raw.outAmount : (BigInt(raw.outAmount) - fee).toString(),
         minOutAmount: minOut.toString(),
         priceImpactPct: Number(raw.priceImpactPct) * 100 || 0,
-        slippageBps: raw.slippageBps,
+        slippageBps: slippage,
+        autoSlippage: auto,
         feeLamports: fee.toString(),
         feeBps: bps,
-        route: [...new Set(raw.routePlan.map((r) => r.swapInfo.label).filter((l): l is string => !!l))].slice(0, 4),
+        route: routeOf(raw),
       },
     };
   }
@@ -151,7 +199,18 @@ export function registerSwapRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/swap/build', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply): Promise<BuiltSwap> => {
     const body = SwapBuildBodySchema.parse(req.body);
     priv(reply);
-    const q = await quote(body);
+    try {
+      return await build(body);
+    } catch (e) {
+      // The price moved while it was being put together: one fresh quote before saying so.
+      if (!(e instanceof HttpError && e.code === 'slippage')) throw e;
+      ctx.log('Swap: price moved during the build; quoting again');
+      return build(body);
+    }
+  });
+
+  async function build(body: SwapBuildBody): Promise<BuiltSwap> {
+    const q = await quote(body, true);
     let ixs;
     try {
       ixs = await jup.swapInstructions(q.raw, body.wallet);
@@ -179,7 +238,7 @@ export function registerSwapRoutes(app: FastifyInstance, ctx: Ctx) {
       }
       throw e;
     }
-  });
+  }
 
   return { feeBps };
 }

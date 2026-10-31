@@ -158,6 +158,13 @@ export const WarnIcon = (p: P) => (
     <path d="M8 6.6v3M8 11.6v.1" />
   </svg>
 );
+/** A pie: the portfolio. */
+export const PieIcon = (p: P) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" {...base} {...p}>
+    <path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12V3.5Z" />
+    <path d="M15 2.8A8.5 8.5 0 0 1 21.2 9H15V2.8Z" />
+  </svg>
+);
 export const StarIcon = ({ filled, ...p }: P & { filled?: boolean }) => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" {...base} {...p}>
     <path d="m8 1.9 1.85 3.75 4.15.6-3 2.92.7 4.13L8 11.36 4.3 13.3l.7-4.13-3-2.92 4.15-.6L8 1.9Z" />

@@ -88,6 +88,8 @@ export class FakeJupiter implements Jupiter {
   }
   /** Set to make quotes fail with this HTTP status. */
   quoteStatus: number | null = null;
+  /** Set to change the markets quotes say they route through. */
+  routeLabels: string[] | null = null;
   async quote(p: QuoteParams): Promise<JupiterQuote> {
     if (this.quoteStatus) throw new JupiterError(this.quoteStatus, this.quoteStatus === 429 ? 'Too many requests' : 'No routes found');
     this.quotes.push(p);
@@ -102,7 +104,7 @@ export class FakeJupiter implements Jupiter {
       otherAmountThreshold: ((out * BigInt(10_000 - p.slippageBps)) / 10_000n).toString(),
       priceImpactPct: '0.0012',
       slippageBps: p.slippageBps,
-      routePlan: [{ swapInfo: { label: 'Whirlpool' } }, { swapInfo: { label: 'Raydium' } }],
+      routePlan: (this.routeLabels ?? ['Whirlpool', 'Raydium']).map((label) => ({ swapInfo: { label } })),
     };
   }
   async swapInstructions(_q: JupiterQuote, wallet: string): Promise<JupiterSwapInstructions> {
@@ -232,7 +234,13 @@ export class FakeChain {
   /** Set to make simulations fail with these logs (and this error). */
   simulateLogs: string[] | null = null;
   simulateErr: object = { InstructionError: [3, { Custom: 6001 }] };
+  /** Set to make this many simulations fail on slippage, then pass. */
+  simulateFailures = 0;
   async simulateTransaction() {
+    if (this.simulateFailures > 0) {
+      this.simulateFailures--;
+      return { context: { slot: 1 }, value: { err: { InstructionError: [3, { Custom: 6001 }] }, logs: ['Program log: Error Message: Slippage tolerance exceeded.'], accounts: null, unitsConsumed: 0, returnData: null } };
+    }
     return { context: { slot: 1 }, value: this.simulateLogs ? { err: this.simulateErr, logs: this.simulateLogs, accounts: null, unitsConsumed: 0, returnData: null } : { err: null, logs: [], accounts: null, unitsConsumed: 0, returnData: null } };
   }
   /** Set to make sends fail with this message, the way web3.js reports a refused preflight. */

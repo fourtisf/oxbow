@@ -63,3 +63,17 @@ describe('average-cost PnL', () => {
     expect(openPart(p, 0)).toBeNull();
   });
 });
+
+describe('auto slippage', () => {
+  it('fits the market: launchpads and thin tokens get more room, never under the price impact or over 10%', async () => {
+    const { autoSlippageBps } = await import('../src/swap');
+    const deep = { liquidity: 5_000_000, verified: true, organicScore: 90 };
+    expect(autoSlippageBps(['Whirlpool'], 0.01, deep)).toBe(50);
+    expect(autoSlippageBps(['Whirlpool'], 0.01, { ...deep, liquidity: 500_000 })).toBe(100);
+    expect(autoSlippageBps(['Raydium'], 0.01, { liquidity: 40_000, verified: false, organicScore: 10 })).toBe(300);
+    expect(autoSlippageBps(['Manifest', 'Pump.fun Amm'], 0.01, deep)).toBe(500);
+    expect(autoSlippageBps(['Raydium Launchlab'], 0.01, null)).toBe(500);
+    expect(autoSlippageBps(['Whirlpool'], 7.4, deep)).toBe(740);
+    expect(autoSlippageBps(['Pump.fun'], 30, null)).toBe(1000);
+  });
+});

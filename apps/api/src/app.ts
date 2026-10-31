@@ -22,6 +22,7 @@ import { HttpError, priv, pub, withTimeout } from './http';
 import { TRACKER_HEARTBEAT_KEY, TRACKER_LIVE_KEY, TradeHub, WALLETS_CHANNEL } from './hub';
 import type { Jupiter } from './jupiter';
 import { registerLimitRoutes } from './limit';
+import { registerPortfolioRoutes } from './portfolio';
 import { registerSwapRoutes, type SwapConfig } from './swap';
 import { Reader } from './tracker/read';
 import type { TrackerRpc } from './tracker/rpc';
@@ -378,7 +379,18 @@ export async function buildApp(deps: Deps) {
 
   registerLimitRoutes(app, deps.jupiter);
 
-  const swaps = registerSwapRoutes(app, { jup: deps.jupiter, rpc: deps.rpc, config: deps.swap ?? { feeBps: 0 }, now, log: (m) => app.log.warn(m) });
+  const swaps = registerSwapRoutes(app, {
+    jup: deps.jupiter,
+    rpc: deps.rpc,
+    config: deps.swap ?? { feeBps: 0 },
+    now,
+    log: (m) => app.log.warn(m),
+    facts: async (mint) => {
+      const m = (await tokens.get([mint], STALE.page)).get(mint);
+      return m ? { liquidity: m.liquidity, verified: m.verified, organicScore: m.organicScore } : null;
+    },
+  });
+  registerPortfolioRoutes(app, { rpc: deps.rpc, trackerRpc: deps.trackerRpc, tokens, cache, now });
 
   app.post('/api/tx/send', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const { transaction } = SendTxBodySchema.parse(req.body);

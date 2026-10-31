@@ -11,3 +11,5 @@ export const SELL_CHIPS_PCT = [25, 50, 100] as const;
 
 /** Slippage choices on the trade panel, basis points. */
 export const SLIPPAGE_BPS = [50, 100, 300, 1000] as const;
+/** `slippageBps` value that lets the server pick slippage for the route and the token (the default). */
+export const SLIPPAGE_AUTO = 0;

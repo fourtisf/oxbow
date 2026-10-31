@@ -5,6 +5,7 @@ export const qk = {
   feed: (q: FeedQueryInput) => ['feed', q] as const,
   wallets: () => ['wallets'] as const,
   wallet: (address: string) => ['wallet', address] as const,
+  portfolio: (address: string) => ['portfolio', address] as const,
   walletTrades: (address: string) => ['walletTrades', address] as const,
   hot: () => ['hot'] as const,
   token: (mint: string) => ['token', mint] as const,

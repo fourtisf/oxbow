@@ -2,7 +2,8 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { amt, BUY_CHIPS_SOL, SELL_CHIPS_PCT, SLIPPAGE_BPS, SOL_MINT, shortAddr, type TradeSide } from '@oxbow/shared';
+import Link from 'next/link';
+import { amt, BUY_CHIPS_SOL, SELL_CHIPS_PCT, SLIPPAGE_AUTO, SLIPPAGE_BPS, SOL_MINT, shortAddr, type TradeSide } from '@oxbow/shared';
 import { useT } from '@/i18n/client';
 import { track } from '@/lib/analytics';
 import { qk } from '@/lib/api/keys';
@@ -14,7 +15,7 @@ import { useWallet } from '@/lib/store/wallet';
 import { executeSwap, fromRaw, getBalances, getQuote, TradeError, toRaw, type TradeErrorCode } from '@/lib/trade';
 import { CheckIcon, CloseIcon, ExternalIcon, WarnIcon } from '../ui/Icons';
 import { Modal } from '../ui/overlay';
-import { Button, cx, Fmt } from '../ui/primitives';
+import { btnClass, Button, cx, Fmt } from '../ui/primitives';
 import { TokenAvatar } from '../ui/TokenAvatar';
 import { LimitForm } from './LimitForm';
 
@@ -91,8 +92,10 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
   }, [side]);
 
   const insufficient = balIn !== null && Number(input || 0) > balIn + 1e-12;
+  /** The slippage the trade is built with: what Auto picked, once a quote says. */
+  const effectiveSlippage = slippageBps === SLIPPAGE_AUTO ? (q?.slippageBps ?? 0) : slippageBps;
   /** One step up the slippage choices, offered when the price moved past the current one. */
-  const nextSlippage = SLIPPAGE_BPS.find((b) => b > slippageBps) ?? null;
+  const nextSlippage = SLIPPAGE_BPS.find((b) => b > effectiveSlippage) ?? null;
   const highImpact = !!q && q.priceImpactPct > HIGH_IMPACT_PCT;
   const needsAck = !!target!.danger && buy;
   const canSubmit = !!q && !insufficient && step === null && (!needsAck || ack);
@@ -111,6 +114,8 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
       toast(t.trade.done(side, token.symbol));
       track('trade_done', { side });
       void qc.invalidateQueries({ queryKey: ['balances'] });
+      // The chain needs a moment to show the new balance; the portfolio asks again shortly.
+      setTimeout(() => void qc.invalidateQueries({ queryKey: ['portfolio'] }), 2500);
     } catch (e) {
       setError(e instanceof TradeError ? e.code : 'FAILED');
       setErrorDetail(e instanceof TradeError ? e.detail : '');
@@ -147,9 +152,14 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
           <a className="link" href={links.tx(done)} target="_blank" rel="noopener noreferrer">
             {t.trade.viewTx} <ExternalIcon />
           </a>
-          <Button block onClick={close}>
-            {t.common.close}
-          </Button>
+          <div className="tp-done-acts">
+            <Link className={btnClass({ block: true })} href="/portfolio" onClick={close}>
+              {t.trade.viewPortfolio}
+            </Link>
+            <Button block variant="glass" onClick={close}>
+              {t.common.close}
+            </Button>
+          </div>
         </div>
       ) : (
         <>
@@ -239,6 +249,9 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
             <div className="kvrow">
               <span>{t.trade.slippage}</span>
               <span className="chips tight">
+                <button type="button" className="chip" aria-pressed={slippageBps === SLIPPAGE_AUTO} onClick={() => setSlippage(SLIPPAGE_AUTO)} disabled={step !== null} title={t.trade.autoSlippageHint}>
+                  {slippageBps === SLIPPAGE_AUTO && q?.autoSlippage ? t.trade.autoSlippageAt(`${q.slippageBps / 100}%`) : t.trade.autoSlippage}
+                </button>
                 {SLIPPAGE_BPS.map((b) => (
                   <button key={b} type="button" className="chip" aria-pressed={slippageBps === b} onClick={() => setSlippage(b)} disabled={step !== null}>
                     {b / 100}%

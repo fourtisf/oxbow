@@ -224,7 +224,7 @@ test.describe('copy trading', () => {
     await expect(panel.getByRole('heading', { name: 'Bought MEME' })).toBeVisible();
     await expect(panel.getByRole('link', { name: /View on Solscan/ })).toHaveAttribute('href', /^https:\/\/solscan\.io\/tx\//);
     const build = api.posts.find((p) => p.path === '/api/swap/build');
-    expect(build?.body).toMatchObject({ inputMint: 'So11111111111111111111111111111111111111112', outputMint: M.meme, amount: '500000000', wallet: W.me, slippageBps: 100 });
+    expect(build?.body).toMatchObject({ inputMint: 'So11111111111111111111111111111111111111112', outputMint: M.meme, amount: '500000000', wallet: W.me, slippageBps: 0 });
   });
 
   test('selling uses the token balance; a refusal in the wallet is reported', async ({ page }) => {
@@ -309,6 +309,37 @@ test.describe('copy trading', () => {
     await panel.getByRole('button', { name: 'Buy MEME' }).click();
     await expect(panel.getByRole('alert')).toContainText('Transaction version not supported');
     await expect(panel.getByRole('alert')).not.toContainText('[object Object]');
+  });
+
+  test('after a buy, the portfolio shows holdings with their profit, and sells from there', async ({ page }) => {
+    await mockApi(page);
+    await fakePhantom(page);
+    await page.goto(`/token/${M.meme}`);
+    await page.getByRole('button', { name: 'Select Wallet' }).first().click();
+    await acceptTermsIfAsked(page);
+    await page.getByRole('dialog', { name: 'Select wallet' }).getByRole('button', { name: 'Phantom', exact: true }).click();
+    await page.locator('.tacts').getByRole('button', { name: 'Buy' }).click();
+    const panel = page.getByRole('dialog', { name: 'Buy MEME' });
+    await expect(panel.getByRole('button', { name: /^Auto/ })).toHaveAttribute('aria-pressed', 'true');
+    await panel.getByRole('button', { name: '0.1 SOL' }).click();
+    await expect(panel.getByRole('button', { name: 'Auto 1%' })).toBeVisible();
+    await panel.getByRole('button', { name: 'Buy MEME' }).click();
+    await panel.getByRole('link', { name: 'View portfolio' }).click();
+    await expect(page).toHaveURL(/\/portfolio$/);
+    const holdings = page.getByRole('region', { name: 'Holdings' });
+    await expect(holdings.getByRole('row', { name: /MEME/ })).toContainText('+$52');
+    await expect(holdings.getByRole('row', { name: /RUG/ })).toContainText('—');
+    await expect(page.getByRole('region', { name: 'Recent trades' }).locator('li')).toHaveCount(2);
+    await holdings.getByRole('button', { name: 'Sell MEME' }).click();
+    await expect(page.getByRole('dialog', { name: 'Sell MEME' })).toBeVisible();
+  });
+
+  test('the portfolio asks to connect a wallet first', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/portfolio');
+    await expect(page.getByRole('heading', { name: 'Connect your wallet to see your portfolio' })).toBeVisible();
+    await page.getByRole('button', { name: 'Connect wallet' }).click();
+    await expect(page.getByRole('dialog', { name: 'Select wallet' })).toBeVisible();
   });
 
   test('a token that failed the safety check needs an explicit acknowledgement', async ({ page }) => {

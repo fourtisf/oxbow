@@ -30,6 +30,9 @@ export const useWalletDetail = (address: string) =>
     refetchInterval: (q) => (q.state.data && !q.state.data.backfilledAt ? 3000 : 30_000),
   });
 
+export const usePortfolio = (address: string | null) =>
+  useQuery({ queryKey: qk.portfolio(address ?? ''), queryFn: () => api.portfolio(address!), enabled: !!address && isAddress(address), refetchInterval: 20_000, retry: 1 });
+
 export const useHot = () => useQuery({ queryKey: qk.hot(), queryFn: () => api.hot(), refetchInterval: 60_000 });
 
 export const useToken = (mint: string) =>

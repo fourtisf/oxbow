@@ -145,7 +145,9 @@ function quoteFor(q: URLSearchParams) {
     outAmount: buy ? String((amount - fee) * 50n) : '995000000',
     minOutAmount: buy ? String(((amount - fee) * 50n * 99n) / 100n) : '980000000',
     priceImpactPct: 0.12,
-    slippageBps: Number(q.get('slippageBps') ?? 100),
+    // 0 is Auto: the server picks; here, 1%.
+    slippageBps: Number(q.get('slippageBps') ?? 0) || 100,
+    autoSlippage: Number(q.get('slippageBps') ?? 0) === 0,
     feeLamports: String(fee),
     feeBps: 50,
     route: ['Whirlpool'],
@@ -210,6 +212,22 @@ export async function mockApi(page: Page, opts: { live?: unknown[]; empty?: bool
       if (state.slippageNeeded && Number(b.slippageBps) < state.slippageNeeded) return json(route, { error: 'slippage', detail: 'Error Message: Slippage tolerance exceeded.' }, 400);
       return json(route, { transaction: 'AQID', quote: quoteFor(new URLSearchParams(b as Record<string, string>)), lastValidBlockHeight: 1 });
     }
+    const pm = p.match(/^\/api\/portfolio\/(\w+)$/);
+    if (pm)
+      return json(route, {
+        address: pm[1],
+        sol: { amount: 2.5, valueUsd: 450 },
+        totalUsd: 852,
+        unrealizedPnlUsd: 52,
+        realizedPnlUsd: 18.5,
+        holdings: [
+          { token: MEME, amount: 50_000, priceUsd: 0.008, valueUsd: 400, costUsd: 348, pnlUsd: 52, pnlPct: 14.9 },
+          { token: RUG, amount: 1_000, priceUsd: 0.002, valueUsd: 2, costUsd: null, pnlUsd: null, pnlPct: null },
+        ],
+        trades: [trade(1, W.me, 'BUY'), trade(3, W.me, 'SELL')].map((tr) => ({ signature: tr.signature, side: tr.side, token: tr.token, amount: tr.amount, usd: tr.usd, ts: tr.ts })),
+        historyTxs: 100,
+        updatedAt: new Date().toISOString(),
+      });
     if (p === '/api/tx/send') {
       state.sent = (state.sent ?? 0) + 1;
       return json(route, { signature: '5'.repeat(88) });

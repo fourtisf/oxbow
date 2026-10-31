@@ -29,6 +29,13 @@ trade in one tap from their own wallet.
   charges `OXBOW_FEE_BPS` (0.5% by default) on the SOL side as a plain SOL
   transfer to the treasury in the same transaction. Non-custodial: nothing is
   signed, held or traded without the visitor's own approval.
+- **Portfolio**: the connected wallet's SOL, tokens (value, cost, profit) and
+  latest trades, read straight from the chain with Buy and Sell on each
+  holding. The wallet is not tracked, so its trades stay out of the public feed.
+- **Slippage on Auto** by default: picked per trade (5% on launchpad markets
+  like pump.fun, 3% on thin or unvetted tokens, 1% or 0.5% on deep ones, never
+  under the trade's own price impact). Every swap is simulated before the
+  wallet opens; a price that moved during the build gets one fresh quote.
 - **Alerts**: browser notifications for followed wallets' trades. Follows,
   nicknames and alert settings live in the browser (no accounts).
 
@@ -112,7 +119,8 @@ trade in one tap from their own wallet.
 | `GET /api/tokens/:mint/flow` | Latest fills by any trader, grouped by price level. |
 | `POST /api/limit/create`, `POST /api/limit/cancel`, `GET /api/limit/orders?wallet=` | Jupiter limit orders (unsigned transactions, checked). |
 | `GET /api/tokens/search?q=` | Jupiter token search (name, ticker or CA). |
-| `GET /api/swap/quote` | Quote for SOL → token or token → SOL, fee included. |
+| `GET /api/portfolio/:address` | A wallet's SOL, holdings with cost and profit, and latest trades (from the chain; not tracked). |
+| `GET /api/swap/quote` | Quote for SOL → token or token → SOL, fee included (`slippageBps=0`: Auto). |
 | `POST /api/swap/build` | Unsigned v0 transaction for the trader's wallet. |
 | `POST /api/tx/send`, `GET /api/tx/:signature` | Send a signed transaction; its status. |
 | `GET /api/wallet/:address/balances?mints=` | Balances for the trade panel. |

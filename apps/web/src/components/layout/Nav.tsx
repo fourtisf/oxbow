@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useT } from '@/i18n/client';
 import { NAV, social } from '@/lib/site';
-import { BookIcon, PulseIcon, StarIcon, WalletIcon, XLogo } from '../ui/Icons';
+import { BookIcon, PieIcon, PulseIcon, StarIcon, WalletIcon, XLogo } from '../ui/Icons';
 import { BrandMark } from './BrandMark';
 import { CaChip } from './CaChip';
 import { WalletButton } from './WalletButton';
@@ -12,6 +12,7 @@ import { WalletButton } from './WalletButton';
 const ICONS = {
   '/': () => <PulseIcon />,
   '/wallets': () => <WalletIcon width={18} height={18} />,
+  '/portfolio': () => <PieIcon />,
   '/following': () => <StarIcon width={17} height={17} />,
   '/docs': (m: boolean) => <BookIcon sw={m ? 1.7 : 1.6} />,
 };
@@ -23,6 +24,7 @@ function useNavLabels() {
   return {
     '/': [t.nav.feed, t.nav.feed],
     '/wallets': [t.nav.wallets, t.nav.wallets],
+    '/portfolio': [t.nav.portfolio, t.nav.portfolio],
     '/following': [t.nav.following, t.nav.following],
     '/docs': [t.nav.docs, t.nav.docs],
   } as const;
