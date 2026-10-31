@@ -41,21 +41,24 @@ test('main navigation marks the current page', async ({ page, isMobile }) => {
   await expect(nav.getByRole('link', { name: /Wallets/ })).toHaveAttribute('aria-current', 'page');
 });
 
-test('footer links Oxbow on X, lists Telegram as coming soon, and shows the CA as coming soon', async ({ page }) => {
+test('footer links Oxbow on X, lists Telegram as coming soon, and shows the $OXBOW CA', async ({ page }) => {
   await mockApi(page);
   await page.goto('/docs');
   const community = page.locator('footer .fgrid > div').filter({ has: page.getByRole('heading', { name: 'Community' }) });
   await expect(community.getByRole('link', { name: 'X' })).toHaveAttribute('href', 'https://x.com/oxbowflow');
   await expect(community.locator('.fsoon')).toHaveText(['Telegram Soon']);
-  await expect(community.locator('.cachip')).toHaveText('CAComing soon');
+  await expect(community.getByRole('button', { name: 'Copy contract address' })).toHaveText('CADaDN…pump');
 });
 
-test('the CA is shown as coming soon in the hero and the nav', async ({ page }) => {
+test('the $OXBOW CA is in the hero and the nav, and copies in one click', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
   await mockApi(page);
   await page.goto('/');
-  await expect(page.locator('.hero .ca.soon')).toContainText('Coming soon');
+  await expect(page.locator('.hero .ca')).toContainText('DaDNDwPGvVhNWQi4mchx3rqtRaJmEU96n7XAUoJbpump');
+  await page.locator('.hero .ca').getByRole('button', { name: 'Copy contract address' }).click();
+  await expect(page.getByText('Address copied')).toBeVisible();
   // Phones: the hero and footer carry it; the nav has no room.
   if (test.info().project.name === 'mobile') return;
-  await expect(page.locator('.nav .cachip.soon')).toBeVisible();
+  await expect(page.locator('.nav').getByRole('button', { name: 'Copy contract address' })).toHaveText('CADaDN…pump');
   await expect(page.locator('.nav').getByRole('link', { name: 'Oxbow on X' })).toHaveAttribute('href', 'https://x.com/oxbowflow');
 });
