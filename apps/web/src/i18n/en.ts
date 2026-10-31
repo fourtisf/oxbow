@@ -100,6 +100,9 @@ export const en = {
     empty: 'No trades yet. As soon as a tracked wallet buys or sells, it shows up here.',
     emptyFollowing: "Follow a few wallets and their trades land here. You'll find them on the Wallets page.",
     emptyFiltered: 'No trades match.',
+    finding: 'Finding smart money',
+    findingBody: 'Oxbow is checking who is trading right now and keeping only wallets that keep closing trades at a profit. Most traders lose money, so the first smart wallets can take an hour or two to show up here. You can also paste any wallet above to track it now.',
+    emptyFilteredHint: 'Try a smaller minimum size.',
     browseWallets: 'Browse wallets',
     loadMore: 'Load more',
     newTrades: (n: number) => `${n} new trade${n === 1 ? '' : 's'}`,
@@ -337,9 +340,9 @@ export const en = {
       'The Oxbow team features wallets with strong track records. Anyone can add any other wallet: paste its address and Oxbow reads its recent trades, then follows it from then on.',
     smartH: 'Where smart money comes from',
     smart1:
-      'Oxbow looks for it on its own, from on-chain data only. Every couple of hours it samples the traders of the tokens trading most right now, and the biggest holders of those tokens, then reads each one’s own recent history.',
+      'Oxbow looks for it on its own, from on-chain data only. Every couple of hours it samples who is swapping right now and who trades the tokens trading most, starting with those who just took profit, then reads each one’s own recent history. Most traders lose money, so only a few in each round qualify.',
     smart2:
-      'Bots are dropped first (too many transactions too fast, or a buy and sell a slot apart). A wallet becomes smart money when it has closed at least three positions, mostly at a profit, for at least $250, or when it closed a large win (over $2,500) without more losses than wins. Wallets that stop earning are dropped again.',
+      'Bots are dropped first (too many transactions too fast, or a buy and sell a slot apart), then wallets with no swap in a week. A wallet becomes smart money when it has closed at least three positions, at least half of them at a profit, for $150 or more, or when it closed a large win ($1,500 or more) without more losses than wins. Wallets that stop earning are dropped again.',
     limitH: 'Limit orders',
     limit1:
       'Set a price and walk away: buy when a token falls to your target, or sell when it rises to it. The order sits on chain in Jupiter’s limit-order program and fills when the price gets there. Cancel it any time from the trade panel. Jupiter needs at least $5 per order; Oxbow takes no fee on them.',

@@ -23,6 +23,12 @@ test.describe('live feed', () => {
     expect(errors).toEqual([]);
   });
 
+  test('before any wallet is tracked, the feed says smart money is being found', async ({ page }) => {
+    await mockApi(page, { empty: true });
+    await page.goto('/');
+    await expect(page.locator('.feedcard')).toContainText('Finding smart money');
+  });
+
   test('a trade from the live stream lands on top', async ({ page }) => {
     await mockApi(page, { live: [trade(99, W.beta, 'BUY', MEME, 1234, 0)] });
     await page.goto('/');

@@ -65,15 +65,20 @@ trade in one tap from their own wallet.
   USD values use the SOL price when the trade was read.
 - **Live updates**: the worker publishes trades on Redis; every API process
   fans them out to browsers over SSE (`/api/feed/stream`).
-- **Discovery** (`src/tracker/discovery.ts`): candidates from the market tapes
-  of Jupiter's top-traded tokens (1 h and 24 h) and their largest wallet
-  holders. Each is judged on its own last `DISCOVERY_HISTORY_TXS`
-  transactions: dropped for bot pace (60+ transactions an hour, or three fills
-  of one token in a short sample), sandwich shape, or no swap in a week;
-  passed as "consistent" (3+ tokens closed, 55%+ in profit, $250+ realized)
-  or "big win" ($2,500+ realized, no more losses than wins). Discovered
-  wallets that close more losses than wins over two weeks are dropped daily.
-  `pnpm --filter @oxbow/api wallets discover` runs a round by hand.
+- **Discovery** (`src/tracker/discovery.ts`): candidates from the newest
+  swaps through Jupiter's router (mostly people; busy tokens' own markets are
+  mostly arbitrage bots) and the market tapes of Jupiter's top-traded tokens,
+  traders who just took profit first. Each is judged on its own last `DISCOVERY_HISTORY_TXS` (100)
+  transactions: dropped for bot pace (120+ transactions an hour, or three
+  fills of one token in a short sample), sandwich shape, or no swap in a week;
+  passed as "consistent" (3+ tokens closed, half or more in profit, $150+
+  realized) or "big win" ($1,500+ realized, no more losses than wins).
+  While fewer than ten are found the worker runs a round every 15 minutes,
+  then every `DISCOVERY_EVERY_MIN`. Discovered wallets that close more losses
+  than wins over two weeks are dropped daily.
+  `pnpm --filter @oxbow/api wallets discover` runs a round by hand;
+  `--deep` runs a big one (about 10,000 RPC calls) to fill an empty feed.
+  Expect roughly one wallet in 25 to 30 checked to qualify: most traders lose.
 - **Market tape** (`src/tracker/tape.ts`): signatures touching a mint, read
   newest first and parsed for every signer, shared in Redis for token pages
   and discovery, refreshed at most every 15 s per token.

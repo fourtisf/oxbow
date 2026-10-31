@@ -132,8 +132,7 @@ describe.skipIf(!ready)('discovery, tape and limit orders', () => {
     expect((await discovery.evaluate(W.idle)).verdict).toMatchObject({ ok: false, reason: 'stale' });
   });
 
-  it('finds candidates on trending tapes and among top holders, then tracks the winners as discovered', async () => {
-    rpc.holders.set(HOT, [W.whale]);
+  it('finds candidates on trending tapes, then tracks the winners as discovered', async () => {
     const r = await discovery.run();
     expect(r.sampled).toBe(1);
     expect(r.promoted.sort()).toEqual([W.smart, W.whale].sort());

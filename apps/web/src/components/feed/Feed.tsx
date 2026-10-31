@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { FeedTrade } from '@oxbow/shared';
 import { useT } from '@/i18n/client';
-import { useFeed } from '@/lib/api/queries';
+import { useFeed, useStatus } from '@/lib/api/queries';
 import { useNow } from '@/lib/hooks';
 import { mergeLive, useLive } from '@/lib/live';
 import { useFollow } from '@/lib/store/follow';
@@ -38,6 +38,8 @@ export function Feed({ mint, wallet, scopes = true, initialScope = 'all', title,
   const waitingForList = scope === 'following' && !wallet && (!loaded || !followList.length);
   const feed = useFeed(query, !waitingForList, refreshMs);
   const live = useLive((s) => s.trades);
+  const { data: status } = useStatus();
+  const noWallets = status?.tracker.wallets === 0;
 
   const fetched = useMemo(() => feed.data?.pages.flatMap((p) => p.trades) ?? [], [feed.data]);
   const keep = (x: FeedTrade) => (!mint || x.token.mint === mint) && (!wallets || wallets.includes(x.wallet)) && x.usd >= minUsd;
@@ -90,8 +92,19 @@ export function Feed({ mint, wallet, scopes = true, initialScope = 'all', title,
           <span className="spin" /> {t.common.loading}
         </div>
       ) : (
-        <div className={cx('feed-empty', scope === 'following' && 'big')}>
-          <p>{scope === 'following' && !wallet && !followList.length ? t.feed.emptyFollowing : minUsd ? t.feed.emptyFiltered : t.feed.empty}</p>
+        <div className={cx('feed-empty', (scope === 'following' || noWallets) && 'big')}>
+          {scope === 'all' && !wallet && !mint && noWallets ? (
+            <>
+              <p className="finding">
+                <span className="spin" /> <b>{t.feed.finding}</b>
+              </p>
+              <p>{t.feed.findingBody}</p>
+            </>
+          ) : (
+            <p>
+              {scope === 'following' && !wallet && !followList.length ? t.feed.emptyFollowing : minUsd ? `${t.feed.emptyFiltered} ${t.feed.emptyFilteredHint}` : t.feed.empty}
+            </p>
+          )}
           {scope === 'following' && !wallet && !followList.length && (
             <Link className="btn btn-glass btn-sm" href="/wallets">
               {t.feed.browseWallets}

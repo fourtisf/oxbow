@@ -7,7 +7,8 @@
  * - Catch-up: every TRACKER_RESYNC_SEC each wallet's signatures since its
  *   bookmark are read, covering anything the websocket missed (restarts,
  *   dropped connections). New wallets get their history read the same way.
- * - Discovery: every DISCOVERY_EVERY_MIN, traders of the tokens trading most
+ * - Discovery: every DISCOVERY_EVERY_MIN (every 15 minutes while fewer than
+ *   ten are found), traders of the tokens trading most
  *   right now are checked and the profitable ones tracked as smart money
  *   (tracker/discovery.ts); once a day, discovered wallets that stopped
  *   earning are dropped.
@@ -202,6 +203,19 @@ async function upkeep() {
   );
 }
 
+/** While fewer than this many smart wallets are tracked, discovery runs every 15 minutes to fill the feed. */
+const BOOTSTRAP_BELOW = 10;
+const BOOTSTRAP_EVERY_MS = 15 * 60_000;
+let lastDiscovery = 0;
+
+/** Checked every 15 minutes; runs a round when bootstrapping or when DISCOVERY_EVERY_MIN has passed. */
+async function discoverTick() {
+  const found = await db.trackedWallet.count({ where: { source: 'discovered', active: true } });
+  if (found >= BOOTSTRAP_BELOW && Date.now() - lastDiscovery < config.DISCOVERY_EVERY_MIN * 60_000) return;
+  lastDiscovery = Date.now();
+  await discover();
+}
+
 async function discover() {
   const r = await discovery.run();
   log(`discovery: ${r.sampled} token(s) sampled, ${r.evaluated} wallet(s) checked, ${r.promoted.length} new`);
@@ -249,7 +263,7 @@ sub.on('message', (_ch, address: string) => {
 await sub.subscribe(WALLETS_CHANNEL);
 
 const timers = [every(config.TRACKER_RESYNC_SEC * 1000, resync), every(15_000, heartbeat), every(3_600_000, upkeep), every(60_000, refreshWallets)];
-if (config.DISCOVERY_ENABLED) timers.push(every(config.DISCOVERY_EVERY_MIN * 60_000, discover), every(86_400_000, prune));
+if (config.DISCOVERY_ENABLED) timers.push(every(BOOTSTRAP_EVERY_MS, discoverTick), every(86_400_000, prune));
 log(`tracker up: ${config.RPC_URL.replace(/api-key=[^&]+/, 'api-key=…')}`);
 
 const shutdown = async () => {

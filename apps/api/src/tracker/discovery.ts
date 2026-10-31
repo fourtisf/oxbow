@@ -1,10 +1,12 @@
 /**
  * Finds smart money on its own, from on-chain data only:
  *
- * 1. Candidates: the market tapes of the tokens trading most right now
- *    (Jupiter's top-traded list, minus stablecoins, SOL and thin or unvetted
- *    tokens): traders with real size, best those seen in several of them;
- *    then the largest holders of those tokens that are ordinary wallets.
+ * 1. Candidates: who is swapping right now through Jupiter's router (mostly
+ *    people), plus the market tapes of the tokens trading most (Jupiter's
+ *    top-traded list, minus stablecoins, SOL and thin or unvetted tokens;
+ *    their own markets are mostly arbitrage bots). Traders with real size
+ *    who just took profit come first, then those seen in several tokens.
+ *    (Big holders were tried and left out: almost all of them are passive.)
  * 2. Evaluation: each candidate's own recent history, read and priced like a
  *    tracked wallet's. Bots are dropped first, from the signature list alone
  *    (too many transactions too fast), then for sandwich patterns (a buy and
@@ -20,6 +22,7 @@
  */
 import type { Redis } from 'ioredis';
 import type { PrismaClient } from '@oxbow/db';
+import { JUPITER_PROGRAM_ID } from '@oxbow/solana/swap';
 import type { Jupiter } from '../jupiter';
 import { Ingestor, ui } from './ingest';
 import { parseTrades, walletChanges, WSOL, type RawTx } from './parse';
@@ -29,6 +32,8 @@ import { mapLimit, type MarketTape } from './tape';
 import { quoteUsd, STALE, type TokenBook, type TokenMeta } from './tokens';
 
 export interface DiscoveryConfig {
+  /** Newest transactions through Jupiter's router read per run: mostly real people's swaps. */
+  routerSample: number;
   /** Trending tokens sampled per run. */
   tokens: number;
   /** Newest signatures read from each token's market. */
@@ -50,14 +55,15 @@ export interface DiscoveryConfig {
 }
 
 export const DEFAULT_DISCOVERY: DiscoveryConfig = {
-  tokens: 10,
-  samplePerToken: 50,
-  evalsPerRun: 8,
-  historyTxs: 60,
-  minPnlUsd: 250,
-  minWinRate: 0.55,
+  routerSample: 150,
+  tokens: 6,
+  samplePerToken: 40,
+  evalsPerRun: 10,
+  historyTxs: 100,
+  minPnlUsd: 150,
+  minWinRate: 0.5,
   minClosed: 3,
-  bigWinUsd: 2500,
+  bigWinUsd: 1500,
   minTradeUsd: 100,
   max: 50,
   bootstrapBelow: 10,
@@ -79,11 +85,12 @@ export type Verdict =
   | { ok: false; reason: 'inactive' | 'stale' | 'too_fast' | 'sandwich' | 'few_closed' | 'low_win_rate' | 'low_pnl' | 'dust' | 'rpc'; summary?: Summary };
 
 /** How long a verdict stands before the wallet may be checked again: bots and dust for a month, the rest for a few days (positions get closed). */
-const SEEN_TTL_SEC: Record<string, number> = { too_fast: 30 * 86_400, sandwich: 30 * 86_400, dust: 14 * 86_400, inactive: 14 * 86_400 };
-const SEEN_TTL_DEFAULT_SEC = 3 * 86_400;
+const SEEN_TTL_SEC: Record<string, number> = { sandwich: 30 * 86_400, too_fast: 7 * 86_400, dust: 7 * 86_400, inactive: 7 * 86_400, stale: 3 * 86_400 };
+/** Close calls (few closed, low win rate or profit) are checked again the next day: positions get closed. */
+const SEEN_TTL_DEFAULT_SEC = 86_400;
 const seenKey = (a: string) => `oxbow:disc:seen:${a}`;
-/** More than this many transactions an hour on average reads as a bot. */
-const MAX_TX_PER_HOUR = 60;
+/** More than this many transactions an hour on average reads as a bot (MEV bots do thousands; busy traders on trading bots stay under). */
+const MAX_TX_PER_HOUR = 120;
 /** Three or more fills in one token's short sample: a bot's rhythm, not a person's. */
 const MAX_FILLS_PER_SAMPLE = 2;
 const READ_CONCURRENCY = 4;
@@ -133,9 +140,60 @@ export class Discovery {
     return out;
   }
 
-  /** Traders on the tapes of `mints` with at least one real-size trade, not tracked or evaluated lately. Best first. */
+  /**
+   * Who is swapping right now, from the newest transactions through Jupiter's router. Busy tokens'
+   * own markets are mostly arbitrage bots (routes that net to nothing); the router is mostly people.
+   */
+  private async routerFills(by: Map<string, Candidate>): Promise<void> {
+    if (this.cfg.routerSample <= 0) return;
+    const router = JUPITER_PROGRAM_ID.toBase58();
+    const sigs: SignatureInfo[] = [];
+    let before: string | undefined;
+    while (sigs.length < this.cfg.routerSample) {
+      const page = await this.d.rpc.getSignatures(router, { limit: Math.min(1000, this.cfg.routerSample - sigs.length), before }).catch(() => [] as SignatureInfo[]);
+      if (!page.length) break;
+      sigs.push(...page);
+      before = page[page.length - 1]!.signature;
+    }
+    const ok = sigs.filter((s) => !s.err);
+    const read = await mapLimit(ok, READ_CONCURRENCY, (s) => this.d.rpc.getTransaction(s.signature).catch(() => null));
+    const txs = read.filter((t): t is RawTx => !!t);
+    const decimals = new Map<string, number>();
+    for (const tx of txs) {
+      const msg = tx.transaction.message;
+      for (const signer of msg.accountKeys.slice(0, msg.header.numRequiredSignatures)) for (const l of walletChanges(tx, signer)?.tokens ?? []) decimals.set(l.mint, l.decimals);
+    }
+    const metas = await this.d.tokens.get([...decimals.keys(), WSOL], STALE.ingest, decimals);
+    const solUsd = await this.d.tokens.solPrice();
+    const perTrader = new Map<string, number>();
+    for (const tx of txs) {
+      const msg = tx.transaction.message;
+      for (const signer of msg.accountKeys.slice(0, msg.header.numRequiredSignatures)) {
+        for (const t of parseTrades(tx, signer, (m) => metas.get(m)?.stable === true)) {
+          const px = quoteUsd(t.quoteMint, metas, solUsd);
+          if (px === null) continue;
+          const usd = ui(t.quoteAmount, t.quoteDecimals) * px;
+          const c = by.get(signer) ?? { address: signer, tokens: new Set<string>(), usd: 0, maxTradeUsd: 0, maxFillsInOne: 0, maxSellUsd: 0 };
+          c.tokens.add(t.mint);
+          c.usd += usd;
+          c.maxTradeUsd = Math.max(c.maxTradeUsd, usd);
+          if (t.side === 'SELL') c.maxSellUsd = Math.max(c.maxSellUsd, usd);
+          perTrader.set(signer, (perTrader.get(signer) ?? 0) + 1);
+          c.maxFillsInOne = Math.max(c.maxFillsInOne, perTrader.get(signer)!);
+          by.set(signer, c);
+        }
+      }
+    }
+  }
+
+  /** Real-size traders from Jupiter's router and the trending tokens' markets, not tracked or evaluated lately. Best first. */
   async candidates(mints: string[]): Promise<Candidate[]> {
     const by = new Map<string, Candidate>();
+    try {
+      await this.routerFills(by);
+    } catch (e) {
+      this.d.log?.(`discovery: router sample failed: ${(e as Error).message}`);
+    }
     for (const mint of mints) {
       let fills;
       try {
@@ -159,18 +217,7 @@ export class Discovery {
     const traders = [...by.values()].filter((c) => c.maxTradeUsd >= this.cfg.minTradeUsd && c.maxFillsInOne <= MAX_FILLS_PER_SAMPLE);
     const bigSale = (c: Candidate) => (c.maxSellUsd >= 500 ? 1 : 0);
     traders.sort((a, b) => bigSale(b) - bigSale(a) || b.tokens.size - a.tokens.size || b.usd - a.usd);
-    // Big holders of what is trending: early buyers and whales. Two RPC calls a token.
-    const holders = new Map<string, Candidate>();
-    for (const mint of mints) {
-      const owners = await this.d.rpc.getTopHolders(mint).catch(() => [] as string[]);
-      for (const o of owners) {
-        if (by.has(o)) continue;
-        const c = holders.get(o) ?? { address: o, tokens: new Set<string>(), usd: 0, maxTradeUsd: 0, maxFillsInOne: 0, maxSellUsd: 0 };
-        c.tokens.add(mint);
-        holders.set(o, c);
-      }
-    }
-    const list = [...traders, ...[...holders.values()].sort((a, b) => b.tokens.size - a.tokens.size)];
+    const list = traders;
     if (!list.length) return [];
     const tracked = new Set((await this.d.db.trackedWallet.findMany({ where: { address: { in: list.map((c) => c.address) } }, select: { address: true } })).map((w) => w.address));
     const fresh: Candidate[] = [];

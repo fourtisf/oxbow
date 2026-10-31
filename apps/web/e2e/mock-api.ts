@@ -150,7 +150,7 @@ function quoteFor(q: URLSearchParams) {
 
 const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-export async function mockApi(page: Page, opts: { live?: unknown[] } = {}): Promise<MockState> {
+export async function mockApi(page: Page, opts: { live?: unknown[]; empty?: boolean } = {}): Promise<MockState> {
   const state: MockState = { tracked: new Set([W.alpha, W.beta]), orders: [], posts: [], live: opts.live ?? [], feedQueries: [] };
   await page.route('**/api/**', async (route) => {
     const req = route.request();
@@ -168,7 +168,7 @@ export async function mockApi(page: Page, opts: { live?: unknown[] } = {}): Prom
       const wallets = url.searchParams.get('wallets')?.split(',');
       const mint = url.searchParams.get('mint');
       const min = Number(url.searchParams.get('minUsd') ?? 0);
-      const trades = TRADES.filter((t) => (!wallets || wallets.includes(t.wallet)) && (!mint || t.token.mint === mint) && t.usd >= min);
+      const trades = opts.empty ? [] : TRADES.filter((t) => (!wallets || wallets.includes(t.wallet)) && (!mint || t.token.mint === mint) && t.usd >= min);
       return json(route, { trades, nextCursor: null });
     }
     if (p === '/api/wallets' && req.method() === 'GET') return json(route, WALLETS);
@@ -211,7 +211,7 @@ export async function mockApi(page: Page, opts: { live?: unknown[] } = {}): Prom
         checkedAt: new Date().toISOString(),
         api: 'OK',
         rpc: { state: 'OK', slot: 1, latencyMs: 80 },
-        tracker: { state: 'OK', lagSec: 4, wallets: 2, live: true },
+        tracker: { state: 'OK', lagSec: 4, wallets: opts.empty ? 0 : 2, live: true },
         lastTradeAt: iso(1),
         swaps: 'OK',
       });

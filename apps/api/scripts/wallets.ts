@@ -7,6 +7,7 @@
  *   pnpm --filter @oxbow/api wallets remove <address>      (stops tracking; trades are kept)
  *   pnpm --filter @oxbow/api wallets list
  *   pnpm --filter @oxbow/api wallets discover               (one smart-money discovery round now)
+ *   pnpm --filter @oxbow/api wallets discover --deep        (a big one-off round to fill an empty feed: ~10,000 RPC calls)
  *
  * Featured wallets are the ones you pick: they carry a public label, are
  * always tracked, and lead the leaderboard. Use only addresses you have
@@ -30,7 +31,7 @@ loadEnvFile();
 const config = loadConfig();
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { label: { type: 'string' }, featured: { type: 'boolean', default: false } },
+  options: { label: { type: 'string' }, featured: { type: 'boolean', default: false }, deep: { type: 'boolean', default: false } },
 });
 const [cmd, rawAddress] = positionals;
 const db = createDb(config.DATABASE_URL);
@@ -126,8 +127,18 @@ try {
         tape: new MarketTape({ rpc, tokens, redis, log }),
         ingestor,
         log,
-        config: { evalsPerRun: config.DISCOVERY_EVALS, historyTxs: config.DISCOVERY_HISTORY_TXS, minPnlUsd: config.DISCOVERY_MIN_PNL_USD, minWinRate: config.DISCOVERY_MIN_WIN_RATE, bigWinUsd: config.DISCOVERY_BIG_WIN_USD, max: config.DISCOVERY_MAX },
+        config: {
+          evalsPerRun: config.DISCOVERY_EVALS,
+          historyTxs: config.DISCOVERY_HISTORY_TXS,
+          minPnlUsd: config.DISCOVERY_MIN_PNL_USD,
+          minWinRate: config.DISCOVERY_MIN_WIN_RATE,
+          bigWinUsd: config.DISCOVERY_BIG_WIN_USD,
+          max: config.DISCOVERY_MAX,
+          // Deep: many more trending tokens, a much bigger sample of each, and every candidate found checked.
+          ...(values.deep ? { routerSample: 800, tokens: 10, samplePerToken: 60, evalsPerRun: 60, bootstrapBelow: 0 } : {}),
+        },
       });
+      if (values.deep) console.log('Deep round: this reads about 10,000 transactions and takes 10 to 20 minutes.');
       const r = await discovery.run();
       console.log(`${r.sampled} trending token(s) sampled, ${r.evaluated} wallet(s) checked, ${r.promoted.length} new smart wallet(s).`);
       for (const a of r.promoted) await redis.publish(WALLETS_CHANNEL, a).catch(() => 0);
@@ -135,7 +146,7 @@ try {
       break;
     }
     default:
-      console.log('Usage: wallets add|feature|unfeature|remove <address> [--label "Name"] [--featured] | wallets list | wallets discover');
+      console.log('Usage: wallets add|feature|unfeature|remove <address> [--label "Name"] [--featured] | wallets list | wallets discover [--deep]');
       process.exitCode = 1;
   }
 } finally {
