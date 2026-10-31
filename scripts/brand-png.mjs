@@ -59,6 +59,10 @@ const OUT = [
   ['apps/web/public/brand/social/oxbow-x-header-ca-soon-1500x500.png', 1500, 500, page(1500, 500, header({ ca: true })), false],
   // X article cover (5:2).
   ['apps/web/public/brand/social/oxbow-article-cover-2000x800.png', 2000, 800, page(2000, 800, cover()), false],
+  // Premium article banners (5:2), laid out at 2000x800 and rendered at 1.5x: 3000x1200.
+  ['apps/web/public/brand/social/oxbow-article-banner-orbit-3000x1200.png', 2000, 800, page(2000, 800, bannerOrbit()), false, 1.5],
+  ['apps/web/public/brand/social/oxbow-article-banner-depth-3000x1200.png', 2000, 800, page(2000, 800, bannerDepth()), false, 1.5],
+  ['apps/web/public/brand/social/oxbow-article-banner-ring-3000x1200.png', 2000, 800, page(2000, 800, bannerRing()), false, 1.5],
   // Announcement cards (X posts, Telegram pinned message): 16:9 and square.
   ['apps/web/public/brand/social/oxbow-coming-soon-1600x900.png', 1600, 900, page(1600, 900, announce(1600, 900)), false],
   ['apps/web/public/brand/social/oxbow-coming-soon-1080.png', 1080, 1080, page(1080, 1080, announce(1080, 1080)), false],
@@ -94,8 +98,8 @@ function row(who, side, sol, usd, ago) {
       <span style="font:500 15px GeistMono;color:#5F7390;width:34px;text-align:right">${ago}</span>
     </div>`;
 }
-function liveCard(width) {
-  return `<div style="width:${width}px;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,rgba(22,40,70,.72),rgba(8,15,28,.82));box-shadow:inset 0 0 0 1px rgba(170,215,255,.16),0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.4)">
+function liveCard(width, solid = false) {
+  return `<div style="width:${width}px;border-radius:24px;overflow:hidden;background:${solid ? 'linear-gradient(180deg,#16294A,#0A1426)' : 'linear-gradient(180deg,rgba(22,40,70,.72),rgba(8,15,28,.82))'};box-shadow:inset 0 0 0 1px rgba(170,215,255,.16),0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.4)">
     <div style="display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 22px">
       <span style="display:flex;align-items:center;gap:12px;font:600 15px GeistMono;letter-spacing:.2em;color:#DCEBFF"><span style="width:10px;height:10px;border-radius:50%;background:#3DDC97;box-shadow:0 0 14px #3DDC97"></span>LIVE TRADES</span>
       <span style="font:500 13px GeistMono;letter-spacing:.14em;color:#6F86A6">SOLANA</span>
@@ -139,6 +143,138 @@ function header({ ca }) {
     </div>
     <div style="position:absolute;right:96px;top:64px">${liveCard(600)}</div>
     ${grain(1500, 500, 0.05)}
+  </div>`;
+}
+
+/** Shared deep-navy stage for the article banners: base gradient, two glows, a faint grid, grain on top (added by the caller). */
+function stage(extra = '') {
+  return `<div style="position:absolute;inset:0;background:radial-gradient(120% 140% at 70% 40%,#10234A 0%,#081530 38%,#040A17 70%,#02050C 100%)"></div>
+    <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:64px 64px;-webkit-mask-image:radial-gradient(ellipse at 70% 50%,#000 0%,transparent 62%);mask-image:radial-gradient(ellipse at 70% 50%,#000 0%,transparent 62%)"></div>
+    ${extra}
+    <div style="position:absolute;inset:0;background:radial-gradient(130% 120% at 50% 50%,transparent 55%,rgba(0,0,0,.55) 100%)"></div>`;
+}
+
+/** Headline block for the banners' left side. */
+function bannerCopy({ top = 168, size = 104 } = {}) {
+  return `<div style="position:absolute;left:160px;top:${top}px;width:880px">
+      <div style="display:inline-flex;align-items:center;gap:14px;padding:12px 22px;border-radius:999px;background:rgba(111,178,255,.09);box-shadow:inset 0 0 0 1.5px rgba(111,178,255,.32);font:500 19px GeistMono;letter-spacing:.22em;color:#A9D6FF">
+        <span style="width:10px;height:10px;border-radius:50%;background:#3DDC97;box-shadow:0 0 16px #3DDC97"></span>INTRODUCING OXBOW
+      </div>
+      <div style="margin-top:34px;font:600 ${size}px/.98 Geist;letter-spacing:-.05em;color:#F3F8FF;text-shadow:0 2px 40px rgba(0,0,0,.35)">Follow the wallets<br><span style="background:linear-gradient(92deg,#F0F8FF 0%,#A9D6FF 40%,#5FA8FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent">that move first.</span></div>
+      <div style="margin-top:34px;font:500 29px/1.45 Geist;color:#A7B9D0;max-width:760px">Smart-money trades on Solana, live. Copy any of them in one tap, from your own wallet.</div>
+    </div>
+    <div style="position:absolute;left:160px;bottom:72px;display:flex;align-items:center;gap:22px">
+      ${sized(logo, 'height:46px;width:auto')}
+      <span style="width:1px;height:30px;background:rgba(170,215,255,.25)"></span>
+      <span style="font:500 21px GeistMono;letter-spacing:.18em;color:#7FBCFF">OXBOWFLOW.COM</span>
+    </div>`;
+}
+
+/** A small glass chip floating in the scene. */
+function chip(x, y, inner, css = '') {
+  return `<div style="position:absolute;left:${x}px;top:${y}px;display:flex;align-items:center;gap:12px;padding:14px 20px;border-radius:16px;background:linear-gradient(180deg,rgba(28,50,86,.78),rgba(10,20,38,.82));box-shadow:inset 0 0 0 1px rgba(170,215,255,.2),0 20px 50px rgba(0,0,0,.5);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font:500 20px Geist;color:#E6F0FF;white-space:nowrap;${css}">${inner}</div>`;
+}
+function pill(side) {
+  return `<span style="font:600 14px GeistMono;letter-spacing:.12em;padding:5px 10px;border-radius:8px;${side === 'BUY' ? 'color:#46E3A0;background:rgba(61,220,151,.14)' : 'color:#FF7A85;background:rgba(255,92,108,.14)'}">${side}</span>`;
+}
+function smartTag() {
+  return `<span style="font:600 12px GeistMono;letter-spacing:.14em;padding:4px 8px;border-radius:7px;color:#A9D6FF;background:rgba(111,178,255,.13);box-shadow:inset 0 0 0 1px rgba(111,178,255,.32)">SMART</span>`;
+}
+
+/** Banner A, "Orbit": the glossy mark on the right inside rings of ripples, live trades orbiting it. */
+function bannerOrbit() {
+  const cx = 1500, cy = 400;
+  const rings = [250, 330, 420, 520, 630, 750]
+    .map((r, i) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(160,210,255,${[0.2, 0.15, 0.11, 0.08, 0.06, 0.045][i]})" stroke-width="1.6"/>`)
+    .join('');
+  const scene = `<svg width="2000" height="800" style="position:absolute;inset:0">
+      <defs>
+        <linearGradient id="ra" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#DDF0FF" stop-opacity=".75"/><stop offset=".3" stop-color="#DDF0FF" stop-opacity="0"/></linearGradient>
+        <linearGradient id="rb" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#5FA8FF" stop-opacity=".6"/><stop offset=".35" stop-color="#5FA8FF" stop-opacity="0"/></linearGradient>
+      </defs>
+      ${rings}
+      <circle cx="${cx}" cy="${cy}" r="330" fill="none" stroke="url(#ra)" stroke-width="3"/>
+      <circle cx="${cx}" cy="${cy}" r="520" fill="none" stroke="url(#rb)" stroke-width="2.4"/>
+      <circle cx="${cx + 330 * Math.cos(-0.9)}" cy="${cy + 330 * Math.sin(-0.9)}" r="6" fill="#DDF0FF"/>
+      <circle cx="${cx + 520 * Math.cos(2.5)}" cy="${cy + 520 * Math.sin(2.5)}" r="5" fill="#7FBCFF"/>
+    </svg>
+    <div style="position:absolute;left:${cx - 420}px;top:${cy - 420}px;width:840px;height:840px;border-radius:50%;background:radial-gradient(closest-side,rgba(70,140,255,.55),rgba(70,140,255,.12) 55%,rgba(70,140,255,0));filter:blur(14px)"></div>
+    <div style="position:absolute;left:${cx - 900}px;top:-200px;width:1200px;height:420px;transform:rotate(-18deg);background:linear-gradient(90deg,rgba(160,210,255,0),rgba(160,210,255,.07),rgba(160,210,255,0));filter:blur(30px)"></div>
+    <div style="position:absolute;left:${cx - 190}px;top:${cy - 190}px">${glossyMark(380, 'filter:drop-shadow(0 30px 60px rgba(25,85,255,.6))')}</div>
+    ${chip(cx + 150, cy - 300, `${pill('BUY')}<span>42.5 SOL</span><span style="color:#6F86A6;font:500 16px GeistMono">4s</span>`)}
+    ${chip(cx + 190, cy + 160, `<span style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#9ED4FF,#2F6BFF)"></span><span>Wallet 21</span>${smartTag()}`)}
+    ${chip(cx - 470, cy + 210, `${pill('SELL')}<span>96.2 SOL</span><span style="color:#6F86A6;font:500 16px GeistMono">26s</span>`)}
+    ${chip(cx - 330, cy - 300, `<span style="width:9px;height:9px;border-radius:50%;background:#3DDC97;box-shadow:0 0 12px #3DDC97"></span><span style="font:600 15px GeistMono;letter-spacing:.2em">LIVE</span>`)}`;
+  return `<div style="position:relative;width:2000px;height:800px;overflow:hidden;background:#02050C;font-family:Geist">
+    ${stage(scene)}
+    ${bannerCopy()}
+    ${grain(2000, 800, 0.06)}
+  </div>`;
+}
+
+/** Banner B, "Depth": the product in perspective, three of its screens stacked and lit. */
+function bannerDepth() {
+  const panel = (w, inner, css = '') =>
+    `<div style="width:${w}px;border-radius:26px;overflow:hidden;background:linear-gradient(180deg,#182C50,#0A1426);box-shadow:inset 0 0 0 1px rgba(170,215,255,.2),0 40px 90px rgba(0,0,0,.6);${css}">${inner}</div>`;
+  const head = (label, right = '') =>
+    `<div style="display:flex;align-items:center;justify-content:space-between;height:62px;padding:0 24px;border-bottom:1px solid rgba(170,215,255,.08)"><span style="font:600 15px GeistMono;letter-spacing:.2em;color:#DCEBFF">${label}</span><span style="font:500 13px GeistMono;letter-spacing:.14em;color:#6F86A6">${right}</span></div>`;
+  // Illustrative wallet: a smooth PnL curve.
+  const pts = [0, 12, 8, 26, 22, 40, 36, 58, 52, 74, 70, 92].map((v, i) => `${i * 40},${130 - v}`).join(' ');
+  const wallet = panel(
+    520,
+    `${head('WALLET 07', 'SMART')}
+     <div style="padding:22px 24px 26px">
+       <div style="font:500 15px GeistMono;letter-spacing:.14em;color:#7E93AE">REALIZED · 30D</div>
+       <div style="margin-top:6px;font:600 52px Geist;letter-spacing:-.03em;color:#46E3A0">+$12.4K</div>
+       <svg width="440" height="140" style="display:block;margin-top:10px"><defs><linearGradient id="pf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#46E3A0" stop-opacity=".35"/><stop offset="1" stop-color="#46E3A0" stop-opacity="0"/></linearGradient></defs>
+         <polygon points="0,140 ${pts} 440,140" fill="url(#pf)"/><polyline points="${pts}" fill="none" stroke="#46E3A0" stroke-width="3" stroke-linejoin="round"/></svg>
+     </div>`,
+  );
+  const check = (t) => `<div style="display:flex;align-items:center;gap:12px;height:46px;font:500 18px Geist;color:#DCE8F8"><span style="width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:rgba(61,220,151,.16);color:#46E3A0;font:700 14px Geist">✓</span>${t}</div>`;
+  const safety = panel(400, `${head('SAFETY CHECK', 'OK')}<div style="padding:12px 24px 16px">${check('Mint authority off')}${check('Freeze authority off')}${check('Organic trading')}${check('Jupiter verified')}</div>`);
+  return `<div style="position:relative;width:2000px;height:800px;overflow:hidden;background:#02050C;font-family:Geist">
+    ${stage(`<div style="position:absolute;left:1000px;top:-100px;width:1200px;height:1000px;border-radius:50%;background:radial-gradient(closest-side,rgba(60,130,255,.35),rgba(60,130,255,0));filter:blur(10px)"></div>`)}
+    <div style="position:absolute;left:1060px;top:70px;width:900px;height:700px;perspective:2000px">
+      <div style="position:absolute;left:330px;top:-40px;transform:rotateY(-24deg) rotateX(8deg) translateZ(-160px);filter:brightness(.82)">${wallet}</div>
+      <div style="position:absolute;left:0;top:230px;transform:rotateY(-24deg) rotateX(8deg)">${liveCard(600, true)}</div>
+      <div style="position:absolute;left:560px;top:440px;transform:rotateY(-24deg) rotateX(8deg) translateZ(120px)">${safety}</div>
+    </div>
+    ${bannerCopy()}
+    ${grain(2000, 800, 0.06)}
+  </div>`;
+}
+
+/** Banner C, "Ring": one huge oxbow ring of light behind a centered headline. */
+function bannerRing() {
+  return `<div style="position:relative;width:2000px;height:800px;overflow:hidden;background:#02050C;font-family:Geist">
+    ${stage()}
+    <svg width="2000" height="800" style="position:absolute;inset:0;-webkit-mask-image:radial-gradient(ellipse 700px 330px at 50% 50%,transparent 66%,#000 100%);mask-image:radial-gradient(ellipse 700px 330px at 50% 50%,transparent 66%,#000 100%)">
+      <defs>
+        <linearGradient id="rg" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F0F8FF"/><stop offset=".45" stop-color="#8FCBFF"/><stop offset="1" stop-color="#2F6BFF"/></linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18"/></filter>
+      </defs>
+      <g transform="translate(1000 400) scale(10.5) translate(-64 -64)" opacity=".9">
+        <path fill-rule="evenodd" fill="url(#rg)" opacity=".16" d="${MARK_D}" filter="url(#glow)"/>
+        <path fill-rule="evenodd" fill="none" stroke="url(#rg)" stroke-width=".28" d="${MARK_D}"/>
+      </g>
+      <g transform="translate(1000 400) scale(10.5) translate(-64 -64)">
+        <circle cx="64" cy="64" r="47" fill="none" stroke="rgba(160,210,255,.08)" stroke-width=".15"/>
+        <circle cx="64" cy="64" r="53" fill="none" stroke="rgba(160,210,255,.05)" stroke-width=".15"/>
+      </g>
+    </svg>
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
+      <div style="display:inline-flex;align-items:center;gap:14px;padding:12px 22px;border-radius:999px;background:rgba(5,12,26,.7);box-shadow:inset 0 0 0 1.5px rgba(111,178,255,.32);font:500 19px GeistMono;letter-spacing:.22em;color:#A9D6FF">
+        <span style="width:10px;height:10px;border-radius:50%;background:#3DDC97;box-shadow:0 0 16px #3DDC97"></span>INTRODUCING OXBOW
+      </div>
+      <div style="margin-top:34px;font:600 118px/.98 Geist;letter-spacing:-.05em;color:#F3F8FF;text-shadow:0 4px 60px rgba(0,0,0,.6)">Follow the wallets<br><span style="background:linear-gradient(92deg,#F0F8FF 0%,#A9D6FF 40%,#5FA8FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent">that move first.</span></div>
+      <div style="margin-top:32px;font:500 28px/1.45 Geist;color:#A7B9D0">Smart money on Solana, live. Copy any trade in one tap.</div>
+    </div>
+    <div style="position:absolute;left:0;right:0;bottom:56px;display:flex;justify-content:center;align-items:center;gap:22px">
+      ${sized(logo, 'height:40px;width:auto')}
+      <span style="width:1px;height:26px;background:rgba(170,215,255,.25)"></span>
+      <span style="font:500 19px GeistMono;letter-spacing:.18em;color:#7FBCFF">OXBOWFLOW.COM</span>
+    </div>
+    ${grain(2000, 800, 0.06)}
   </div>`;
 }
 
@@ -198,8 +334,8 @@ function announce(w, h) {
 // Optional filter: `node scripts/brand-png.mjs coming-soon` renders only matching files.
 const only = process.argv[2];
 const browser = await chromium.launch();
-for (const [file, w, h, html, transparent] of OUT.filter(([f]) => !only || f.includes(only))) {
-  const p = await browser.newPage({ viewport: { width: w, height: h } });
+for (const [file, w, h, html, transparent, scale = 1] of OUT.filter(([f]) => !only || f.includes(only))) {
+  const p = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: scale });
   await p.setContent(html);
   await p.evaluate(() => document.fonts.ready);
   await p.screenshot({ path: join(root, file), omitBackground: transparent });

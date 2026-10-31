@@ -30,6 +30,7 @@ All in `apps/web/public/brand/social/`, and on the site after deploy at
 | X header | `oxbow-x-header-1500x500.png` |
 | X header until the token launches ("CA coming soon") | `oxbow-x-header-ca-soon-1500x500.png` |
 | X article cover (5:2); the launch article is in [`x-article-launch.md`](x-article-launch.md) | `oxbow-article-cover-2000x800.png` |
+| Premium article banners (5:2, 3000x1200): orbit, depth, ring | `oxbow-article-banner-orbit-3000x1200.png`, `oxbow-article-banner-depth-3000x1200.png`, `oxbow-article-banner-ring-3000x1200.png` |
 | Announcement post, X and Telegram (16:9) | `oxbow-coming-soon-1600x900.png` |
 | Announcement post, square | `oxbow-coming-soon-1080.png` |
 
