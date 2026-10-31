@@ -32,6 +32,8 @@ interface LegacyProvider {
   publicKey?: { toString(): string } | null;
   connect?: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey?: { toString(): string } } | boolean | void>;
   disconnect?: () => Promise<void>;
+  /** Signs a web3.js transaction object and hands it back signed. */
+  signTransaction?: (tx: unknown) => Promise<{ serialize(): Uint8Array }>;
 }
 
 const pick = (p: any, ok: boolean): LegacyProvider | null => (ok ? (p as LegacyProvider) : null);
@@ -126,10 +128,21 @@ export class WalletError extends Error {
   }
 }
 
-const messageOf = (e: unknown) => {
-  const x = e as { message?: unknown; error?: { message?: unknown } } | null;
-  return String(x?.message ?? x?.error?.message ?? e ?? '').slice(0, 300);
-};
+/** Readable words from whatever a wallet throws: an Error, a `{ code, message }` object, a nested one, or a string. */
+export function messageOf(e: unknown): string {
+  if (typeof e === 'string') return e.slice(0, 300);
+  const x = e as Record<string, any> | null;
+  const msg = [x?.message, x?.error?.message, x?.data?.message, x?.reason, x?.error, x?.msg].find((m) => typeof m === 'string' && m.trim());
+  const code = typeof x?.code === 'number' || typeof x?.code === 'string' ? `[${x.code}] ` : '';
+  if (msg) return (code + msg).slice(0, 300);
+  try {
+    const json = JSON.stringify(e);
+    if (json && json !== '{}') return (code + json).slice(0, 300);
+  } catch {
+    // Circular: fall through.
+  }
+  return (code + String(e ?? 'unknown error')).slice(0, 300);
+}
 
 /** Wallets answer a refused prompt with EIP-1193 code 4001 or a "rejected" message. */
 const rejected = (e: unknown) => {
@@ -194,28 +207,71 @@ export function watchWallet(name: string, onChange: (address: string | null) => 
 /** Wallet Standard chain id: Oxbow trades on mainnet. */
 const CHAIN = 'solana:mainnet';
 
+/** These wallets send what they sign reliably and prefer to: they get the transaction to sign and send themselves. */
+const SENDS_ITSELF = new Set(['Phantom', 'Solflare', 'Backpack']);
+
+const asBytes = (v: unknown): Uint8Array | null => (v instanceof Uint8Array ? v : Array.isArray(v) || ArrayBuffer.isView(v) ? Uint8Array.from(v as ArrayLike<number>) : null);
+
 /**
- * Has the wallet sign `tx` (an unsigned v0 transaction) and send it. Wallets
- * that only sign hand the signed bytes to `send`. Resolves with the signature.
+ * Has the wallet sign `tx` (an unsigned v0 transaction) and get it on chain. Resolves with the signature.
+ *
+ * Phantom, Solflare and Backpack sign and send it themselves. Every other wallet only signs, and `send`
+ * (Oxbow's API) sends it: their own sending varies too much from wallet to wallet. Signing is tried
+ * through the Wallet Standard first, then through the wallet's own injected provider. Nothing is ever
+ * sent twice: a wallet that only signs sends nothing, so trying the other way is safe.
  */
 export async function signAndSend(name: string, address: string, tx: Uint8Array, send: (signed: Uint8Array) => Promise<string>): Promise<string> {
   startRegistry();
   const std = standardFor(name);
   const account = std?.accounts?.find((a) => a.address === address);
-  const features = std?.features ?? {};
-  if (!account || !(features['solana:signAndSendTransaction'] || features['solana:signTransaction'])) throw new WalletError('CANT_SIGN');
-  let signed: Uint8Array;
-  try {
-    if (features['solana:signAndSendTransaction']) {
-      const [out] = (await features['solana:signAndSendTransaction'].signAndSendTransaction({ account, transaction: tx, chain: CHAIN })) as { signature: Uint8Array }[];
-      return bytesToBase58(out!.signature);
+  const features = account ? (std?.features ?? {}) : {};
+  const stdSend = features['solana:signAndSendTransaction'];
+  const stdSign = features['solana:signTransaction'];
+  const legacy = infoFor(name)?.provider?.(window);
+  const legacySign = legacy?.signTransaction && legacy.publicKey?.toString() === address ? legacy : null;
+
+  const signers: (() => Promise<Uint8Array | null>)[] = [];
+  if (stdSign)
+    signers.push(async () => {
+      const [out] = (await stdSign.signTransaction({ account, transaction: tx, chain: CHAIN })) as { signedTransaction?: unknown }[];
+      return asBytes(out?.signedTransaction);
+    });
+  if (legacySign)
+    signers.push(async () => {
+      const { VersionedTransaction } = await import('@solana/web3.js');
+      const signed = await legacySign.signTransaction!(VersionedTransaction.deserialize(tx));
+      return asBytes(signed?.serialize?.());
+    });
+
+  if (stdSend && (SENDS_ITSELF.has(name) || !signers.length)) {
+    try {
+      const [out] = (await stdSend.signAndSendTransaction({ account, transaction: tx, chain: CHAIN })) as { signature?: unknown }[];
+      const sig = asBytes(out?.signature);
+      if (!sig) throw new Error('the wallet returned no signature');
+      return bytesToBase58(sig);
+    } catch (e) {
+      throw new WalletError(rejected(e) ? 'REJECTED' : 'FAILED', messageOf(e));
     }
-    const [out] = (await features['solana:signTransaction'].signTransaction({ account, transaction: tx, chain: CHAIN })) as { signedTransaction: Uint8Array }[];
-    signed = out!.signedTransaction;
-  } catch (e) {
-    throw new WalletError(rejected(e) ? 'REJECTED' : 'FAILED', messageOf(e));
   }
-  return send(signed);
+  if (!signers.length) throw new WalletError('CANT_SIGN');
+
+  const failures: string[] = [];
+  for (const sign of signers) {
+    let signed: Uint8Array | null;
+    try {
+      signed = await sign();
+    } catch (e) {
+      if (rejected(e)) throw new WalletError('REJECTED', messageOf(e));
+      failures.push(messageOf(e));
+      continue;
+    }
+    if (!signed?.length) {
+      failures.push('the wallet returned no signed transaction');
+      continue;
+    }
+    return send(signed);
+  }
+  throw new WalletError('FAILED', failures.join(' | '));
 }
 
 /** Waits up to `ms` for a wallet to register or inject (extensions load after the page). */

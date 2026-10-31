@@ -121,6 +121,8 @@ export const FLOW = {
 };
 
 export interface MockState {
+  /** Signed transactions handed to /api/tx/send. */
+  sent?: number;
   /** Builds fail with a slippage error below this many basis points. */
   slippageNeeded?: number;
   tracked: Set<string>;
@@ -208,6 +210,10 @@ export async function mockApi(page: Page, opts: { live?: unknown[]; empty?: bool
       if (state.slippageNeeded && Number(b.slippageBps) < state.slippageNeeded) return json(route, { error: 'slippage', detail: 'Error Message: Slippage tolerance exceeded.' }, 400);
       return json(route, { transaction: 'AQID', quote: quoteFor(new URLSearchParams(b as Record<string, string>)), lastValidBlockHeight: 1 });
     }
+    if (p === '/api/tx/send') {
+      state.sent = (state.sent ?? 0) + 1;
+      return json(route, { signature: '5'.repeat(88) });
+    }
     if (p.startsWith('/api/tx/')) return json(route, { status: 'confirmed' });
     if (p.startsWith('/api/wallet/') && p.endsWith('/balances')) return json(route, { [SOL]: 2.5, [M.meme]: 50_000 });
     if (p === '/api/status')
@@ -258,4 +264,50 @@ export async function fakePhantom(page: Page, address = W.me) {
     };
     window.addEventListener('wallet-standard:app-ready', (e) => (e as CustomEvent).detail.register(wallet));
   }, address);
+}
+
+/**
+ * A Wallet Standard wallet named Bitget Wallet. Its own sending throws a bare object (as some wallets do);
+ * signing works unless `signFails`, in which case it throws a nested object too.
+ */
+export async function fakeBitget(page: Page, opts: { signFails?: boolean } = {}, address = W.me) {
+  await page.addInitScript(
+    ({ addr, signFails }) => {
+      const acct = { address: addr, publicKey: new Uint8Array(32), chains: ['solana:mainnet'], features: [] };
+      const wallet = {
+        version: '1.0.0',
+        name: 'Bitget Wallet',
+        icon: 'data:image/svg+xml;base64,PHN2Zy8+',
+        chains: ['solana:mainnet'],
+        accounts: [] as unknown[],
+        features: {
+          'solana:signAndSendTransaction': {
+            version: '1.0.0',
+            supportedTransactionVersions: [0],
+            signAndSendTransaction: async () => {
+              throw { code: -32603, data: { reason: 'internal' } };
+            },
+          },
+          'solana:signTransaction': {
+            version: '1.0.0',
+            supportedTransactionVersions: [0],
+            signTransaction: async ({ transaction }: { transaction: Uint8Array }) => {
+              if (signFails) throw { code: -32000, error: { message: 'Transaction version not supported' } };
+              return [{ signedTransaction: transaction }];
+            },
+          },
+          'standard:connect': {
+            version: '1.0.0',
+            connect: async () => {
+              wallet.accounts = [acct];
+              return { accounts: wallet.accounts };
+            },
+          },
+          'standard:events': { version: '1.0.0', on: () => () => {} },
+        },
+      };
+      window.addEventListener('wallet-standard:app-ready', (e) => (e as CustomEvent).detail.register(wallet));
+    },
+    { addr: address, signFails: !!opts.signFails },
+  );
 }

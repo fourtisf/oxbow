@@ -1,6 +1,6 @@
 /** The tracker in the browser, against the mocked API (mock-api.ts). */
 import { acceptTermsIfAsked, expect, test } from './fixtures';
-import { fakePhantom, M, MEME, mockApi, trade, W } from './mock-api';
+import { fakeBitget, fakePhantom, M, MEME, mockApi, trade, W } from './mock-api';
 
 test.describe('live feed', () => {
   test('home shows trades, hot tokens and top wallets', async ({ page, errors }) => {
@@ -278,6 +278,37 @@ test.describe('copy trading', () => {
     const go = panel.getByRole('button', { name: 'Connect wallet' });
     await go.scrollIntoViewIfNeeded();
     await expect(go).toBeInViewport();
+  });
+
+  test('Bitget Wallet signs and Oxbow sends it, whatever its own sending throws', async ({ page }) => {
+    const api = await mockApi(page);
+    await fakeBitget(page);
+    await page.goto(`/token/${M.meme}`);
+    await page.getByRole('button', { name: 'Select Wallet' }).first().click();
+    await acceptTermsIfAsked(page);
+    await page.getByRole('dialog', { name: 'Select wallet' }).getByRole('button', { name: 'Bitget Wallet', exact: true }).click();
+    await expect(page.getByText('Connected Bitget Wallet')).toBeVisible();
+    await page.locator('.tacts').getByRole('button', { name: 'Buy' }).click();
+    const panel = page.getByRole('dialog', { name: 'Buy MEME' });
+    await panel.getByRole('button', { name: '0.1 SOL' }).click();
+    await panel.getByRole('button', { name: 'Buy MEME' }).click();
+    await expect(panel.getByRole('heading', { name: 'Bought MEME' })).toBeVisible();
+    expect(api.sent).toBe(1);
+  });
+
+  test('when a wallet cannot sign, its own words are shown', async ({ page }) => {
+    await mockApi(page);
+    await fakeBitget(page, { signFails: true });
+    await page.goto(`/token/${M.meme}`);
+    await page.getByRole('button', { name: 'Select Wallet' }).first().click();
+    await acceptTermsIfAsked(page);
+    await page.getByRole('dialog', { name: 'Select wallet' }).getByRole('button', { name: 'Bitget Wallet', exact: true }).click();
+    await page.locator('.tacts').getByRole('button', { name: 'Buy' }).click();
+    const panel = page.getByRole('dialog', { name: 'Buy MEME' });
+    await panel.getByRole('button', { name: '0.1 SOL' }).click();
+    await panel.getByRole('button', { name: 'Buy MEME' }).click();
+    await expect(panel.getByRole('alert')).toContainText('Transaction version not supported');
+    await expect(panel.getByRole('alert')).not.toContainText('[object Object]');
   });
 
   test('a token that failed the safety check needs an explicit acknowledgement', async ({ page }) => {
