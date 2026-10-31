@@ -94,6 +94,13 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
    cd /home/oxbow/oxbow && pnpm --filter @oxbow/api wallets list
    ```
 
+   Or many at once from a file (one per line: address, then an optional
+   label; lines starting with # are skipped):
+
+   ```bash
+   sudo -iu oxbow bash -c 'cd /home/oxbow/oxbow && pnpm --filter @oxbow/api wallets import /home/oxbow/wallets.txt'
+   ```
+
    Each new wallet's recent trades are read within a minute ("reading history"
    in the list until then). `wallets unfeature`, `wallets remove` undo it.
 

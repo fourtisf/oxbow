@@ -5,6 +5,7 @@
  *   pnpm --filter @oxbow/api wallets feature <address> [--label "Name"]
  *   pnpm --filter @oxbow/api wallets unfeature <address>
  *   pnpm --filter @oxbow/api wallets remove <address>      (stops tracking; trades are kept)
+ *   pnpm --filter @oxbow/api wallets import <file> [--featured]  (one wallet per line: address, then an optional label)
  *   pnpm --filter @oxbow/api wallets list
  *   pnpm --filter @oxbow/api wallets discover               (one smart-money discovery round now)
  *   pnpm --filter @oxbow/api wallets discover --deep        (a big one-off round to fill an empty feed: ~5,000 RPC calls)
@@ -13,6 +14,7 @@
  * always tracked, and lead the leaderboard. Use only addresses you have
  * checked yourself.
  */
+import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { Redis } from 'ioredis';
 import { createDb } from '@oxbow/db';
@@ -101,6 +103,35 @@ try {
       console.log(`Stopped tracking ${a}.`);
       break;
     }
+    case 'import': {
+      if (!rawAddress) {
+        console.error('Give a file: one wallet per line, address then an optional label. Lines starting with # are skipped.');
+        process.exit(1);
+      }
+      const lines = readFileSync(rawAddress, 'utf8').split(/\r?\n/);
+      let added = 0;
+      let skipped = 0;
+      for (const line of lines) {
+        const text = line.trim();
+        if (!text || text.startsWith('#')) continue;
+        const [addr, ...rest] = text.split(/[\s,;]+/);
+        const label = rest.join(' ').trim().slice(0, 32);
+        if (!AddressSchema.safeParse(addr).success || (label && !/^[\p{L}\p{N} ._\-]{1,32}$/u.test(label))) {
+          console.warn(`skipped: ${text.slice(0, 60)}`);
+          skipped++;
+          continue;
+        }
+        await db.trackedWallet.upsert({
+          where: { address: addr! },
+          create: { address: addr!, label: label || null, featured: values.featured, source: 'owner' },
+          update: { active: true, source: 'owner', ...(label ? { label } : {}), ...(values.featured ? { featured: true } : {}) },
+        });
+        await notify(addr!);
+        added++;
+      }
+      console.log(`${added} wallet(s) tracked${values.featured ? ' as featured' : ''}, ${skipped} line(s) skipped. Their recent trades load within a few minutes.`);
+      break;
+    }
     case 'list': {
       const rows = await db.trackedWallet.findMany({ orderBy: [{ featured: 'desc' }, { addedAt: 'asc' }], include: { _count: { select: { trades: true } } } });
       for (const r of rows)
@@ -136,7 +167,7 @@ try {
           max: config.DISCOVERY_MAX,
           dailyCalls: config.DISCOVERY_DAILY_CALLS,
           // Deep: many more trending tokens, a much bigger sample of each, and every candidate found checked.
-          ...(values.deep ? { routerSample: 500, tokens: 6, samplePerToken: 40, evalsPerRun: 40, bootstrapBelow: 0, dailyCalls: 0 } : {}),
+          ...(values.deep ? { winnersPerRun: 12, routerSample: 500, tokens: 6, samplePerToken: 40, evalsPerRun: 50, bootstrapBelow: 0, dailyCalls: 0 } : {}),
         },
       });
       if (values.deep) console.log(`Deep round: reads about 5,000 transactions at ${config.RPC_RPS} a second (RPC_RPS), so about ${Math.round(5000 / config.RPC_RPS / 60)} minutes.`);
@@ -157,7 +188,7 @@ try {
       break;
     }
     default:
-      console.log('Usage: wallets add|feature|unfeature|remove <address> [--label "Name"] [--featured] | wallets list | wallets discover [--deep]');
+      console.log('Usage: wallets add|feature|unfeature|remove <address> [--label "Name"] [--featured] | wallets import <file> [--featured] | wallets list | wallets discover [--deep]');
       process.exitCode = 1;
   }
 } finally {

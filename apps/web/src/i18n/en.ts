@@ -344,7 +344,7 @@ export const en = {
       'The Oxbow team features wallets with strong track records. Anyone can add any other wallet: paste its address and Oxbow reads its recent trades, then follows it from then on.',
     smartH: 'Where smart money comes from',
     smart1:
-      'Oxbow looks for it on its own, from on-chain data only. Every couple of hours it samples who is swapping right now and who trades the tokens trading most, starting with those who just took profit, then reads each one’s own recent history. Most traders lose money, so only a few in each round qualify.',
+      'Oxbow looks for it on its own, from on-chain data only. It starts with whoever got into a winning token just before a known smart wallet did, then samples who is swapping right now and who trades the tokens trading most, and reads each one’s own recent history. Most traders lose money, so only a few in each round qualify.',
     smart2:
       'Bots are dropped first (too many transactions too fast, or a buy and sell a slot apart), then wallets with no swap in a week. A wallet becomes smart money when it has closed at least three positions, at least half of them at a profit, for $150 or more, or when it closed a large win ($1,500 or more) without more losses than wins. Wallets that stop earning are dropped again.',
     limitH: 'Limit orders',

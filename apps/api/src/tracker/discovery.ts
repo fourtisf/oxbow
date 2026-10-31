@@ -1,8 +1,9 @@
 /**
  * Finds smart money on its own, from on-chain data only:
  *
- * 1. Candidates: who is swapping right now through Jupiter's router (mostly
- *    people), plus the market tapes of the tokens trading most (Jupiter's
+ * 1. Candidates: first, whoever bought a token just before a known smart
+ *    wallet's winning buy of it (early into winners); then who is swapping
+ *    right now through Jupiter's router (mostly people), plus the market tapes of the tokens trading most (Jupiter's
  *    top-traded list, minus stablecoins, SOL and thin or unvetted tokens;
  *    their own markets are mostly arbitrage bots). Traders with real size
  *    who just took profit come first, then those seen in several tokens.
@@ -28,10 +29,14 @@ import { Ingestor, ui } from './ingest';
 import { parseTrades, walletChanges, WSOL, type RawTx } from './parse';
 import { positions, summarize, type PnlTrade, type Summary } from './pnl';
 import type { TrackerRpc, SignatureInfo } from './rpc';
-import { mapLimit, type MarketTape } from './tape';
+import { fillsOf, mapLimit, type MarketTape } from './tape';
 import { quoteUsd, STALE, type TokenBook, type TokenMeta } from './tokens';
 
 export interface DiscoveryConfig {
+  /** Winning trades of known smart wallets whose early co-buyers are looked up per run. */
+  winnersPerRun: number;
+  /** Transactions of a token's market read just before a smart wallet's winning buy. */
+  coBuyerSample: number;
   /** Newest transactions through Jupiter's router read per run: mostly real people's swaps. */
   routerSample: number;
   /** Trending tokens sampled per run. */
@@ -57,6 +62,8 @@ export interface DiscoveryConfig {
 }
 
 export const DEFAULT_DISCOVERY: DiscoveryConfig = {
+  winnersPerRun: 4,
+  coBuyerSample: 40,
   routerSample: 300,
   tokens: 6,
   samplePerToken: 40,
@@ -98,11 +105,18 @@ export const DISCOVERY_LOCK = 'oxbow:discovery:running';
 export const DISCOVERY_STATS = 'oxbow:discovery:stats';
 /** RPC calls discovery spent on a day (UTC). */
 export const callsKey = (day: string) => `oxbow:discovery:calls:${day}`;
+/** A winning buy whose co-buyers were already looked up. */
+const winnerKey = (signature: string) => `oxbow:disc:winner:${signature}`;
+const WINNER_TTL_SEC = 30 * 86_400;
+/** Winning trades are looked for in this recent window. */
+const WINNERS_WITHIN_MS = 14 * 864e5;
 /** More than this many transactions an hour on average reads as a bot (MEV bots do thousands; busy traders on trading bots stay under). */
 const MAX_TX_PER_HOUR = 120;
 /** Three or more fills in one token's short sample: a bot's rhythm, not a person's. */
 const MAX_FILLS_PER_SAMPLE = 2;
 const READ_CONCURRENCY = 4;
+/** Transactions read before deciding whether a candidate is worth its full history. */
+const SCREEN_TXS = 30;
 /** Smart money for a live feed has to be trading: a trade within this long. */
 const ACTIVE_WITHIN_MS = 7 * 864e5;
 
@@ -209,9 +223,75 @@ export class Discovery {
     }
   }
 
-  /** Real-size traders from Jupiter's router and the trending tokens' markets, not tracked or evaluated lately. Best first. */
+  /**
+   * Early co-buyers: for tokens a known smart wallet (discovered, featured or added by the owner) bought
+   * and sold at a profit, whoever bought the same token just before it did. Getting into winners early
+   * is what smart money does, so these are the best leads. Each winning buy is looked up once.
+   */
+  private async coBuyerFills(by: Map<string, Candidate>, early: Set<string>): Promise<void> {
+    if (this.cfg.winnersPerRun <= 0) return;
+    const known = await this.d.db.trackedWallet.findMany({ where: { active: true, OR: [{ source: { in: ['discovered', 'owner'] } }, { featured: true }] }, select: { address: true } });
+    if (!known.length) return;
+    const rows = await this.d.db.walletTrade.findMany({
+      where: { wallet: { in: known.map((w) => w.address) }, ts: { gte: new Date(this.now() - WINNERS_WITHIN_MS) } },
+      orderBy: [{ ts: 'asc' }, { id: 'asc' }],
+      select: { wallet: true, ts: true, side: true, mint: true, amount: true, usd: true, signature: true },
+    });
+    const byWallet = new Map<string, typeof rows>();
+    for (const r of rows) byWallet.set(r.wallet, [...(byWallet.get(r.wallet) ?? []), r]);
+    const winners: { mint: string; signature: string; realized: number }[] = [];
+    for (const list of byWallet.values()) {
+      const pos = positions(list.map((r) => ({ ts: r.ts, side: r.side, mint: r.mint, amount: Number(r.amount), usd: Number(r.usd) })));
+      for (const p of pos.values()) {
+        if (!p.matched || p.realized <= 0) continue;
+        const buy = list.find((r) => r.mint === p.mint && r.side === 'BUY');
+        if (buy) winners.push({ mint: p.mint, signature: buy.signature, realized: p.realized });
+      }
+    }
+    winners.sort((a, b) => b.realized - a.realized);
+    let done = 0;
+    for (const w of winners) {
+      if (done >= this.cfg.winnersPerRun) break;
+      if (this.d.redis && (await this.d.redis.exists(winnerKey(w.signature)).catch(() => 0))) continue;
+      done++;
+      await this.d.redis?.set(winnerKey(w.signature), '1', 'EX', WINNER_TTL_SEC).catch(() => {});
+      const sigs = (await this.rpc.getSignatures(w.mint, { before: w.signature, limit: this.cfg.coBuyerSample }).catch(() => [] as SignatureInfo[])).filter((s) => !s.err);
+      const read = await mapLimit(sigs, READ_CONCURRENCY, (s) => this.rpc.getTransaction(s.signature).catch(() => null));
+      const decimals = new Map<string, number>();
+      for (const tx of read) {
+        if (!tx) continue;
+        const msg = tx.transaction.message;
+        for (const signer of msg.accountKeys.slice(0, msg.header.numRequiredSignatures)) for (const l of walletChanges(tx, signer)?.tokens ?? []) decimals.set(l.mint, l.decimals);
+      }
+      const metas = await this.d.tokens.get([...decimals.keys(), WSOL], STALE.ingest, decimals);
+      const solUsd = await this.d.tokens.solPrice();
+      const perTrader = new Map<string, number>();
+      read.forEach((tx, i) => {
+        if (!tx) return;
+        for (const f of fillsOf(tx, sigs[i]!.signature, w.mint, metas, solUsd)) {
+          perTrader.set(f.trader, (perTrader.get(f.trader) ?? 0) + 1);
+          if (f.side !== 'BUY') continue;
+          const c = by.get(f.trader) ?? { address: f.trader, tokens: new Set<string>(), usd: 0, maxTradeUsd: 0, maxFillsInOne: 0, maxSellUsd: 0 };
+          c.tokens.add(w.mint);
+          c.usd += f.usd;
+          c.maxTradeUsd = Math.max(c.maxTradeUsd, f.usd);
+          c.maxFillsInOne = Math.max(c.maxFillsInOne, perTrader.get(f.trader)!);
+          by.set(f.trader, c);
+          early.add(f.trader);
+        }
+      });
+    }
+  }
+
+  /** Real-size traders: early co-buyers of smart wallets' winners, Jupiter's router and trending markets. Best first. */
   async candidates(mints: string[]): Promise<Candidate[]> {
     const by = new Map<string, Candidate>();
+    const early = new Set<string>();
+    try {
+      await this.coBuyerFills(by, early);
+    } catch (e) {
+      this.d.log?.(`discovery: co-buyer lookup failed: ${(e as Error).message}`);
+    }
     try {
       await this.routerFills(by);
     } catch (e) {
@@ -241,7 +321,8 @@ export class Discovery {
     }
     const traders = [...by.values()].filter((c) => c.maxTradeUsd >= this.cfg.minTradeUsd && c.maxFillsInOne <= MAX_FILLS_PER_SAMPLE);
     const bigSale = (c: Candidate) => (c.maxSellUsd >= 500 ? 1 : 0);
-    traders.sort((a, b) => bigSale(b) - bigSale(a) || b.tokens.size - a.tokens.size || b.usd - a.usd);
+    const isEarly = (c: Candidate) => (early.has(c.address) ? 1 : 0);
+    traders.sort((a, b) => isEarly(b) - isEarly(a) || bigSale(b) - bigSale(a) || b.tokens.size - a.tokens.size || b.usd - a.usd);
     const list = traders;
     if (!list.length) return [];
     const tracked = new Set((await this.d.db.trackedWallet.findMany({ where: { address: { in: list.map((c) => c.address) } }, select: { address: true } })).map((w) => w.address));
@@ -252,6 +333,26 @@ export class Discovery {
       if (!seen) fresh.push(c);
     }
     return fresh;
+  }
+
+  /** Reads `sigs` (some of `address`'s history) and prices its trades. */
+  private async readTrades(address: string, sigs: SignatureInfo[]): Promise<{ txs: Map<string, RawTx>; metas: ReadonlyMap<string, TokenMeta>; trades: (PnlTrade & { slot: number })[] }> {
+    const read = await mapLimit(sigs, READ_CONCURRENCY, (s) => this.rpc.getTransaction(s.signature).catch(() => null));
+    const txs = new Map<string, RawTx>();
+    read.forEach((tx, i) => tx && txs.set(sigs[i]!.signature, tx));
+    const decimals = new Map<string, number>();
+    for (const tx of txs.values()) for (const l of walletChanges(tx, address)?.tokens ?? []) decimals.set(l.mint, l.decimals);
+    const metas = await this.d.tokens.get([...decimals.keys(), WSOL], STALE.ingest, decimals);
+    const solUsd = await this.d.tokens.solPrice();
+    const trades: (PnlTrade & { slot: number })[] = [];
+    for (const tx of txs.values()) {
+      for (const t of parseTrades(tx, address, (m) => metas.get(m)?.stable === true)) {
+        const px = quoteUsd(t.quoteMint, metas, solUsd);
+        if (px === null) continue;
+        trades.push({ ts: new Date((tx.blockTime ?? 0) * 1000), slot: tx.slot, side: t.side, mint: t.mint, amount: ui(t.amount, t.decimals), usd: ui(t.quoteAmount, t.quoteDecimals) * px });
+      }
+    }
+    return { txs, metas, trades };
   }
 
   /** Reads `address`'s recent history and judges it. */
@@ -271,22 +372,16 @@ export class Discovery {
     // Cheapest check first: the signature list alone shows a bot's pace.
     if (ok.length / hours > MAX_TX_PER_HOUR) return { ...empty, sigs, verdict: { ok: false, reason: 'too_fast' } };
 
-    const read = await mapLimit(ok, READ_CONCURRENCY, (s) => this.rpc.getTransaction(s.signature).catch(() => null));
-    const txs = new Map<string, RawTx>();
-    read.forEach((tx, i) => tx && txs.set(ok[i]!.signature, tx));
-    const decimals = new Map<string, number>();
-    for (const tx of txs.values()) for (const l of walletChanges(tx, address)?.tokens ?? []) decimals.set(l.mint, l.decimals);
-    const metas = await this.d.tokens.get([...decimals.keys(), WSOL], STALE.ingest, decimals);
-    const solUsd = await this.d.tokens.solPrice();
-
-    const trades: (PnlTrade & { slot: number })[] = [];
-    for (const tx of txs.values()) {
-      for (const t of parseTrades(tx, address, (m) => metas.get(m)?.stable === true)) {
-        const px = quoteUsd(t.quoteMint, metas, solUsd);
-        if (px === null) continue;
-        trades.push({ ts: new Date((tx.blockTime ?? 0) * 1000), slot: tx.slot, side: t.side, mint: t.mint, amount: ui(t.amount, t.decimals), usd: ui(t.quoteAmount, t.quoteDecimals) * px });
-      }
+    // Two stages: the newest SCREEN_TXS first, and the rest only for wallets that aren't plainly losing.
+    const first = await this.readTrades(address, ok.slice(0, SCREEN_TXS));
+    const quick = summarize(positions([...first.trades].sort((a, b) => a.slot - b.slot)).values(), () => null);
+    if (ok.length > SCREEN_TXS && quick.wins + quick.losses >= 3 && quick.realizedPnlUsd < 0 && (quick.winRate ?? 0) < this.cfg.minWinRate) {
+      return { sigs, txs: first.txs, metas: first.metas, verdict: { ok: false, reason: 'low_win_rate', summary: quick } };
     }
+    const rest = ok.length > SCREEN_TXS ? await this.readTrades(address, ok.slice(SCREEN_TXS)) : { txs: new Map<string, RawTx>(), metas: new Map<string, TokenMeta>(), trades: [] };
+    const txs = new Map([...first.txs, ...rest.txs]);
+    const metas = new Map([...first.metas, ...rest.metas]);
+    const trades = [...first.trades, ...rest.trades];
     trades.sort((a, b) => a.slot - b.slot);
     const base = { sigs, txs, metas };
     if (sandwiches(trades) >= 2) return { ...base, verdict: { ok: false, reason: 'sandwich' } };

@@ -65,8 +65,9 @@ trade in one tap from their own wallet.
   USD values use the SOL price when the trade was read.
 - **Live updates**: the worker publishes trades on Redis; every API process
   fans them out to browsers over SSE (`/api/feed/stream`).
-- **Discovery** (`src/tracker/discovery.ts`): candidates from the newest
-  swaps through Jupiter's router (mostly people; busy tokens' own markets are
+- **Discovery** (`src/tracker/discovery.ts`): candidates first from the
+  early co-buyers of known smart wallets' winning trades (who bought the same
+  token just before them), then from the newest swaps through Jupiter's router (mostly people; busy tokens' own markets are
   mostly arbitrage bots) and the market tapes of Jupiter's top-traded tokens,
   traders who just took profit first. Each is judged on its own last `DISCOVERY_HISTORY_TXS` (100)
   transactions: dropped for bot pace (120+ transactions an hour, or three

@@ -143,8 +143,11 @@ describe.skipIf(!ready)('discovery, tape and limit orders', () => {
     expect(await db.walletTrade.count({ where: { wallet: W.smart } })).toBe(6);
     // Bots never get that far: three or more fills in one token's sample rule them out early.
     expect(await redis.exists(`oxbow:disc:seen:${W.bot}`)).toBe(0);
-    // Every candidate is checked once; a second round finds nothing new.
-    expect((await discovery.run()).evaluated).toBe(0);
+    // Every candidate is checked once: a second round only looks at new leads (here the winners'
+    // co-buyers), and finds no one new.
+    const again = await discovery.run();
+    expect(again.promoted).toEqual([]);
+    expect(await redis.exists(`oxbow:disc:seen:${W.loser}`)).toBe(1);
     // Progress for the status page.
     expect(await redis.hgetall('oxbow:discovery:stats')).toMatchObject({ found: '2' });
   });
@@ -162,6 +165,24 @@ describe.skipIf(!ready)('discovery, tape and limit orders', () => {
     await redis.set('oxbow:discovery:running', 'someone-else');
     expect(await discovery.run()).toMatchObject({ busy: true, evaluated: 0 });
     await redis.del('oxbow:discovery:running');
+  });
+
+  it('finds the early co-buyers of a smart wallet’s winning trades', async () => {
+    const early = addr();
+    // Bought HOT just before Smart did, and trades well on its own.
+    swap({ wallet: early, blockTime: T(605), mint: HOT, tokenDelta: 1000n * TOK, quoteDelta: -1n * SOL, opensAccount: true });
+    swap({ wallet: early, blockTime: T(300), mint: HOT, tokenDelta: -1000n * TOK, quoteDelta: 3n * SOL, opensAccount: true });
+    for (const [i, m] of [OTHER, MORE[1]!].entries()) {
+      swap({ wallet: early, blockTime: T(400 - i * 30), mint: m, tokenDelta: 500n * TOK, quoteDelta: -1n * SOL, opensAccount: true });
+      swap({ wallet: early, blockTime: T(380 - i * 30), mint: m, tokenDelta: -500n * TOK, quoteDelta: 2n * SOL, opensAccount: true });
+    }
+    await discovery.promote(W.smart, await discovery.evaluate(W.smart));
+    // No trending tokens and no router: co-buyers are the only lead.
+    jup.trending = [];
+    const r = await discovery.run();
+    expect(r.promoted).toContain(early);
+    // Each winning buy is looked up once.
+    expect((await discovery.run()).promoted).not.toContain(early);
   });
 
   it('stops the bookmark before history it could not store, so the worker finishes it', async () => {
