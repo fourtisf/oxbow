@@ -3,19 +3,24 @@
  *
  * 1. Candidates: first, whoever bought a token just before a known smart
  *    wallet's winning buy of it (early into winners); then who is swapping
- *    right now through Jupiter's router (mostly people), plus the market tapes of the tokens trading most (Jupiter's
- *    top-traded list, minus stablecoins, SOL and thin or unvetted tokens;
- *    their own markets are mostly arbitrage bots). Traders with real size
- *    who just took profit come first, then those seen in several tokens.
+ *    right now through Jupiter's router and pump.fun (its bonding curve and
+ *    PumpSwap, where trading terminals send memecoin orders directly), plus
+ *    the market tapes of the tokens trading most (Jupiter's top-traded list,
+ *    minus stablecoins, SOL and thin or unvetted tokens). Traders with real
+ *    size who just took profit come first, then those seen in several tokens.
  *    (Big holders were tried and left out: almost all of them are passive.)
- * 2. Evaluation: each candidate's own recent history, read and priced like a
- *    tracked wallet's. Bots are dropped first, from the signature list alone
- *    (too many transactions too fast), then for sandwich patterns (a buy and
- *    sell of the same token a slot or two apart), then wallets with no swap
- *    in the last week. What is left passes as
+ * 2. Evaluation: each candidate's own recent history, read in one request
+ *    where the RPC provider allows (rpc.ts) and priced like a tracked
+ *    wallet's. Bots are dropped first, from the signature list alone (most
+ *    transactions failing, or too many too fast), then for sandwich patterns
+ *    (a buy and sell of the same token a slot or two apart), then wallets
+ *    with no swap in the last week. What is left passes as
  *    "consistent" (enough closed positions, mostly at a profit, for a real
  *    amount) or "big win" (no more losses than wins, and a large realized
- *    profit: whales often close one or two positions for a lot).
+ *    profit: whales often close one or two positions for a lot), as long as
+ *    a real part of the profit was made in tokens with organic trading
+ *    (`isOrganic`): wash-trading farms of hundreds of wallets churn fresh
+ *    copycat tokens nobody else trades, and their winners look profitable.
  * 3. Promotion: wallets that pass are tracked as "discovered", with the
  *    history already read stored as their first trades.
  *
@@ -28,8 +33,8 @@ import type { Jupiter } from '../jupiter';
 import { Ingestor, ui } from './ingest';
 import { parseTrades, walletChanges, WSOL, type RawTx } from './parse';
 import { positions, summarize, type PnlTrade, type Summary } from './pnl';
-import type { TrackerRpc, SignatureInfo } from './rpc';
-import { fillsOf, mapLimit, type MarketTape } from './tape';
+import { readHistory, type HistoryEntry, type HistoryOpts, type TrackerRpc, type SignatureInfo } from './rpc';
+import { fillsOf, type MarketTape } from './tape';
 import { quoteUsd, STALE, type TokenBook, type TokenMeta } from './tokens';
 
 export interface DiscoveryConfig {
@@ -39,6 +44,8 @@ export interface DiscoveryConfig {
   coBuyerSample: number;
   /** Newest transactions through Jupiter's router read per run: mostly real people's swaps. */
   routerSample: number;
+  /** Newest transactions read per run from each of pump.fun's programs (bonding curve and PumpSwap). */
+  pumpSample: number;
   /** Trending tokens sampled per run. */
   tokens: number;
   /** Newest signatures read from each token's market. */
@@ -57,24 +64,25 @@ export interface DiscoveryConfig {
   /** Most discovered wallets tracked at once. */
   max: number;
   bootstrapBelow: number;
-  /** RPC calls discovery may spend a day (UTC), so it never eats the plan the tracker needs. 0 = no limit. */
+  /** RPC credits discovery may spend a day (UTC), so it never eats the plan the tracker needs; spread over the day. 0 = no limit. */
   dailyCalls: number;
 }
 
 export const DEFAULT_DISCOVERY: DiscoveryConfig = {
-  winnersPerRun: 4,
-  coBuyerSample: 40,
+  winnersPerRun: 6,
+  coBuyerSample: 60,
   routerSample: 300,
+  pumpSample: 200,
   tokens: 6,
   samplePerToken: 40,
-  evalsPerRun: 10,
+  evalsPerRun: 30,
   historyTxs: 100,
   minPnlUsd: 150,
   minWinRate: 0.5,
   minClosed: 3,
   bigWinUsd: 1500,
   minTradeUsd: 50,
-  max: 50,
+  max: 100,
   bootstrapBelow: 10,
   dailyCalls: 15_000,
 };
@@ -92,10 +100,27 @@ export interface Candidate {
 
 export type Verdict =
   | { ok: true; summary: Summary; avgTradeUsd: number; kind: 'consistent' | 'big_win' }
-  | { ok: false; reason: 'inactive' | 'stale' | 'too_fast' | 'sandwich' | 'few_closed' | 'low_win_rate' | 'low_pnl' | 'dust' | 'rpc'; summary?: Summary };
+  | { ok: false; reason: 'inactive' | 'stale' | 'bot' | 'too_fast' | 'sandwich' | 'wash' | 'few_closed' | 'low_win_rate' | 'low_pnl' | 'dust' | 'rpc'; summary?: Summary };
+
+/**
+ * A token with real trading behind it: Jupiter sees organic activity in it, has verified it, or
+ * its market is deep. Wash-trading farms make their "profits" in tokens with none of these
+ * (organic score 0, unverified, liquidity gone minutes after launch), and copying them buys rugs.
+ */
+export function isOrganic(m: Pick<TokenMeta, 'organicScore' | 'verified' | 'liquidity'> | undefined): boolean {
+  return !!m && ((m.organicScore ?? 0) >= 1 || m.verified || (m.liquidity ?? 0) >= 50_000);
+}
+
+/**
+ * pump.fun's bonding-curve program and its PumpSwap AMM, as published in pump.fun's SDKs
+ * (@pump-fun/pump-sdk PUMP_PROGRAM_ID, @pump-fun/pump-swap-sdk PUMP_AMM_PROGRAM_ID) and seen
+ * invoked in pump.fun tokens' trades on mainnet.
+ */
+export const PUMP_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
+export const PUMP_AMM_PROGRAM_ID = 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA';
 
 /** How long a verdict stands before the wallet may be checked again: bots and dust for a month, the rest for a few days (positions get closed). */
-const SEEN_TTL_SEC: Record<string, number> = { sandwich: 30 * 86_400, too_fast: 7 * 86_400, dust: 7 * 86_400, inactive: 7 * 86_400, stale: 3 * 86_400 };
+const SEEN_TTL_SEC: Record<string, number> = { sandwich: 30 * 86_400, bot: 30 * 86_400, wash: 14 * 86_400, too_fast: 7 * 86_400, dust: 7 * 86_400, inactive: 7 * 86_400, stale: 3 * 86_400 };
 /** Close calls (few closed, low win rate or profit) are checked again the next day: positions get closed. */
 const SEEN_TTL_DEFAULT_SEC = 86_400;
 const seenKey = (a: string) => `oxbow:disc:seen:${a}`;
@@ -103,7 +128,7 @@ const seenKey = (a: string) => `oxbow:disc:seen:${a}`;
 export const DISCOVERY_LOCK = 'oxbow:discovery:running';
 /** Running totals for the status page and the empty feed: checked, found, lastRunAt. */
 export const DISCOVERY_STATS = 'oxbow:discovery:stats';
-/** RPC calls discovery spent on a day (UTC). */
+/** RPC credits discovery spent on a day (UTC). */
 export const callsKey = (day: string) => `oxbow:discovery:calls:${day}`;
 /** A winning buy whose co-buyers were already looked up. */
 const winnerKey = (signature: string) => `oxbow:disc:winner:${signature}`;
@@ -115,8 +140,8 @@ const MAX_TX_PER_HOUR = 120;
 /** Three or more fills in one token's short sample: a bot's rhythm, not a person's. */
 const MAX_FILLS_PER_SAMPLE = 2;
 const READ_CONCURRENCY = 4;
-/** Transactions read before deciding whether a candidate is worth its full history. */
-const SCREEN_TXS = 30;
+/** Sniper and arbitrage bots fire transactions that mostly fail; people's mostly land. */
+const MAX_FAILED_SHARE = 0.5;
 /** Smart money for a live feed has to be trading: a trade within this long. */
 const ACTIVE_WITHIN_MS = 7 * 864e5;
 
@@ -150,10 +175,20 @@ export class Discovery {
       this.spent++;
       return fn(...a);
     };
+    const history = d.rpc.getHistory?.bind(d.rpc);
     this.rpc = {
       getTransaction: count((s: string) => d.rpc.getTransaction(s)),
       getSignatures: count((a: string, o: { limit: number; until?: string; before?: string }) => d.rpc.getSignatures(a, o)),
       getTopHolders: count((m: string) => d.rpc.getTopHolders(m)),
+      ...(history
+        ? {
+            getHistory: async (a: string, o: HistoryOpts) => {
+              const h = await history(a, o);
+              this.spent += h.credits;
+              return h;
+            },
+          }
+        : {}),
     };
   }
 
@@ -178,23 +213,14 @@ export class Discovery {
   }
 
   /**
-   * Who is swapping right now, from the newest transactions through Jupiter's router. Busy tokens'
-   * own markets are mostly arbitrage bots (routes that net to nothing); the router is mostly people.
+   * Who is swapping right now, from a program's newest transactions: Jupiter's router (busy tokens'
+   * own markets are mostly arbitrage bots; the router is mostly people) and pump.fun's programs
+   * (where trading terminals send memecoin orders). Every signer's trades count.
    */
-  private async routerFills(by: Map<string, Candidate>): Promise<void> {
-    if (this.cfg.routerSample <= 0) return;
-    const router = JUPITER_PROGRAM_ID.toBase58();
-    const sigs: SignatureInfo[] = [];
-    let before: string | undefined;
-    while (sigs.length < this.cfg.routerSample) {
-      const page = await this.rpc.getSignatures(router, { limit: Math.min(1000, this.cfg.routerSample - sigs.length), before }).catch(() => [] as SignatureInfo[]);
-      if (!page.length) break;
-      sigs.push(...page);
-      before = page[page.length - 1]!.signature;
-    }
-    const ok = sigs.filter((s) => !s.err);
-    const read = await mapLimit(ok, READ_CONCURRENCY, (s) => this.rpc.getTransaction(s.signature).catch(() => null));
-    const txs = read.filter((t): t is RawTx => !!t);
+  private async programFills(program: string, sample: number, by: Map<string, Candidate>): Promise<void> {
+    if (sample <= 0) return;
+    const { entries } = await readHistory(this.rpc, program, { limit: sample, succeededOnly: true }, READ_CONCURRENCY);
+    const txs = entries.map((e) => e.tx).filter((t): t is RawTx => !!t);
     const decimals = new Map<string, number>();
     for (const tx of txs) {
       const msg = tx.transaction.message;
@@ -235,19 +261,22 @@ export class Discovery {
     const rows = await this.d.db.walletTrade.findMany({
       where: { wallet: { in: known.map((w) => w.address) }, ts: { gte: new Date(this.now() - WINNERS_WITHIN_MS) } },
       orderBy: [{ ts: 'asc' }, { id: 'asc' }],
-      select: { wallet: true, ts: true, side: true, mint: true, amount: true, usd: true, signature: true },
+      select: { wallet: true, ts: true, side: true, mint: true, amount: true, usd: true, signature: true, slot: true },
     });
     const byWallet = new Map<string, typeof rows>();
     for (const r of rows) byWallet.set(r.wallet, [...(byWallet.get(r.wallet) ?? []), r]);
-    const winners: { mint: string; signature: string; realized: number }[] = [];
+    const winners: { mint: string; signature: string; slot: number; realized: number }[] = [];
     for (const list of byWallet.values()) {
       const pos = positions(list.map((r) => ({ ts: r.ts, side: r.side, mint: r.mint, amount: Number(r.amount), usd: Number(r.usd) })));
       for (const p of pos.values()) {
         if (!p.matched || p.realized <= 0) continue;
         const buy = list.find((r) => r.mint === p.mint && r.side === 'BUY');
-        if (buy) winners.push({ mint: p.mint, signature: buy.signature, realized: p.realized });
+        if (buy) winners.push({ mint: p.mint, signature: buy.signature, slot: Number(buy.slot), realized: p.realized });
       }
     }
+    // Only winners in tokens with real trading: a farm's winners would only lead to more of the farm.
+    const facts = new Map((await this.d.db.tokenMeta.findMany({ where: { mint: { in: [...new Set(winners.map((w) => w.mint))] } } })).map((m) => [m.mint, m]));
+    winners.splice(0, winners.length, ...winners.filter((w) => isOrganic(facts.get(w.mint))));
     winners.sort((a, b) => b.realized - a.realized);
     let done = 0;
     for (const w of winners) {
@@ -255,8 +284,9 @@ export class Discovery {
       if (this.d.redis && (await this.d.redis.exists(winnerKey(w.signature)).catch(() => 0))) continue;
       done++;
       await this.d.redis?.set(winnerKey(w.signature), '1', 'EX', WINNER_TTL_SEC).catch(() => {});
-      const sigs = (await this.rpc.getSignatures(w.mint, { before: w.signature, limit: this.cfg.coBuyerSample }).catch(() => [] as SignatureInfo[])).filter((s) => !s.err);
-      const read = await mapLimit(sigs, READ_CONCURRENCY, (s) => this.rpc.getTransaction(s.signature).catch(() => null));
+      const { entries } = await readHistory(this.rpc, w.mint, { limit: this.cfg.coBuyerSample, before: { signature: w.signature, slot: w.slot }, succeededOnly: true }, READ_CONCURRENCY).catch(() => ({ entries: [] as HistoryEntry[] }));
+      const sigs = entries;
+      const read = entries.map((e) => e.tx);
       const decimals = new Map<string, number>();
       for (const tx of read) {
         if (!tx) continue;
@@ -283,7 +313,7 @@ export class Discovery {
     }
   }
 
-  /** Real-size traders: early co-buyers of smart wallets' winners, Jupiter's router and trending markets. Best first. */
+  /** Real-size traders: early co-buyers of smart wallets' winners, Jupiter's router, pump.fun and trending markets. Best first. */
   async candidates(mints: string[]): Promise<Candidate[]> {
     const by = new Map<string, Candidate>();
     const early = new Set<string>();
@@ -292,17 +322,23 @@ export class Discovery {
     } catch (e) {
       this.d.log?.(`discovery: co-buyer lookup failed: ${(e as Error).message}`);
     }
-    try {
-      await this.routerFills(by);
-    } catch (e) {
-      this.d.log?.(`discovery: router sample failed: ${(e as Error).message}`);
+    const programs: [string, string, number][] = [
+      ['router', JUPITER_PROGRAM_ID.toBase58(), this.cfg.routerSample],
+      ['pump.fun', PUMP_PROGRAM_ID, this.cfg.pumpSample],
+      ['PumpSwap', PUMP_AMM_PROGRAM_ID, this.cfg.pumpSample],
+    ];
+    for (const [name, program, sample] of programs) {
+      try {
+        await this.programFills(program, sample, by);
+      } catch (e) {
+        this.d.log?.(`discovery: ${name} sample failed: ${(e as Error).message}`);
+      }
     }
     for (const mint of mints) {
       let fills;
       try {
-        fills = await this.d.tape.refresh(mint, this.cfg.samplePerToken);
-        // The tape reads with its own client: count the most it can have spent.
-        this.spent += this.cfg.samplePerToken + 1;
+        // The tape reads with its own client and reports what it spent.
+        fills = await this.d.tape.refresh(mint, this.cfg.samplePerToken, (n) => (this.spent += n));
       } catch (e) {
         this.d.log?.(`discovery: tape ${mint.slice(0, 6)}… failed: ${(e as Error).message}`);
         continue;
@@ -335,11 +371,10 @@ export class Discovery {
     return fresh;
   }
 
-  /** Reads `sigs` (some of `address`'s history) and prices its trades. */
-  private async readTrades(address: string, sigs: SignatureInfo[]): Promise<{ txs: Map<string, RawTx>; metas: ReadonlyMap<string, TokenMeta>; trades: (PnlTrade & { slot: number })[] }> {
-    const read = await mapLimit(sigs, READ_CONCURRENCY, (s) => this.rpc.getTransaction(s.signature).catch(() => null));
+  /** Prices the trades `address` made in `entries` (its history, already read). */
+  private async readTrades(address: string, entries: HistoryEntry[]): Promise<{ txs: Map<string, RawTx>; metas: ReadonlyMap<string, TokenMeta>; trades: (PnlTrade & { slot: number })[] }> {
     const txs = new Map<string, RawTx>();
-    read.forEach((tx, i) => tx && txs.set(sigs[i]!.signature, tx));
+    for (const e of entries) if (e.tx && !e.err) txs.set(e.signature, e.tx);
     const decimals = new Map<string, number>();
     for (const tx of txs.values()) for (const l of walletChanges(tx, address)?.tokens ?? []) decimals.set(l.mint, l.decimals);
     const metas = await this.d.tokens.get([...decimals.keys(), WSOL], STALE.ingest, decimals);
@@ -358,35 +393,32 @@ export class Discovery {
   /** Reads `address`'s recent history and judges it. */
   async evaluate(address: string): Promise<Evaluation> {
     const empty: Evaluation = { verdict: { ok: false, reason: 'inactive' }, sigs: [], txs: new Map(), metas: new Map() };
-    let sigs: SignatureInfo[];
+    let entries: HistoryEntry[];
     try {
-      sigs = await this.rpc.getSignatures(address, { limit: this.cfg.historyTxs });
+      entries = (await readHistory(this.rpc, address, { limit: this.cfg.historyTxs }, READ_CONCURRENCY)).entries;
     } catch {
       return { ...empty, verdict: { ok: false, reason: 'rpc' } };
     }
-    const ok = sigs.filter((s) => !s.err);
+    const sigs: SignatureInfo[] = entries.map(({ signature, slot, err, blockTime }) => ({ signature, slot, err, blockTime }));
+    const ok = entries.filter((s) => !s.err);
+    // Cheapest checks first: the signature list alone shows a bot.
+    if (entries.length >= 20 && (entries.length - ok.length) / entries.length > MAX_FAILED_SHARE) return { ...empty, sigs, verdict: { ok: false, reason: 'bot' } };
     if (ok.length < 5) return { ...empty, sigs };
     if ((ok[0]?.blockTime ?? 0) * 1000 < this.now() - ACTIVE_WITHIN_MS) return { ...empty, sigs, verdict: { ok: false, reason: 'stale' } };
     const times = ok.map((s) => s.blockTime ?? 0).filter((t) => t > 0);
     const hours = times.length ? Math.max((Math.max(...times) - Math.min(...times)) / 3600, 1 / 6) : 1;
-    // Cheapest check first: the signature list alone shows a bot's pace.
     if (ok.length / hours > MAX_TX_PER_HOUR) return { ...empty, sigs, verdict: { ok: false, reason: 'too_fast' } };
 
-    // Two stages: the newest SCREEN_TXS first, and the rest only for wallets that aren't plainly losing.
-    const first = await this.readTrades(address, ok.slice(0, SCREEN_TXS));
-    const quick = summarize(positions([...first.trades].sort((a, b) => a.slot - b.slot)).values(), () => null);
-    if (ok.length > SCREEN_TXS && quick.wins + quick.losses >= 3 && quick.realizedPnlUsd < 0 && (quick.winRate ?? 0) < this.cfg.minWinRate) {
-      return { sigs, txs: first.txs, metas: first.metas, verdict: { ok: false, reason: 'low_win_rate', summary: quick } };
-    }
-    const rest = ok.length > SCREEN_TXS ? await this.readTrades(address, ok.slice(SCREEN_TXS)) : { txs: new Map<string, RawTx>(), metas: new Map<string, TokenMeta>(), trades: [] };
-    const txs = new Map([...first.txs, ...rest.txs]);
-    const metas = new Map([...first.metas, ...rest.metas]);
-    const trades = [...first.trades, ...rest.trades];
+    const { txs, metas, trades } = await this.readTrades(address, ok);
     trades.sort((a, b) => a.slot - b.slot);
     const base = { sigs, txs, metas };
     if (sandwiches(trades) >= 2) return { ...base, verdict: { ok: false, reason: 'sandwich' } };
 
-    const summary = summarize(positions(trades).values(), (m) => metas.get(m)?.usdPrice ?? null);
+    const pos = positions(trades);
+    const price = (m: string) => metas.get(m)?.usdPrice ?? null;
+    const summary = summarize(pos.values(), price);
+    // The same, counting only tokens with real trading behind them.
+    const organic = summarize([...pos.values()].filter((p) => isOrganic(metas.get(p.mint))), price);
     const avgTradeUsd = trades.length ? summary.volumeUsd / trades.length : 0;
     const c = this.cfg;
     const fail = (reason: Exclude<Verdict, { ok: true }>['reason']): Evaluation => ({ ...base, verdict: { ok: false, reason, summary } });
@@ -395,11 +427,14 @@ export class Discovery {
     if (avgTradeUsd < 25 || trades.length < 2) return fail('dust');
     // Its newest swap, not just any transaction (spam airdrops land on idle wallets too).
     if ((trades[trades.length - 1]?.ts.getTime() ?? 0) < this.now() - ACTIVE_WITHIN_MS) return fail('stale');
-    if (closed >= 1 && win >= 0.5 && summary.realizedPnlUsd >= c.bigWinUsd) return { ...base, verdict: { ok: true, summary, avgTradeUsd, kind: 'big_win' } };
+    if (closed >= 1 && win >= 0.5 && summary.realizedPnlUsd >= c.bigWinUsd) {
+      return organic.realizedPnlUsd >= c.bigWinUsd / 2 ? { ...base, verdict: { ok: true, summary, avgTradeUsd, kind: 'big_win' } } : fail('wash');
+    }
     if (trades.length < 4) return fail('dust');
     if (closed < c.minClosed) return fail('few_closed');
     if (win < c.minWinRate) return fail('low_win_rate');
     if (summary.realizedPnlUsd < c.minPnlUsd) return fail('low_pnl');
+    if (organic.realizedPnlUsd < c.minPnlUsd / 2 || organic.wins < organic.losses) return fail('wash');
     return { ...base, verdict: { ok: true, summary, avgTradeUsd, kind: 'consistent' } };
   }
 
@@ -467,7 +502,7 @@ export class Discovery {
   }
 
   private async overBudget(): Promise<boolean> {
-    return this.cfg.dailyCalls > 0 && (await this.usedToday()) >= this.cfg.dailyCalls;
+    return this.cfg.dailyCalls > 0 && (await this.usedToday()) >= budgetSoFar(this.cfg.dailyCalls, this.now());
   }
 
   private async round(): Promise<{ sampled: number; evaluated: number; promoted: string[]; budget?: boolean }> {
@@ -512,23 +547,63 @@ export class Discovery {
   }
 
   /**
-   * Stops tracking discovered wallets that stopped earning: over the last two weeks of
-   * tracked trades, more closed at a loss than at a profit and the total realized is negative.
+   * Stops tracking discovered wallets that stopped earning (over the last two weeks of tracked
+   * trades, more closed at a loss than at a profit and the total realized negative) or turned
+   * out to be bots (most of their recent transactions failing, or too many too fast): those
+   * also cost the RPC plan a read for every transaction.
    */
   async prune(): Promise<number> {
     const since = new Date(this.now() - 14 * 864e5);
     const list = await this.d.db.trackedWallet.findMany({ where: { source: 'discovered', active: true }, select: { address: true } });
     let pruned = 0;
     for (const w of list) {
+      const sigs = await this.d.rpc.getSignatures(w.address, { limit: 100 }).catch(() => null);
+      if (sigs && looksLikeBot(sigs)) {
+        await this.d.db.trackedWallet.update({ where: { address: w.address }, data: { active: false } });
+        await this.d.redis?.set(seenKey(w.address), 'bot', 'EX', SEEN_TTL_SEC.bot!).catch(() => {});
+        this.d.log?.(`discovery: ${w.address.slice(0, 6)}… acts like a bot; no longer tracked`);
+        pruned++;
+        continue;
+      }
       const rows = await this.d.db.walletTrade.findMany({ where: { wallet: w.address, ts: { gte: since } }, orderBy: [{ ts: 'asc' }, { id: 'asc' }], select: { ts: true, side: true, mint: true, amount: true, usd: true } });
-      const s = summarize(positions(rows.map((r) => ({ ts: r.ts, side: r.side, mint: r.mint, amount: Number(r.amount), usd: Number(r.usd) }))).values(), () => null);
+      const pos = positions(rows.map((r) => ({ ts: r.ts, side: r.side, mint: r.mint, amount: Number(r.amount), usd: Number(r.usd) })));
+      const s = summarize(pos.values(), () => null);
+      const facts = new Map((await this.d.db.tokenMeta.findMany({ where: { mint: { in: [...pos.keys()] } } })).map((m) => [m.mint, m]));
+      const organic = summarize([...pos.values()].filter((p) => isOrganic(facts.get(p.mint))), () => null);
       if (s.wins + s.losses >= 5 && s.losses > s.wins && s.realizedPnlUsd < 0) {
         await this.d.db.trackedWallet.update({ where: { address: w.address }, data: { active: false } });
+        pruned++;
+      } else if (s.wins + s.losses >= 3 && s.realizedPnlUsd > 0 && organic.realizedPnlUsd <= 0) {
+        // Wash trading: profit, but none of it in any token with real trading.
+        await this.d.db.trackedWallet.update({ where: { address: w.address }, data: { active: false } });
+        await this.d.redis?.set(seenKey(w.address), 'wash', 'EX', SEEN_TTL_SEC.wash!).catch(() => {});
+        this.d.log?.(`discovery: ${w.address.slice(0, 6)}… only earns in tokens nobody else trades (wash trading); no longer tracked`);
         pruned++;
       }
     }
     return pruned;
   }
+}
+
+/**
+ * Discovery's share of its daily budget available by `now` (UTC): what the hours so far are worth,
+ * plus two hours' worth, so rounds spread over the day instead of spending it all after midnight.
+ */
+export function budgetSoFar(daily: number, now: number): number {
+  const d = new Date(now);
+  const minutes = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return Math.min(daily, (daily * (minutes + 120)) / 1440);
+}
+
+/** A bot's signature list: most transactions failing, or more than MAX_TX_PER_HOUR landing. */
+export function looksLikeBot(sigs: SignatureInfo[]): boolean {
+  if (sigs.length < 20) return false;
+  const ok = sigs.filter((s) => !s.err);
+  if ((sigs.length - ok.length) / sigs.length > MAX_FAILED_SHARE) return true;
+  const times = ok.map((s) => s.blockTime ?? 0).filter((t) => t > 0);
+  if (times.length < 20) return false;
+  const hours = Math.max((Math.max(...times) - Math.min(...times)) / 3600, 1 / 6);
+  return ok.length / hours > MAX_TX_PER_HOUR;
 }
 
 /** Buys followed by a sell of the same token within two slots: the shape of a sandwich bot. */

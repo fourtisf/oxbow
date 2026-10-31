@@ -13,7 +13,7 @@ import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token
 import { JUPITER_PROGRAM_ID, JUPITER_TRIGGER_PROGRAM_ID, type JupiterInstruction, type JupiterSwapInstructions } from '@oxbow/solana/swap';
 import { JupiterError, type Jupiter, type JupiterQuote, type JupiterToken, type QuoteParams, type TriggerCreate, type TriggerOrder } from '../src/jupiter';
 import { WSOL, type RawTx } from '../src/tracker/parse';
-import type { SignatureInfo, TrackerRpc } from '../src/tracker/rpc';
+import type { History, HistoryOpts, SignatureInfo, TrackerRpc } from '../src/tracker/rpc';
 import { addr, fakeSwapTx, sig, type FakeSwap } from './fixtures';
 
 export const NOW = Date.parse('2026-10-30T12:00:00Z');
@@ -174,6 +174,28 @@ export class FakeTrackerRpc implements TrackerRpc {
       if (i >= 0) list = list.slice(0, i);
     }
     return list.slice(0, o.limit);
+  }
+}
+
+/** The same chain, read the way Helius serves histories: whole transactions in bulk, 10 credits per 100. */
+export class FakeHistoryRpc implements TrackerRpc {
+  calls = { getTransaction: 0, getSignatures: 0, getHistory: 0 };
+  constructor(private readonly base: FakeTrackerRpc) {}
+  getTopHolders = (mint: string) => this.base.getTopHolders(mint);
+  async getTransaction(signature: string) {
+    this.calls.getTransaction++;
+    return this.base.getTransaction(signature);
+  }
+  async getSignatures(address: string, o: { limit: number; until?: string; before?: string }) {
+    this.calls.getSignatures++;
+    return this.base.getSignatures(address, o);
+  }
+  async getHistory(address: string, o: HistoryOpts): Promise<History> {
+    this.calls.getHistory++;
+    let list = await this.base.getSignatures(address, { limit: 10_000, until: o.until, before: o.before?.signature });
+    if (o.succeededOnly) list = list.filter((s) => !s.err);
+    list = list.slice(0, o.limit);
+    return { entries: list.map((s) => ({ ...s, tx: this.base.txs.get(s.signature) ?? null })), credits: 10 * Math.max(1, Math.ceil(list.length / 100)) };
   }
 }
 

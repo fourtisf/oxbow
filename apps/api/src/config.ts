@@ -28,12 +28,12 @@ export const ConfigSchema = z.object({
   BACKFILL_LIMIT: z.preprocess(blank, z.coerce.number().int().min(10).max(1000).default(100)),
   /** Seconds between catch-up rounds over every wallet (covers anything the websocket missed). */
   TRACKER_RESYNC_SEC: z.preprocess(blank, z.coerce.number().int().min(30).default(300)),
-  /** Find profitable wallets automatically from trending tokens' traders ("discovered" smart money). */
+  /** Find profitable wallets automatically (traders around winners, Jupiter, pump.fun, busy tokens): "discovered" smart money. */
   DISCOVERY_ENABLED: z.preprocess(blank, z.enum(['0', '1', 'true', 'false']).default('1').transform((v) => v === '1' || v === 'true')),
-  /** Minutes between discovery rounds (every 15 while fewer than 10 smart wallets are tracked). */
+  /** Minutes between discovery rounds once DISCOVERY_MAX smart wallets are tracked (every 15 until then). */
   DISCOVERY_EVERY_MIN: z.preprocess(blank, z.coerce.number().int().min(10).default(120)),
-  /** Candidates evaluated per round (each reads DISCOVERY_HISTORY_TXS transactions). */
-  DISCOVERY_EVALS: z.preprocess(blank, z.coerce.number().int().min(1).max(100).default(10)),
+  /** Candidates evaluated per round (each reads DISCOVERY_HISTORY_TXS transactions: 10 credits on Helius). */
+  DISCOVERY_EVALS: z.preprocess(blank, z.coerce.number().int().min(1).max(300).default(30)),
   DISCOVERY_HISTORY_TXS: z.preprocess(blank, z.coerce.number().int().min(20).max(200).default(100)),
   /** A discovered wallet needs at least this much realized profit (USD) in the history read. */
   DISCOVERY_MIN_PNL_USD: z.preprocess(blank, z.coerce.number().nonnegative().default(150)),
@@ -41,9 +41,10 @@ export const ConfigSchema = z.object({
   DISCOVERY_MIN_WIN_RATE: z.preprocess(blank, z.coerce.number().min(0).max(1).default(0.5)),
   /** ...or this much realized profit with no more losses than wins (whales close few positions). */
   DISCOVERY_BIG_WIN_USD: z.preprocess(blank, z.coerce.number().nonnegative().default(1500)),
-  /** RPC calls discovery may spend a day; the tracker needs the rest of the plan (Helius free: ~33,000 a day in all). 0 = no limit. */
+  /** RPC credits discovery may spend a day, spread over the day; the tracker needs the rest of the plan. 0 = no limit. */
   DISCOVERY_DAILY_CALLS: z.preprocess(blank, z.coerce.number().int().min(0).default(15_000)),
-  DISCOVERY_MAX: z.preprocess(blank, z.coerce.number().int().min(0).default(50)),
+  /** Most discovered wallets tracked at once. Each tracked wallet costs a read per transaction it makes. */
+  DISCOVERY_MAX: z.preprocess(blank, z.coerce.number().int().min(0).default(100)),
   /** Days a wallet nobody follows or opens stays tracked (featured and discovered wallets always are). */
   WALLET_IDLE_DAYS: z.preprocess(blank, z.coerce.number().int().positive().default(14)),
 });

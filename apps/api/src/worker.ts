@@ -7,11 +7,12 @@
  * - Catch-up: every TRACKER_RESYNC_SEC each wallet's signatures since its
  *   bookmark are read, covering anything the websocket missed (restarts,
  *   dropped connections). New wallets get their history read the same way.
- * - Discovery: every DISCOVERY_EVERY_MIN (every 15 minutes while fewer than
- *   ten are found), traders of the tokens trading most
- *   right now are checked and the profitable ones tracked as smart money
- *   (tracker/discovery.ts); once a day, discovered wallets that stopped
- *   earning are dropped.
+ * - Discovery: every 15 minutes until DISCOVERY_MAX smart wallets are tracked
+ *   (then every DISCOVERY_EVERY_MIN, to replace dropped ones), within a daily
+ *   RPC budget spread over the day, traders around winners, Jupiter, pump.fun
+ *   and the busiest tokens are checked and the profitable ones tracked as
+ *   smart money (tracker/discovery.ts); once a day, discovered wallets that
+ *   stopped earning or act like bots are dropped.
  * - Upkeep: token data refreshed for what was traded today, and wallets nobody
  *   has followed or opened for WALLET_IDLE_DAYS stop being tracked.
  */
@@ -204,15 +205,14 @@ async function upkeep() {
   );
 }
 
-/** While fewer than this many smart wallets are tracked, discovery runs every 15 minutes to fill the feed. */
-const BOOTSTRAP_BELOW = 10;
-const BOOTSTRAP_EVERY_MS = 15 * 60_000;
+/** Until DISCOVERY_MAX smart wallets are tracked, discovery runs this often (the daily budget paces it). */
+const FILL_EVERY_MS = 15 * 60_000;
 let lastDiscovery = 0;
 
-/** Checked every 15 minutes; runs a round when bootstrapping or when DISCOVERY_EVERY_MIN has passed. */
+/** Checked every 15 minutes; runs a round while filling up, or when DISCOVERY_EVERY_MIN has passed. */
 async function discoverTick() {
   const found = await db.trackedWallet.count({ where: { source: 'discovered', active: true } });
-  if (found >= BOOTSTRAP_BELOW && Date.now() - lastDiscovery < config.DISCOVERY_EVERY_MIN * 60_000) return;
+  if (found >= config.DISCOVERY_MAX && Date.now() - lastDiscovery < config.DISCOVERY_EVERY_MIN * 60_000) return;
   lastDiscovery = Date.now();
   await discover();
 }
@@ -220,7 +220,7 @@ async function discoverTick() {
 async function discover() {
   const r = await discovery.run();
   if (r.busy) return log('discovery: a round is already running (started from the CLI?)');
-  if (r.budget && !r.evaluated) return log(`discovery: today's budget of ${config.DISCOVERY_DAILY_CALLS} RPC calls is spent; resuming tomorrow (DISCOVERY_DAILY_CALLS)`);
+  if (r.budget && !r.evaluated) return log(`discovery: waiting for budget (DISCOVERY_DAILY_CALLS=${config.DISCOVERY_DAILY_CALLS} RPC credits a day, spread over the day)`);
   log(`discovery: ${r.sampled} token(s) sampled, ${r.evaluated} wallet(s) checked, ${r.promoted.length} new`);
   if (r.promoted.length) await refreshWallets();
 }
@@ -266,7 +266,7 @@ sub.on('message', (_ch, address: string) => {
 await sub.subscribe(WALLETS_CHANNEL);
 
 const timers = [every(config.TRACKER_RESYNC_SEC * 1000, resync), every(15_000, heartbeat), every(3_600_000, upkeep), every(60_000, refreshWallets)];
-if (config.DISCOVERY_ENABLED) timers.push(every(BOOTSTRAP_EVERY_MS, discoverTick), every(86_400_000, prune));
+if (config.DISCOVERY_ENABLED) timers.push(every(FILL_EVERY_MS, discoverTick), every(86_400_000, prune));
 log(`tracker up: ${config.RPC_URL.replace(/api-key=[^&]+/, 'api-key=…')}`);
 
 const shutdown = async () => {

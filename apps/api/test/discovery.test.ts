@@ -9,12 +9,12 @@ import { BuiltLimitSchema, FeedPageSchema, OrderFlowSchema, WalletSummarySchema 
 import { z } from 'zod';
 import { JUPITER_TRIGGER_PROGRAM_ID } from '@oxbow/solana/swap';
 import { buildApp, type ChainReader } from '../src/app';
-import { Discovery, sandwiches } from '../src/tracker/discovery';
+import { budgetSoFar, Discovery, PUMP_AMM_PROGRAM_ID, PUMP_PROGRAM_ID, sandwiches } from '../src/tracker/discovery';
 import { Ingestor } from '../src/tracker/ingest';
 import { WSOL } from '../src/tracker/parse';
 import { MarketTape, orderFlow } from '../src/tracker/tape';
 import { TokenBook } from '../src/tracker/tokens';
-import { FakeChain, FakeJupiter, FakeTrackerRpc, NOW, SOL_USD, token } from './fakes';
+import { FakeChain, FakeHistoryRpc, FakeJupiter, FakeTrackerRpc, NOW, SOL_USD, token } from './fakes';
 import { addr, sig, type FakeSwap } from './fixtures';
 import { TEST_DATABASE_URL, TEST_REDIS_URL } from './global-setup';
 
@@ -37,6 +37,14 @@ describe('sandwich detection', () => {
         { slot: 90, side: 'SELL', mint: 'B' },
       ]),
     ).toBe(1);
+  });
+});
+
+describe('discovery budget', () => {
+  it('is spread over the day, two hours ahead', () => {
+    expect(budgetSoFar(14_400, Date.parse('2026-10-30T00:00:00Z'))).toBe(1_200);
+    expect(budgetSoFar(14_400, Date.parse('2026-10-30T12:00:00Z'))).toBe(8_400);
+    expect(budgetSoFar(14_400, Date.parse('2026-10-30T23:00:00Z'))).toBe(14_400);
   });
 });
 
@@ -183,6 +191,70 @@ describe.skipIf(!ready)('discovery, tape and limit orders', () => {
     expect(r.promoted).toContain(early);
     // Each winning buy is looked up once.
     expect((await discovery.run()).promoted).not.toContain(early);
+  });
+
+  it('reads histories in bulk where the provider can, judging them the same way', async () => {
+    const bulk = new FakeHistoryRpc(rpc);
+    const d = new Discovery({ db, rpc: bulk, tokens, jup, redis, tape: new MarketTape({ rpc: bulk, tokens, redis, now: () => NOW }), ingestor: new Ingestor({ db, rpc: bulk, tokens, now: () => NOW }), now: () => NOW });
+    expect((await d.evaluate(W.smart)).verdict).toMatchObject({ ok: true, kind: 'consistent', summary: { wins: 3, losses: 0 } });
+    expect((await d.evaluate(W.loser)).verdict).toMatchObject({ ok: false, reason: 'low_win_rate' });
+    expect((await d.evaluate(W.bot)).verdict).toMatchObject({ ok: false, reason: 'too_fast' });
+    expect(bulk.calls).toMatchObject({ getTransaction: 0, getSignatures: 0, getHistory: 3 });
+    const r = await d.run();
+    expect(r.promoted.sort()).toEqual([W.smart, W.whale].sort());
+    expect(bulk.calls.getTransaction).toBe(0);
+    // Credits, not calls: 10 per bulk read.
+    expect(Number(await redis.get(`oxbow:discovery:calls:${new Date(NOW).toISOString().slice(0, 10)}`)) % 10).toBe(0);
+  });
+
+  it('drops bots whose transactions mostly fail, before reading them and again when pruning', async () => {
+    const sniper = addr();
+    for (const [i, m] of [HOT, OTHER, MORE[0]!].entries()) {
+      swap({ wallet: sniper, blockTime: T(300 - i * 50), mint: m, tokenDelta: 1000n * TOK, quoteDelta: -1n * SOL, opensAccount: true });
+      swap({ wallet: sniper, blockTime: T(280 - i * 50), mint: m, tokenDelta: -1000n * TOK, quoteDelta: 3n * SOL, opensAccount: true });
+    }
+    const passing = await discovery.evaluate(sniper);
+    expect(passing.verdict.ok).toBe(true);
+    await discovery.promote(sniper, passing);
+    // Then it starts spraying attempts that fail.
+    const list = rpc.sigs.get(sniper)!;
+    for (let i = 0; i < 30; i++) list.unshift({ signature: sig(), slot: 0, err: { InstructionError: [2, { Custom: 6001 }] }, blockTime: T(10) + i });
+    expect((await discovery.evaluate(sniper)).verdict).toMatchObject({ ok: false, reason: 'bot' });
+    expect(await discovery.prune()).toBe(1);
+    expect(await db.trackedWallet.findUniqueOrThrow({ where: { address: sniper } })).toMatchObject({ active: false });
+  });
+
+  it('leaves out wash-trading farms: profits only in tokens nobody else trades', async () => {
+    // Fresh copycat tokens: no organic trading, unverified, liquidity gone.
+    const junk = [addr(), addr(), addr()];
+    for (const m of junk) jup.table.set(m, token(m, { symbol: 'XPENG', verified: false, organicScore: 0, liquidity: 300, usdPrice: 0.00001 }));
+    const farm = addr();
+    for (const [i, m] of junk.entries()) {
+      swap({ wallet: farm, blockTime: T(300 - i * 50), mint: m, tokenDelta: 1000n * TOK, quoteDelta: -1n * SOL, opensAccount: true });
+      swap({ wallet: farm, blockTime: T(280 - i * 50), mint: m, tokenDelta: -1000n * TOK, quoteDelta: 2n * SOL, opensAccount: true });
+    }
+    const ev = await discovery.evaluate(farm);
+    expect(ev.verdict).toMatchObject({ ok: false, reason: 'wash' });
+    // One found before this rule existed is dropped by the daily prune.
+    await discovery.promote(farm, { ...ev, verdict: { ok: true, summary: ev.verdict.summary!, avgTradeUsd: 400, kind: 'consistent' } });
+    expect(await discovery.prune()).toBe(1);
+    expect(await db.trackedWallet.findUniqueOrThrow({ where: { address: farm } })).toMatchObject({ active: false });
+    // The real trader stays.
+    await discovery.promote(W.smart, await discovery.evaluate(W.smart));
+    expect(await discovery.prune()).toBe(0);
+  });
+
+  it('finds traders on pump.fun and PumpSwap', async () => {
+    const degen = addr();
+    for (const [i, m] of [OTHER, MORE[1]!, MORE[2]!].entries()) {
+      const b = swap({ wallet: degen, blockTime: T(200 - i * 40), mint: m, tokenDelta: 1000n * TOK, quoteDelta: -1n * SOL, opensAccount: true });
+      swap({ wallet: degen, blockTime: T(180 - i * 40), mint: m, tokenDelta: -1000n * TOK, quoteDelta: 2n * SOL, opensAccount: true });
+      // Its buys show up in the programs' latest transactions (a few fills at most: more reads as a bot).
+      rpc.index(i % 2 ? PUMP_AMM_PROGRAM_ID : PUMP_PROGRAM_ID, b, T(200 - i * 40));
+    }
+    jup.trending = [];
+    const r = await discovery.run();
+    expect(r.promoted).toContain(degen);
   });
 
   it('stops the bookmark before history it could not store, so the worker finishes it', async () => {

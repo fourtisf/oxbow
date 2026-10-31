@@ -11,7 +11,7 @@
 import type { Redis } from 'ioredis';
 import type { FlowLevel, MarketTrade, OrderFlow } from '@oxbow/shared';
 import { parseTrades, walletChanges, WSOL, type RawTx } from './parse';
-import type { TrackerRpc } from './rpc';
+import { mapLimit, readHistory, type TrackerRpc } from './rpc';
 import { quoteUsd, STALE, type TokenBook, type TokenMeta } from './tokens';
 import { ui } from './ingest';
 
@@ -25,20 +25,7 @@ const READ_CONCURRENCY = 5;
 
 const key = (mint: string) => `oxbow:tape:${mint}`;
 
-/** Runs `fn` over `items`, at most `n` at a time, keeping order. */
-export async function mapLimit<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(n, items.length) }, async () => {
-      while (next < items.length) {
-        const i = next++;
-        out[i] = await fn(items[i]!);
-      }
-    }),
-  );
-  return out;
-}
+export { mapLimit } from './rpc';
 
 /** The signers of `tx` that traded `mint` in it, as fills. `quotePrice` prices the other side in USD. */
 export function fillsOf(tx: RawTx, signature: string, mint: string, metas: ReadonlyMap<string, TokenMeta>, solUsd: number | null): TapeTrade[] {
@@ -98,8 +85,9 @@ export class MarketTape {
    * Reads up to `maxNew` signatures newer than the tape's head and adds their fills. The head always
    * moves to the newest signature; any transaction that couldn't be read is retried on its own.
    * One refresh per mint at a time across processes; a caller that finds one running gets the stored tape.
+   * `onCredits` hears what the reads cost (discovery keeps a daily budget).
    */
-  async refresh(mint: string, maxNew: number): Promise<TapeTrade[]> {
+  async refresh(mint: string, maxNew: number, onCredits?: (credits: number) => void): Promise<TapeTrade[]> {
     const redis = this.d.redis;
     const token = Math.random().toString(36).slice(2);
     if (redis) {
@@ -108,16 +96,20 @@ export class MarketTape {
     }
     try {
       const head = (redis ? await redis.get(`${key(mint)}:head`).catch(() => null) : null) || null;
-      const newer = (await this.d.rpc.getSignatures(mint, { limit: maxNew, until: head ?? undefined })).filter((s) => !s.err);
+      const history = await readHistory(this.d.rpc, mint, { limit: maxNew, until: head ?? undefined, succeededOnly: true }, READ_CONCURRENCY);
+      const newer = history.entries;
       // Transactions that couldn't be read last time are asked for again (up to three tries), on their own.
       const retry = await this.retries(mint);
-      const sigs = [...newer, ...retry.filter((r) => !newer.some((f) => f.signature === r.signature)).map((r) => ({ signature: r.signature, slot: 0, err: null, blockTime: null }))];
+      const again = retry.filter((r) => !newer.some((f) => f.signature === r.signature));
+      const retried = await mapLimit(again, READ_CONCURRENCY, (r) => this.d.rpc.getTransaction(r.signature).catch(() => null));
+      onCredits?.(history.credits + again.length);
+      const sigs = [...newer, ...again.map((r) => ({ signature: r.signature }))];
+      const txs = [...newer.map((e) => e.tx), ...retried];
       const old = await this.read(mint);
       if (!sigs.length) {
         await redis?.set(`${key(mint)}:at`, String(this.now()), 'EX', TTL_SEC).catch(() => {});
         return old;
       }
-      const txs = await mapLimit(sigs, READ_CONCURRENCY, (s) => this.d.rpc.getTransaction(s.signature).catch(() => null));
       const missing = sigs.flatMap((s, i) => (txs[i] ? [] : [{ signature: s.signature, tries: (retry.find((r) => r.signature === s.signature)?.tries ?? 0) + 1 }])).filter((r) => r.tries < 3);
       await redis?.set(`${key(mint)}:retry`, JSON.stringify(missing), 'EX', TTL_SEC).catch(() => {});
       const nextHead = newer[0]?.signature ?? head;

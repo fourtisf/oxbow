@@ -6,11 +6,13 @@ trade in one tap from their own wallet.
 
 - **Live feed** of tracked wallets' trades (token, size, price paid, USD
   value), with a Following tab for the wallets you follow.
-- **Smart money, found automatically**: the worker samples the traders and
-  biggest holders of the tokens trading most, reads each candidate's own
-  history, drops bots and idle wallets, and tracks the ones that keep closing
-  trades at a profit (SMART badge). The owner can also feature wallets, and
-  anyone can add one.
+- **Smart money, found automatically**: the worker samples who is trading
+  right now (Jupiter, pump.fun, PumpSwap, the busiest tokens, and whoever got
+  into known smart wallets' winners first), reads each candidate's own
+  history, drops bots, wash-trading farms and idle wallets, and tracks the
+  ones that keep closing trades at a profit (SMART badge). The owner can also
+  import lists (from GMGN, Kolscan, FOMO...), each wallet checked the same
+  way, feature wallets, and anyone can add one.
 - **Wallets**: a 30-day leaderboard by realized profit, and a page per wallet
   with realized and unrealized PnL, win rate, holdings (checked against the
   chain) and closed positions.
@@ -66,21 +68,32 @@ trade in one tap from their own wallet.
 - **Live updates**: the worker publishes trades on Redis; every API process
   fans them out to browsers over SSE (`/api/feed/stream`).
 - **Discovery** (`src/tracker/discovery.ts`): candidates first from the
-  early co-buyers of known smart wallets' winning trades (who bought the same
-  token just before them), then from the newest swaps through Jupiter's router (mostly people; busy tokens' own markets are
-  mostly arbitrage bots) and the market tapes of Jupiter's top-traded tokens,
-  traders who just took profit first. Each is judged on its own last `DISCOVERY_HISTORY_TXS` (100)
-  transactions: dropped for bot pace (120+ transactions an hour, or three
-  fills of one token in a short sample), sandwich shape, or no swap in a week;
-  passed as "consistent" (3+ tokens closed, half or more in profit, $150+
-  realized) or "big win" ($1,500+ realized, no more losses than wins).
-  While fewer than ten are found the worker runs a round every 15 minutes,
-  then every `DISCOVERY_EVERY_MIN`. Discovered wallets that close more losses
-  than wins over two weeks are dropped daily.
-  `pnpm --filter @oxbow/api wallets discover` runs a round by hand;
-  `--deep` runs a big one (about 10,000 RPC calls) to fill an empty feed.
-  Expect roughly one wallet in 25 to 30 checked to qualify: most traders lose.
-- **Market tape** (`src/tracker/tape.ts`): signatures touching a mint, read
+  early co-buyers of known smart wallets' winning trades in real tokens (who
+  bought the same token just before them), then from the newest swaps through
+  Jupiter's router and pump.fun's bonding curve and PumpSwap (where trading
+  terminals send memecoin orders), and the market tapes of Jupiter's
+  top-traded tokens, traders who just took profit first. Each is judged on its
+  own last `DISCOVERY_HISTORY_TXS` (100) transactions: dropped as a bot (most
+  transactions failing, 120+ an hour, or three fills of one token in a short
+  sample), for sandwich shape, or no swap in a week; passed as "consistent"
+  (3+ tokens closed, half or more in profit, $150+ realized) or "big win"
+  ($1,500+ realized, no more losses than wins), and only when a real part of
+  that profit was made in tokens with organic trading (Jupiter organic score
+  above 0, verified, or $50k+ liquidity). That last rule keeps out
+  wash-trading farms: hundreds of wallets churning fresh copycat tokens
+  nobody else trades, whose winners look profitable on paper.
+  The worker runs a round every 15 minutes until `DISCOVERY_MAX` (100) are
+  tracked, then every `DISCOVERY_EVERY_MIN`, within `DISCOVERY_DAILY_CALLS`
+  RPC credits a day spread over the day. Daily, discovered wallets that turned
+  into bots, earn only in junk tokens, or close more losses than wins over two
+  weeks are dropped. `pnpm --filter @oxbow/api wallets discover` runs a round
+  by hand; `--deep` runs big rounds back to back for up to `--minutes` (20).
+- **RPC credits** (`src/tracker/rpc.ts`): histories (a candidate's, a
+  program's, a token's market) are read with Helius's
+  `getTransactionsForAddress`, 100 full transactions per request for 10
+  credits, where the provider has it, and as signatures plus one read each
+  elsewhere. A tracked wallet costs one read per transaction it makes.
+- **Market tape** (`src/tracker/tape.ts`): transactions touching a mint, read
   newest first and parsed for every signer, shared in Redis for token pages
   and discovery, refreshed at most every 15 s per token.
 

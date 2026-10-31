@@ -94,8 +94,9 @@ record for `@` pointing at the server and a `CNAME` for `www` pointing at
    cd /home/oxbow/oxbow && pnpm --filter @oxbow/api wallets list
    ```
 
-   Or many at once from a file (one per line: address, then an optional
-   label; lines starting with # are skipped):
+   Or many at once from a file: a list (address, then an optional label), a
+   CSV or a page copied from GMGN, Kolscan or FOMO. Each wallet is checked
+   first (see "More smart money" below; `--trust` skips the check):
 
    ```bash
    sudo -iu oxbow bash -c 'cd /home/oxbow/oxbow && pnpm --filter @oxbow/api wallets import /home/oxbow/wallets.txt'
@@ -109,18 +110,43 @@ Check: `curl -s https://oxbowflow.com/api/status` shows the RPC slot and
 online; `pm2 logs oxbow-worker` shows each wallet catching up and live trades
 as they happen.
 
+### More smart money
+
+The worker finds smart wallets by itself (every 15 minutes until
+`DISCOVERY_MAX`, 100, are tracked). To fill up faster, run big rounds back to
+back for 20 minutes (stops early at the cap):
+
+```bash
+sudo -iu oxbow bash -c 'cd /home/oxbow/oxbow && pnpm --filter @oxbow/api wallets discover --deep'
+```
+
+Lists from elsewhere (GMGN's top wallets, Kolscan, FOMO, pump.fun profiles):
+paste the full addresses (or the whole copied page) into a file, then import
+it. Each wallet is checked like discovery checks its finds (bots, wash
+trading, losers and idle wallets are left out); `--trust` tracks them all
+unchecked:
+
+```bash
+sudo -iu oxbow nano /home/oxbow/wallets.txt
+```
+
+```bash
+sudo -iu oxbow bash -c 'cd /home/oxbow/oxbow && pnpm --filter @oxbow/api wallets import /home/oxbow/wallets.txt'
+```
+
 RPC use: one websocket subscription per tracked wallet, one transaction read
-per trade, a catch-up call per wallet every `TRACKER_RESYNC_SEC` (5 min),
-about 1,700 calls per discovery round (every 15 minutes until ten smart
-wallets are found, then `DISCOVERY_EVERY_MIN`, 2 h), and up to
-25 per token page every 15 s while someone has it open (order flow). Every
-process spaces its calls to `RPC_RPS` (5 a second) so Helius's free plan
-(about 10 a second, about 1 million a month) isn't tripped, and discovery stops
-for the day after `DISCOVERY_DAILY_CALLS` (15,000) so it never eats what the
-tracker needs. On a paid plan raise both (for example `RPC_RPS=40`,
-`DISCOVERY_DAILY_CALLS=200000`) and smart money is found many times faster.
-Jupiter's free API is rate-limited; at scale, get a key at portal.jup.ag and
-set `JUPITER_API_BASE=https://api.jup.ag` and `JUPITER_API_KEY`.
+(1 credit) per transaction it makes, a catch-up call per wallet every
+`TRACKER_RESYNC_SEC` (5 min), and up to `DISCOVERY_DAILY_CALLS` (15,000)
+credits a day for discovery, spread over the day. Histories are read in bulk
+with Helius's `getTransactionsForAddress` (100 transactions for 10 credits),
+so checking a wallet costs about 10 credits. Busy traders make a few hundred
+transactions a day, so about 100 tracked wallets is what Helius's free plan
+carries; for several hundred, take a paid plan (Developer: 10 million
+credits a month) and raise the limits in `apps/api/.env`, for example
+`DISCOVERY_MAX=300`, `RPC_RPS=40`, `DISCOVERY_DAILY_CALLS=100000`. Every
+process spaces its calls to `RPC_RPS` (5 a second). Jupiter's free API is
+rate-limited; at scale, get a key at portal.jup.ag and set
+`JUPITER_API_BASE=https://api.jup.ag` and `JUPITER_API_KEY`.
 
 ## Backups
 
