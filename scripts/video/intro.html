@@ -1,0 +1,603 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face{font-family:Geist;src:url(%%FONT_MEDIUM%%);font-weight:500}
+@font-face{font-family:Geist;src:url(%%FONT_SEMIBOLD%%);font-weight:600}
+@font-face{font-family:GeistMono;src:url(%%FONT_MONO%%);font-weight:500}
+:root{--bg:#02050C;--ice:#9ECFFF;--blue:#5FA8FF;--text:#F1F6FF;--muted:#A7B9D0;--dim:#6F86A6;--up:#46E3A0;--down:#FF7A85;--line:rgba(170,215,255,.14)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--bg);font-family:Geist,sans-serif;color:var(--text)}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden}
+.abs{position:absolute}
+.bgbase{inset:0;background:radial-gradient(120% 140% at 65% 35%,#10234A 0%,#081530 38%,#040A17 70%,#02050C 100%)}
+.grid{inset:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:64px 64px;-webkit-mask-image:radial-gradient(ellipse at 60% 50%,#000 0%,transparent 65%)}
+.glow{border-radius:50%;filter:blur(20px)}
+.vignette{inset:0;background:radial-gradient(130% 120% at 50% 50%,transparent 55%,rgba(0,0,0,.6) 100%)}
+.scene{position:absolute;inset:0;opacity:0}
+.eyebrow{display:inline-flex;align-items:center;gap:14px;padding:12px 22px;border-radius:999px;background:rgba(111,178,255,.09);box-shadow:inset 0 0 0 1.5px rgba(111,178,255,.32);font:500 19px GeistMono;letter-spacing:.22em;color:#A9D6FF}
+.dot{width:10px;height:10px;border-radius:50%;background:#3DDC97;box-shadow:0 0 16px #3DDC97}
+.h1{font:600 92px/1 Geist;letter-spacing:-.05em}
+.h1 .g,.g{background:linear-gradient(92deg,#F0F8FF 0%,#A9D6FF 40%,#5FA8FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{font:500 30px/1.45 Geist;color:var(--muted);max-width:660px}
+.cap{position:absolute;left:140px;top:300px;width:700px}
+.cap .h1{margin-top:30px}
+.cap .sub{margin-top:30px}
+.card{border-radius:26px;background:linear-gradient(180deg,#16294A,#0A1426);box-shadow:inset 0 0 0 1px rgba(170,215,255,.18),0 40px 90px rgba(0,0,0,.55);overflow:hidden}
+.chead{display:flex;align-items:center;justify-content:space-between;height:70px;padding:0 28px;border-bottom:1px solid rgba(170,215,255,.08);font:600 17px GeistMono;letter-spacing:.2em;color:#DCEBFF}
+.chead .r{font:500 14px GeistMono;letter-spacing:.14em;color:var(--dim)}
+.pill{font:600 15px GeistMono;letter-spacing:.12em;padding:6px 12px;border-radius:8px}
+.pill.buy{color:var(--up);background:rgba(61,220,151,.14)}
+.pill.sell{color:var(--down);background:rgba(255,92,108,.14)}
+.smart{font:600 12px GeistMono;letter-spacing:.14em;padding:4px 8px;border-radius:7px;color:#A9D6FF;background:rgba(111,178,255,.13);box-shadow:inset 0 0 0 1px rgba(111,178,255,.32)}
+.av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#9ED4FF,#2F6BFF);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);flex:none}
+.mono{font-family:GeistMono}
+.row{position:absolute;left:0;right:0;height:96px;display:flex;align-items:center;gap:20px;padding:0 28px;border-top:1px solid rgba(170,215,255,.07)}
+.wm{position:absolute;left:64px;bottom:48px;display:flex;align-items:center;gap:18px;opacity:0}
+.url{position:absolute;right:64px;bottom:52px;font:500 18px GeistMono;letter-spacing:.18em;color:#7FBCFF;opacity:0}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="abs bgbase"></div>
+  <div class="abs grid"></div>
+  <div class="abs glow" id="glowA" style="width:1100px;height:1100px;background:radial-gradient(closest-side,rgba(70,140,255,.35),rgba(70,140,255,0))"></div>
+  <div class="abs glow" id="glowB" style="width:900px;height:900px;background:radial-gradient(closest-side,rgba(95,168,255,.22),rgba(95,168,255,0))"></div>
+
+  <!-- S1: logo reveal -->
+  <div class="scene" id="s1">
+    <svg class="abs" width="1920" height="1080" id="ripples"></svg>
+    <div class="abs" id="s1mark" style="left:770px;top:250px;width:380px;height:380px">%%MARK%%</div>
+    <div class="abs" id="s1word" style="left:0;right:0;top:668px;display:flex;justify-content:center">%%LOGO_WORD%%</div>
+    <div class="abs" id="s1tag" style="left:0;right:0;top:800px;text-align:center;font:500 34px Geist;color:var(--muted)">Follow the wallets that move first.</div>
+  </div>
+
+  <!-- S2: the problem -->
+  <div class="scene" id="s2">
+    <div class="cap" style="top:330px;width:840px">
+      <div class="eyebrow" id="s2e"><span class="dot" style="background:#FF7A85;box-shadow:0 0 16px #FF7A85"></span>EVERY CYCLE</div>
+      <div class="h1" style="margin-top:34px;font-size:74px"><div id="s2a">By the time it trends,</div><div id="s2b" class="g" style="margin-top:8px">smart money is already selling.</div></div>
+    </div>
+    <svg class="abs" id="s2chart" width="800" height="560" style="left:1020px;top:260px;overflow:visible">
+      <defs>
+        <linearGradient id="cfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5FA8FF" stop-opacity=".28"/><stop offset="1" stop-color="#5FA8FF" stop-opacity="0"/></linearGradient>
+      </defs>
+      <path id="s2area" fill="url(#cfill)" d=""/>
+      <path id="s2line" fill="none" stroke="#9ECFFF" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" d=""/>
+      <g id="s2early" opacity="0"><circle r="12" fill="#46E3A0"/><circle r="26" fill="none" stroke="#46E3A0" stroke-opacity=".4" stroke-width="2"/></g>
+      <g id="s2earlyL" opacity="0"><rect x="-96" y="-82" width="192" height="44" rx="12" fill="rgba(61,220,151,.14)" stroke="rgba(61,220,151,.4)"/><text x="0" y="-52" text-anchor="middle" fill="#46E3A0" font-family="GeistMono" font-size="18" letter-spacing="2">SMART MONEY</text></g>
+      <g id="s2top" opacity="0"><circle r="12" fill="#FF7A85"/><circle r="26" fill="none" stroke="#FF7A85" stroke-opacity=".4" stroke-width="2"/></g>
+      <g id="s2topL" opacity="0"><rect x="-70" y="-82" width="140" height="44" rx="12" fill="rgba(255,92,108,.14)" stroke="rgba(255,92,108,.45)"/><text x="0" y="-52" text-anchor="middle" fill="#FF7A85" font-family="GeistMono" font-size="18" letter-spacing="2">EVERYONE</text></g>
+    </svg>
+  </div>
+
+  <!-- S3: live feed -->
+  <div class="scene" id="s3">
+    <div class="cap">
+      <div class="eyebrow" id="s3e"><span class="dot"></span>LIVE FEED</div>
+      <div class="h1" id="s3h">Smart money,<br><span class="g">live.</span></div>
+      <div class="sub" id="s3s">Every buy and sell from proven wallets, seconds after it lands on chain.</div>
+    </div>
+    <div class="abs card" id="s3card" style="left:940px;top:220px;width:840px;height:676px">
+      <div class="chead"><span style="display:flex;align-items:center;gap:14px"><span class="dot"></span>LIVE TRADES</span><span class="r">SOLANA</span></div>
+      <div class="abs" id="s3rows" style="left:0;right:0;top:70px;bottom:0;overflow:hidden"></div>
+    </div>
+  </div>
+
+  <!-- S4: smart money filter -->
+  <div class="scene" id="s4">
+    <div class="cap">
+      <div class="eyebrow" id="s4e"><span class="dot"></span>SMART MONEY</div>
+      <div class="h1" id="s4h">Every wallet<br><span class="g">proves itself.</span></div>
+      <div class="sub" id="s4s">Judged on its own on-chain history. Bots and wash-trading farms never make the list.</div>
+    </div>
+    <div class="abs" id="s4field" style="left:900px;top:190px;width:900px;height:720px"></div>
+    <div class="abs" id="s4scan" style="top:170px;width:3px;height:760px;background:linear-gradient(180deg,transparent,#9ECFFF,transparent);box-shadow:0 0 30px #5FA8FF;opacity:0"></div>
+  </div>
+
+  <!-- S5: copy in one tap -->
+  <div class="scene" id="s5">
+    <div class="cap">
+      <div class="eyebrow" id="s5e"><span class="dot"></span>COPY TRADING</div>
+      <div class="h1" id="s5h">Copy any trade<br><span class="g">in one tap.</span></div>
+      <div class="sub" id="s5s">Pick an amount, check the quote, approve it in your own wallet.</div>
+    </div>
+    <div class="abs card" id="s5panel" style="left:1060px;top:150px;width:640px;height:800px;padding:30px 34px">
+      <div style="display:flex;align-items:center;gap:16px">
+        <span class="av" style="width:46px;height:46px;background:linear-gradient(135deg,#FFB7E2,#8B5CF6)"></span>
+        <div><div style="font:600 28px Geist">Buy</div><div style="font:500 18px Geist;color:var(--dim);margin-top:2px">Copying Wallet 07</div></div>
+      </div>
+      <div id="s5form">
+        <div style="margin-top:28px;display:flex;justify-content:space-between;font:500 18px Geist;color:var(--dim)"><span>You pay</span><span class="mono" style="color:#9ECFFF">Balance 2.5 SOL</span></div>
+        <div style="margin-top:12px;height:96px;border-radius:18px;background:#050B17;box-shadow:inset 0 0 0 1px rgba(170,215,255,.14);display:flex;align-items:center;justify-content:space-between;padding:0 26px">
+          <span class="mono" id="s5amt" style="font-size:44px;font-weight:500">0.0</span><span class="mono" style="font-size:24px">SOL</span>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px" id="s5chips">
+          <span class="mono" style="padding:10px 16px;border-radius:12px;box-shadow:inset 0 0 0 1px rgba(170,215,255,.18);font-size:18px">0.1 SOL</span>
+          <span class="mono" style="padding:10px 16px;border-radius:12px;box-shadow:inset 0 0 0 1px rgba(170,215,255,.18);font-size:18px">0.25 SOL</span>
+          <span class="mono" id="s5chip" style="padding:10px 16px;border-radius:12px;box-shadow:inset 0 0 0 1px rgba(170,215,255,.18);font-size:18px">0.5 SOL</span>
+          <span class="mono" style="padding:10px 16px;border-radius:12px;box-shadow:inset 0 0 0 1px rgba(170,215,255,.18);font-size:18px">1 SOL</span>
+        </div>
+        <div id="s5quote" style="margin-top:22px;border-radius:18px;background:rgba(5,11,23,.6);box-shadow:inset 0 0 0 1px rgba(170,215,255,.12);padding:18px 24px;font:500 20px Geist;color:var(--muted)">
+          <div style="display:flex;justify-content:space-between;padding:7px 0"><span>You get (est.)</span><span class="mono" style="color:var(--text);font-size:24px">5.4M</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 0"><span>Price impact</span><span class="mono" style="color:var(--text)">0.42%</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 0"><span>Route</span><span class="mono" style="color:var(--text)">Pump.fun Amm</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0"><span>Slippage</span><span class="mono" id="s5slip" style="padding:6px 14px;border-radius:10px;color:#03060C;background:linear-gradient(180deg,#EAF5FF,#A8D3FF);font-size:18px">Auto 5%</span></div>
+        </div>
+        <div id="s5steps" style="margin-top:20px;height:0;overflow:hidden;font:500 19px Geist;color:var(--muted)"></div>
+        <div id="s5btn" style="position:absolute;left:34px;right:34px;bottom:30px;height:78px;border-radius:18px;display:grid;place-items:center;font:600 26px Geist;color:#03060C;background:linear-gradient(180deg,#EAF5FF,#A8D3FF);box-shadow:0 14px 40px rgba(111,178,255,.35)">Buy</div>
+      </div>
+      <div id="s5done" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;opacity:0">
+        <span id="s5check" style="width:130px;height:130px;border-radius:34px;display:grid;place-items:center;background:rgba(61,220,151,.14);box-shadow:inset 0 0 0 2px rgba(61,220,151,.45)"><svg width="62" height="62" viewBox="0 0 24 24"><path id="s5tick" d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#46E3A0" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="24" stroke-dashoffset="24"/></svg></span>
+        <div style="font:600 40px Geist">Bought</div>
+        <div style="font:500 22px Geist;color:#9ECFFF">View on Solscan ↗</div>
+      </div>
+      <svg id="s5cursor" class="abs" width="44" height="44" viewBox="0 0 24 24" style="left:0;top:0;opacity:0;filter:drop-shadow(0 6px 10px rgba(0,0,0,.5))"><path d="M5 3l14 8-6 1.6L10 19z" fill="#fff" stroke="#0A1426" stroke-width="1.2" stroke-linejoin="round"/></svg>
+      <div id="s5ripple" class="abs" style="width:40px;height:40px;border-radius:50%;border:3px solid rgba(255,255,255,.8);opacity:0"></div>
+    </div>
+  </div>
+
+  <!-- S6: token safety + order flow -->
+  <div class="scene" id="s6">
+    <div class="cap">
+      <div class="eyebrow" id="s6e"><span class="dot"></span>TOKEN PAGES</div>
+      <div class="h1" id="s6h">Know what<br><span class="g">you're buying.</span></div>
+      <div class="sub" id="s6s">A safety check on every token, and the order flow behind it.</div>
+    </div>
+    <div class="abs card" id="s6safe" style="left:900px;top:230px;width:440px;height:520px">
+      <div class="chead"><span>SAFETY CHECK</span><span class="r" style="color:#46E3A0">OK</span></div>
+      <div id="s6list" style="padding:16px 28px"></div>
+    </div>
+    <div class="abs card" id="s6flow" style="left:1370px;top:300px;width:440px;height:520px">
+      <div class="chead"><span>ORDER FLOW</span><span class="r">BUY · SELL</span></div>
+      <div id="s6bars" style="position:relative;height:440px"></div>
+    </div>
+  </div>
+
+  <!-- S7: portfolio -->
+  <div class="scene" id="s7">
+    <div class="cap">
+      <div class="eyebrow" id="s7e"><span class="dot"></span>PORTFOLIO</div>
+      <div class="h1" id="s7h">Your portfolio,<br><span class="g">live.</span></div>
+      <div class="sub" id="s7s">Value, cost and profit for every token you hold. Sell in one tap.</div>
+    </div>
+    <div class="abs" id="s7tiles" style="left:900px;top:230px;width:900px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px"></div>
+    <div class="abs card" id="s7hold" style="left:900px;top:430px;width:900px;height:420px">
+      <div class="chead"><span>HOLDINGS</span><span class="r">3</span></div>
+      <div id="s7rows" style="position:relative"></div>
+    </div>
+  </div>
+
+  <!-- S8: non-custodial -->
+  <div class="scene" id="s8">
+    <div class="abs" style="left:0;right:0;top:230px;display:flex;justify-content:center">
+      <svg width="190" height="190" viewBox="0 0 64 64" style="overflow:visible;filter:drop-shadow(0 0 30px rgba(95,168,255,.5))">
+        <defs><linearGradient id="shg" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F0F8FF"/><stop offset=".5" stop-color="#8FCBFF"/><stop offset="1" stop-color="#2F6BFF"/></linearGradient></defs>
+        <path id="s8shield" d="M32 5 L54 13 V31 C54 45 44 54 32 59 C20 54 10 45 10 31 V13 Z" fill="none" stroke="url(#shg)" stroke-width="3" stroke-linejoin="round" stroke-dasharray="170" stroke-dashoffset="170"/>
+        <path id="s8tick" d="M22 32 L29 39 L43 25" fill="none" stroke="#46E3A0" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="32" stroke-dashoffset="32"/>
+      </svg>
+    </div>
+    <div class="abs h1" id="s8h" style="left:0;right:0;top:470px;text-align:center">Your keys. <span class="g">Your coins.</span></div>
+    <div class="abs sub" id="s8s" style="left:0;right:0;top:590px;max-width:none;text-align:center">Oxbow never holds your funds. Every trade is checked before your wallet signs it.</div>
+    <div class="abs" id="s8chips" style="left:0;right:0;top:700px;display:flex;justify-content:center;gap:18px"></div>
+  </div>
+
+  <!-- S9: outro -->
+  <div class="scene" id="s9">
+    <svg class="abs" width="1920" height="1080" id="ripples2"></svg>
+    <div class="abs" id="s9logo" style="left:0;right:0;top:250px;display:flex;justify-content:center">%%LOGO%%</div>
+    <div class="abs h1" id="s9h" style="left:0;right:0;top:430px;text-align:center;font-size:104px">Follow the wallets<br><span class="g">that move first.</span></div>
+    <div class="abs" id="s9url" style="left:0;right:0;top:720px;text-align:center;font:500 34px GeistMono;letter-spacing:.18em;color:#9ECFFF">OXBOWFLOW.COM</div>
+    <div class="abs" id="s9meta" style="left:0;right:0;top:800px;display:flex;justify-content:center;gap:18px">
+      <span class="eyebrow" style="font-size:18px">@OXBOWFLOW</span>
+      <span class="eyebrow" style="font-size:18px;gap:12px"><span style="height:28px;padding:0 10px;border-radius:8px;display:grid;place-items:center;font:700 14px GeistMono;letter-spacing:.14em;color:#03060C;background:linear-gradient(180deg,#EAF5FF,#A8D3FF)">CA</span>COMING SOON</span>
+    </div>
+  </div>
+
+  <div class="wm" id="wm">%%LOGO_SMALL%%</div>
+  <div class="url" id="url">OXBOWFLOW.COM</div>
+  <div class="abs vignette"></div>
+  <svg class="abs" width="1920" height="1080" style="inset:0;opacity:.06;mix-blend-mode:overlay;pointer-events:none"><filter id="gr"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(#gr)"/></svg>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const easeBack = (x) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const prog = (t, a, b, e = easeOut) => e(clamp((t - a) / (b - a)));
+const lerp = (a, b, p) => a + (b - a) * p;
+
+/** Scene windows (seconds). */
+const S = { s1: [0, 5], s2: [5, 10], s3: [10, 17], s4: [17, 24], s5: [24, 31.6], s6: [31.6, 36.5], s7: [36.5, 42], s8: [42, 46], s9: [46, 50] };
+const DURATION = 50;
+const FADE = 0.55;
+
+function sceneAlpha(t, [a, b], first, last) {
+  const fin = first ? 1 : prog(t, a - 0.05, a + FADE, easeInOut);
+  const fout = last ? 1 : 1 - prog(t, b - FADE, b + 0.05, easeInOut);
+  return Math.min(fin, fout);
+}
+
+/** Text entrance: rises, sharpens, fades in; leaves the same way at the scene's end. */
+function reveal(el, t, at, [a, b], dur = 0.7, dy = 34) {
+  const p = prog(t, at, at + dur);
+  const out = prog(t, b - 0.6, b - 0.05, easeInOut);
+  el.style.opacity = p * (1 - out);
+  el.style.transform = `translateY(${(1 - p) * dy - out * 18}px)`;
+  el.style.filter = `blur(${(1 - p) * 10 + out * 6}px)`;
+}
+
+// ---------- S1 ripples
+const NS = 'http://www.w3.org/2000/svg';
+function makeRings(svg, n, cx, cy) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('fill', 'none');
+    c.setAttribute('stroke', '#9ECFFF'); c.setAttribute('stroke-width', '1.6');
+    svg.appendChild(c); out.push(c);
+  }
+  return out;
+}
+const rings = makeRings($('ripples'), 7, 960, 440);
+const rings2 = makeRings($('ripples2'), 6, 960, 540);
+function ripple(list, t, start, speed, maxR) {
+  list.forEach((c, i) => {
+    const age = t - start - i * 0.45;
+    if (age < 0) { c.setAttribute('opacity', 0); return; }
+    const r = 150 + ((age * speed) % maxR);
+    c.setAttribute('r', r);
+    c.setAttribute('opacity', (0.28 * (1 - r / (maxR + 150))).toFixed(3));
+  });
+}
+
+// ---------- S2 chart
+const CH = (() => {
+  const pts = [];
+  for (let i = 0; i <= 120; i++) {
+    const x = i / 120;
+    // Slow start, a run up, the top, then the roll-over.
+    let y = 0.08 + 0.05 * Math.sin(x * 9);
+    y += 0.9 * Math.exp(-Math.pow((x - 0.62) / 0.17, 2));
+    y -= x > 0.62 ? (x - 0.62) * 0.9 : 0;
+    y += 0.03 * Math.sin(x * 37);
+    pts.push([x * 800, 520 - y * 440]);
+  }
+  return pts;
+})();
+const pathOf = (pts) => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+
+// ---------- S3 feed rows
+const FEED = [
+  ['BUY', 'Wallet 07', '42.5', '$8.1K'], ['SELL', 'Wallet 03', '96.2', '$18.2K'], ['BUY', 'Wallet 21', '18.0', '$3.4K'],
+  ['BUY', 'Wallet 14', '7.25', '$1.4K'], ['SELL', 'Wallet 30', '12.8', '$2.4K'], ['BUY', 'Wallet 09', '64.0', '$12.1K'],
+  ['BUY', 'Wallet 18', '3.40', '$642'], ['SELL', 'Wallet 07', '55.1', '$10.4K'], ['BUY', 'Wallet 26', '21.9', '$4.1K'],
+];
+const feedRows = FEED.map(([side, who, sol, usd], i) => {
+  const r = document.createElement('div');
+  r.className = 'row';
+  r.innerHTML = `<span class="pill ${side === 'BUY' ? 'buy' : 'sell'}">${side}</span><span class="av"></span><span style="font:500 24px Geist;flex:1;white-space:nowrap">${who} <span class="smart" style="margin-left:8px;vertical-align:4px">SMART</span></span><span class="mono" style="font-size:24px;width:150px;text-align:right">${sol} SOL</span><span class="mono" style="font-size:22px;color:var(--dim);width:110px;text-align:right">${usd}</span><span class="mono" style="font-size:18px;color:#5F7390;width:60px;text-align:right">now</span>`;
+  $('s3rows').appendChild(r);
+  return r;
+});
+
+// ---------- S4 wallet field
+let seed = 7;
+const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const DOTS = [];
+const REASONS = ['BOT', 'WASH', 'LOSING', 'IDLE', 'BOT', 'WASH'];
+const SMART_IDX = new Set([6, 15, 23, 34, 41, 52]);
+const REASON_IDX = new Set([2, 9, 12, 19, 27, 30, 38, 45, 49, 57]);
+for (let i = 0; i < 60; i++) {
+  const col = i % 10, rowi = Math.floor(i / 10);
+  const x = 40 + col * 88 + (rnd() - 0.5) * 34, y = 60 + rowi * 112 + (rnd() - 0.5) * 40;
+  const el = document.createElement('div');
+  el.className = 'abs';
+  el.style.cssText = `left:${x}px;top:${y}px;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#3A5578;box-shadow:inset 0 0 0 1px rgba(170,215,255,.25)`;
+  const tag = document.createElement('span');
+  tag.className = 'abs mono';
+  const smart = SMART_IDX.has(i), reason = REASON_IDX.has(i);
+  const smartN = [...SMART_IDX].indexOf(i);
+  const STATS = [['+$1,223', '33/42 won'], ['+$1,054', '23/42 won'], ['+$930', '16/24 won'], ['+$694', '14/26 won'], ['+$3,451', 'big win'], ['+$543', '13/25 won']];
+  if (smart) tag.innerHTML = `<span style="color:#F1F6FF">Wallet ${String(smartN * 7 + 3).padStart(2, '0')}</span>  <span class="smart" style="margin:0 10px;vertical-align:3px">SMART</span><span style="color:#46E3A0">${STATS[smartN][0]}</span> <span style="color:#6F86A6">· ${STATS[smartN][1]}</span>`;
+  else tag.textContent = reason ? REASONS[[...REASON_IDX].indexOf(i) % REASONS.length] : '';
+  tag.style.cssText = smart ? 'left:34px;top:-15px;white-space:nowrap;font-size:22px;color:#DCEBFF;opacity:0' : 'left:20px;top:-30px;white-space:nowrap;font-size:13px;letter-spacing:.14em;padding:3px 7px;border-radius:6px;color:#FF7A85;background:rgba(255,92,108,.14);opacity:0';
+  el.appendChild(tag);
+  $('s4field').appendChild(el);
+  DOTS.push({ el, tag, x, y, smart, reason, smartN });
+}
+
+// ---------- S6 lists
+const CHECKS = ['Mint authority off', 'Freeze authority off', 'Holders spread out', 'Organic trading', 'Jupiter verified'];
+const checkEls = CHECKS.map((c) => {
+  const d = document.createElement('div');
+  d.style.cssText = 'display:flex;align-items:center;gap:16px;height:82px;font:500 24px Geist;border-bottom:1px solid rgba(170,215,255,.06)';
+  d.innerHTML = `<span style="width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(61,220,151,.16);color:#46E3A0;font:700 18px Geist">✓</span>${c}`;
+  $('s6list').appendChild(d);
+  return d;
+});
+const LEVELS = [[.22, .55], [.35, .4], [.5, .3], [.42, .48], [.7, .25], [.9, .2], [.6, .35], [.45, .15], [.3, .1], [.2, .12]];
+const barEls = LEVELS.map(([b, s], i) => {
+  const y = 22 + i * 40;
+  const wrap = document.createElement('div');
+  wrap.className = 'abs';
+  wrap.style.cssText = `left:0;right:0;top:${y}px;height:28px`;
+  wrap.innerHTML = `<div class="abs" style="right:50%;top:0;height:28px;border-radius:6px 0 0 6px;background:linear-gradient(270deg,rgba(255,122,133,.85),rgba(255,122,133,.25));width:0"></div><div class="abs" style="left:50%;top:0;height:28px;border-radius:0 6px 6px 0;background:linear-gradient(90deg,rgba(70,227,160,.9),rgba(70,227,160,.25));width:0"></div>`;
+  $('s6bars').appendChild(wrap);
+  return { sell: wrap.children[0], buy: wrap.children[1], b, s };
+});
+
+// ---------- S7 tiles and rows
+const TILES = [['TOTAL VALUE', 852, '$', ''], ['UNREALIZED PNL', 52, '+$', 'up'], ['REALIZED PNL', 18.5, '+$', 'up']];
+const tileEls = TILES.map(([label]) => {
+  const d = document.createElement('div');
+  d.className = 'card';
+  d.style.cssText = 'height:170px;padding:26px 28px';
+  d.innerHTML = `<div class="mono" style="font-size:16px;letter-spacing:.18em;color:var(--dim)">${label}</div><div class="mono val" style="margin-top:22px;font-size:52px;font-weight:500"></div>`;
+  $('s7tiles').appendChild(d);
+  return d;
+});
+const HOLD = [['#FFB7E2,#8B5CF6', '5.4M', '$412.00', '+$64.00', '+18%'], ['#9ED4FF,#2F6BFF', '120K', '$268.50', '+$21.70', '+9%'], ['#FFD58A,#FF8A3D', '8,400', '$171.50', '−$33.70', '−16%']];
+const holdEls = HOLD.map(([grad, amtv, val, pnl, pct], i) => {
+  const r = document.createElement('div');
+  r.className = 'row';
+  r.style.top = `${i * 106}px`;
+  r.style.height = '106px';
+  const up = !pnl.startsWith('−');
+  r.innerHTML = `<span class="av" style="width:42px;height:42px;background:linear-gradient(135deg,${grad})"></span><span class="mono" style="font-size:24px;flex:1">${amtv}</span><span class="mono" style="font-size:24px;width:170px;text-align:right">${val}</span><span class="mono" style="font-size:24px;width:150px;text-align:right;color:${up ? 'var(--up)' : 'var(--down)'}">${pnl}</span><span class="mono" style="font-size:18px;width:70px;text-align:right;color:${up ? 'var(--up)' : 'var(--down)'}">${pct}</span><span style="height:46px;padding:0 20px;border-radius:12px;display:grid;place-items:center;font:600 20px Geist;color:#1C0408;background:linear-gradient(180deg,#FF8696,#FF5A6E)">Sell</span>`;
+  $('s7rows').appendChild(r);
+  return r;
+});
+
+// ---------- S8 chips
+const chipEls = ['Non-custodial', 'Checked before you sign', 'No accounts'].map((c) => {
+  const d = document.createElement('span');
+  d.className = 'eyebrow';
+  d.style.fontSize = '18px';
+  d.innerHTML = `<span class="dot"></span>${c.toUpperCase()}`;
+  $('s8chips').appendChild(d);
+  return d;
+});
+
+const s5stepsEl = $('s5steps');
+s5stepsEl.innerHTML = ['Building the transaction', 'Approve it in your wallet', 'Confirming on chain'].map((s) => `<div style="display:flex;align-items:center;gap:14px;height:40px"><span class="st" style="width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font:700 14px Geist"></span>${s}</div>`).join('');
+const stepDots = [...s5stepsEl.querySelectorAll('.st')];
+
+window.DURATION = DURATION;
+window.render = function render(t) {
+  // Background drift
+  $('glowA').style.transform = `translate(${380 + Math.sin(t * 0.25) * 120}px, ${-260 + Math.cos(t * 0.2) * 80}px)`;
+  $('glowB').style.transform = `translate(${1100 + Math.cos(t * 0.18) * 140}px, ${380 + Math.sin(t * 0.22) * 90}px)`;
+
+  for (const [id, w] of Object.entries(S)) $(id).style.opacity = sceneAlpha(t, w, id === 's1', id === 's9');
+  const brand = prog(t, 5.2, 6, easeInOut) * (1 - prog(t, 45.4, 46.1, easeInOut));
+  $('wm').style.opacity = brand * 0.85;
+  $('url').style.opacity = brand * 0.85;
+
+  // S1
+  if (t < 5.6) {
+    ripple(rings, t, 0.3, 160, 760);
+    const m = prog(t, 0.2, 1.5, easeBack);
+    const mf = prog(t, 0.2, 1.2);
+    $('s1mark').style.opacity = mf;
+    $('s1mark').style.transform = `scale(${lerp(0.55, 1, m)})`;
+    $('s1mark').style.filter = `blur(${(1 - mf) * 18}px) drop-shadow(0 30px ${60 + 30 * Math.sin(t * 2)}px rgba(25,85,255,.6))`;
+    const w = prog(t, 1.5, 2.4);
+    $('s1word').style.opacity = w;
+    $('s1word').style.transform = `translateY(${(1 - w) * 30}px)`;
+    $('s1word').style.letterSpacing = `${(1 - w) * 12}px`;
+    reveal($('s1tag'), t, 2.5, S.s1, 0.8);
+    const out = prog(t, 4.4, 5.05, easeInOut);
+    $('s1').style.transform = `scale(${1 + out * 0.06})`;
+    $('s1').style.filter = `blur(${out * 8}px)`;
+  }
+
+  // S2
+  if (t > 4.4 && t < 10.6) {
+    const lt = t;
+    reveal($('s2e'), lt, 5.2, S.s2);
+    reveal($('s2a'), lt, 5.45, S.s2, 0.8);
+    reveal($('s2b'), lt, 6.1, S.s2, 0.8);
+    const p = prog(lt, 5.5, 8.6, easeInOut);
+    const n = Math.max(2, Math.round(p * (CH.length - 1)) + 1);
+    const pts = CH.slice(0, n);
+    $('s2line').setAttribute('d', pathOf(pts));
+    $('s2area').setAttribute('d', pathOf(pts) + ` L${pts[pts.length - 1][0]} 560 L0 560 Z`);
+    const early = CH[22], top = CH[74];
+    const eo = prog(lt, 6.3, 6.8, easeBack);
+    $('s2early').setAttribute('opacity', clamp(eo)); $('s2early').setAttribute('transform', `translate(${early[0]} ${early[1]}) scale(${eo})`);
+    $('s2earlyL').setAttribute('opacity', prog(lt, 6.6, 7.1)); $('s2earlyL').setAttribute('transform', `translate(${early[0]} ${early[1]})`);
+    const to = prog(lt, 7.6, 8.1, easeBack);
+    $('s2top').setAttribute('opacity', clamp(to)); $('s2top').setAttribute('transform', `translate(${top[0]} ${top[1]}) scale(${to})`);
+    $('s2topL').setAttribute('opacity', prog(lt, 7.9, 8.4)); $('s2topL').setAttribute('transform', `translate(${top[0]} ${top[1]})`);
+  }
+
+  // S3
+  if (t > 9.4 && t < 17.6) {
+    reveal($('s3e'), t, 10.3, S.s3);
+    reveal($('s3h'), t, 10.5, S.s3, 0.8);
+    reveal($('s3s'), t, 10.9, S.s3, 0.8);
+    const c = prog(t, 10.4, 11.2);
+    $('s3card').style.opacity = c;
+    $('s3card').style.transform = `translateY(${(1 - c) * 40}px) scale(${lerp(0.96, 1, c)})`;
+    const T0 = 11.0, GAP = 0.62, H = 96;
+    feedRows.forEach((r, i) => {
+      const ti = T0 + (FEED.length - 1 - i) * GAP; // the last one in the list arrives first
+      let slot = 0;
+      feedRows.forEach((_, k) => {
+        const tk = T0 + (FEED.length - 1 - k) * GAP;
+        if (tk > ti) slot += prog(t, tk, tk + 0.45, easeInOut);
+      });
+      const inP = prog(t, ti, ti + 0.45);
+      r.style.opacity = inP * (1 - clamp(slot - 5.2));
+      r.style.transform = `translateY(${slot * H - (1 - inP) * 40}px)`;
+      const flash = 1 - prog(t, ti, ti + 1.3);
+      r.style.background = `rgba(111,178,255,${(0.16 * flash * inP).toFixed(3)})`;
+      r.lastElementChild.textContent = t - ti < 2 ? 'now' : `${Math.floor((t - ti) * 3 + 2)}s`;
+    });
+  }
+
+  // S4
+  if (t > 16.4 && t < 24.6) {
+    reveal($('s4e'), t, 17.3, S.s4);
+    reveal($('s4h'), t, 17.5, S.s4, 0.8);
+    reveal($('s4s'), t, 17.9, S.s4, 0.8);
+    const scanX = lerp(-40, 940, prog(t, 18.6, 21.0, easeInOut));
+    $('s4scan').style.left = `${900 + scanX}px`;
+    $('s4scan').style.opacity = prog(t, 18.5, 18.8) * (1 - prog(t, 20.9, 21.2));
+    DOTS.forEach((d, i) => {
+      const appear = prog(t, 17.4 + (i % 10) * 0.05 + Math.floor(i / 10) * 0.07, 17.9 + (i % 10) * 0.05 + Math.floor(i / 10) * 0.07, easeBack);
+      const hit = clamp((scanX - d.x) / 60);
+      const gather = prog(t, 21.4 + d.smartN * 0.08, 22.3 + d.smartN * 0.08, easeInOut);
+      let o = appear, s = appear, bg = '#3A5578', glow = 'none', tx = 0, ty = 0;
+      if (d.smart) {
+        bg = hit > 0 ? '#9ECFFF' : bg;
+        glow = hit > 0 ? `0 0 ${18 + 10 * hit}px rgba(95,168,255,.9)` : 'none';
+        s = appear * (1 + 0.5 * hit);
+        tx = (120 - d.x) * gather; ty = (90 + d.smartN * 104 - d.y) * gather;
+        d.tag.style.opacity = gather;
+        d.tag.style.transform = `translateX(${(1 - gather) * -20}px)`;
+      } else {
+        const fade = prog(t, 21.2, 21.7);
+        if (d.reason) {
+          bg = hit > 0 ? '#FF7A85' : bg;
+          d.tag.style.opacity = hit * (1 - fade);
+          o = appear * (1 - fade);
+        } else {
+          o = appear * lerp(1, 0.25, hit) * (1 - fade);
+        }
+      }
+      d.el.style.opacity = o;
+      d.el.style.background = bg;
+      d.el.style.boxShadow = glow === 'none' ? 'inset 0 0 0 1px rgba(170,215,255,.25)' : glow;
+      d.el.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+    });
+  }
+
+  // S5
+  if (t > 23.4 && t < 32.2) {
+    reveal($('s5e'), t, 24.3, S.s5);
+    reveal($('s5h'), t, 24.5, S.s5, 0.8);
+    reveal($('s5s'), t, 24.9, S.s5, 0.8);
+    const c = prog(t, 24.4, 25.2);
+    $('s5panel').style.opacity = c;
+    $('s5panel').style.transform = `translateY(${(1 - c) * 40}px) scale(${lerp(0.96, 1, c)})`;
+    const chip = prog(t, 25.5, 25.7);
+    $('s5chip').style.background = chip > 0.5 ? 'linear-gradient(180deg,#EAF5FF,#A8D3FF)' : 'transparent';
+    $('s5chip').style.color = chip > 0.5 ? '#03060C' : '';
+    $('s5amt').textContent = chip > 0.5 ? '0.5' : '0.0';
+    const q = prog(t, 25.8, 26.4);
+    $('s5quote').style.opacity = 0.25 + 0.75 * q;
+    const sl = prog(t, 26.0, 26.4);
+    $('s5slip').style.boxShadow = `0 0 ${30 * sl * (1 - prog(t, 26.8, 27.4))}px rgba(111,178,255,.9)`;
+    // Cursor: to the button, a press.
+    const cur = prog(t, 26.5, 27.4, easeInOut);
+    const cx = lerp(560, 300, cur), cy = lerp(500, 735, cur);
+    $('s5cursor').style.opacity = prog(t, 26.4, 26.7) * (1 - prog(t, 28.1, 28.4));
+    $('s5cursor').style.transform = `translate(${cx}px, ${cy}px)`;
+    const press = prog(t, 27.5, 27.65) * (1 - prog(t, 27.7, 27.9));
+    $('s5btn').style.transform = `scale(${1 - 0.04 * press})`;
+    const rp = prog(t, 27.55, 28.2);
+    $('s5ripple').style.opacity = rp > 0 && rp < 1 ? (1 - rp) * 0.8 : 0;
+    $('s5ripple').style.transform = `translate(${cx - 4}px, ${cy - 4}px) scale(${1 + rp * 3})`;
+    const steps = prog(t, 27.8, 28.1);
+    s5stepsEl.style.height = `${steps * 130}px`;
+    stepDots.forEach((d, i) => {
+      const done = t > 28.25 + i * 0.45;
+      const active = !done && t > 27.9 + i * 0.45;
+      d.textContent = done ? '✓' : '';
+      d.style.background = done ? 'rgba(61,220,151,.16)' : 'transparent';
+      d.style.color = '#46E3A0';
+      d.style.boxShadow = done ? 'none' : `inset 0 0 0 2px ${active ? '#9ECFFF' : 'rgba(170,215,255,.25)'}`;
+    });
+    $('s5btn').textContent = t > 27.8 && t < 29.5 ? 'Confirming on chain…' : 'Buy';
+    const done = prog(t, 29.5, 29.9);
+    $('s5form').style.opacity = 1 - done;
+    $('s5done').style.opacity = done;
+    $('s5check').style.transform = `scale(${lerp(0.6, 1, prog(t, 29.5, 30.0, easeBack))})`;
+    $('s5tick').style.strokeDashoffset = 24 * (1 - prog(t, 29.7, 30.1));
+  }
+
+  // S6
+  if (t > 31.5 && t < 37.1) {
+    reveal($('s6e'), t, 31.8, S.s6);
+    reveal($('s6h'), t, 32.0, S.s6, 0.8);
+    reveal($('s6s'), t, 32.4, S.s6, 0.8);
+    [$('s6safe'), $('s6flow')].forEach((el, i) => {
+      const c = prog(t, 31.9 + i * 0.25, 32.7 + i * 0.25);
+      el.style.opacity = c;
+      el.style.transform = `translateY(${(1 - c) * 40}px)`;
+    });
+    checkEls.forEach((el, i) => {
+      const c = prog(t, 32.7 + i * 0.32, 33.1 + i * 0.32, easeBack);
+      el.style.opacity = clamp(c);
+      el.style.transform = `translateX(${(1 - c) * -24}px)`;
+    });
+    barEls.forEach((b, i) => {
+      const g = prog(t, 32.9 + i * 0.1, 33.9 + i * 0.1);
+      b.buy.style.width = `${b.b * 50 * g}%`;
+      b.sell.style.width = `${b.s * 50 * g}%`;
+    });
+  }
+
+  // S7
+  if (t > 35.9 && t < 42.6) {
+    reveal($('s7e'), t, 36.8, S.s7);
+    reveal($('s7h'), t, 37.0, S.s7, 0.8);
+    reveal($('s7s'), t, 37.4, S.s7, 0.8);
+    tileEls.forEach((el, i) => {
+      const c = prog(t, 36.9 + i * 0.15, 37.6 + i * 0.15);
+      el.style.opacity = c;
+      el.style.transform = `translateY(${(1 - c) * 30}px)`;
+      const [, v, pre, cls] = TILES[i];
+      const n = v * prog(t, 37.2 + i * 0.15, 38.8 + i * 0.15, easeOut);
+      const val = el.querySelector('.val');
+      val.textContent = pre + n.toFixed(2);
+      val.style.color = cls === 'up' ? 'var(--up)' : 'var(--text)';
+    });
+    const hc = prog(t, 37.5, 38.3);
+    $('s7hold').style.opacity = hc;
+    $('s7hold').style.transform = `translateY(${(1 - hc) * 40}px)`;
+    holdEls.forEach((el, i) => {
+      const c = prog(t, 38.1 + i * 0.25, 38.6 + i * 0.25);
+      el.style.opacity = c;
+      el.style.transform = `translateX(${(1 - c) * 30}px)`;
+    });
+  }
+
+  // S8
+  if (t > 41.4 && t < 46.6) {
+    $('s8shield').style.strokeDashoffset = 170 * (1 - prog(t, 42.3, 43.3, easeInOut));
+    $('s8tick').style.strokeDashoffset = 32 * (1 - prog(t, 43.1, 43.6));
+    reveal($('s8h'), t, 42.7, S.s8, 0.8);
+    reveal($('s8s'), t, 43.1, S.s8, 0.8);
+    chipEls.forEach((el, i) => reveal(el, t, 43.5 + i * 0.18, S.s8, 0.6, 20));
+  }
+
+  // S9
+  if (t > 45.4) {
+    ripple(rings2, t, 46, 140, 760);
+    const l = prog(t, 46.2, 47.0, easeBack);
+    $('s9logo').style.opacity = clamp(l);
+    $('s9logo').style.transform = `scale(${lerp(0.85, 1, l)})`;
+    const h = prog(t, 46.6, 47.4);
+    $('s9h').style.opacity = h;
+    $('s9h').style.transform = `translateY(${(1 - h) * 30}px)`;
+    $('s9h').style.filter = `blur(${(1 - h) * 10}px)`;
+    const u = prog(t, 47.3, 47.9);
+    $('s9url').style.opacity = u;
+    $('s9url').style.letterSpacing = `${0.18 + (1 - u) * 0.3}em`;
+    const m = prog(t, 47.7, 48.3);
+    $('s9meta').style.opacity = m;
+    $('s9meta').style.transform = `translateY(${(1 - m) * 20}px)`;
+    const end = prog(t, 49.3, 50, easeInOut);
+    $('stage').style.filter = `brightness(${1 - end * 0.85})`;
+  }
+};
+render(0);
+</script>
+</body>
+</html>
