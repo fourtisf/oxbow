@@ -57,6 +57,8 @@ const OUT = [
   // a live-trades card on the right. A second one says the CA is coming.
   ['apps/web/public/brand/social/oxbow-x-header-1500x500.png', 1500, 500, page(1500, 500, header({ ca: false })), false],
   ['apps/web/public/brand/social/oxbow-x-header-ca-soon-1500x500.png', 1500, 500, page(1500, 500, header({ ca: true })), false],
+  // X article cover (5:2).
+  ['apps/web/public/brand/social/oxbow-article-cover-2000x800.png', 2000, 800, page(2000, 800, cover()), false],
   // Announcement cards (X posts, Telegram pinned message): 16:9 and square.
   ['apps/web/public/brand/social/oxbow-coming-soon-1600x900.png', 1600, 900, page(1600, 900, announce(1600, 900)), false],
   ['apps/web/public/brand/social/oxbow-coming-soon-1080.png', 1080, 1080, page(1080, 1080, announce(1080, 1080)), false],
@@ -81,9 +83,9 @@ function profile(n) {
   </div>`;
 }
 
-/** X header, 1500x500. X lays the profile picture over the bottom left (about x 40-375, y 333-500): nothing goes there. */
-function header({ ca }) {
-  const row = (who, side, sol, usd, ago) => `<div style="display:flex;align-items:center;gap:16px;height:58px;padding:0 22px;border-top:1px solid rgba(170,215,255,.08)">
+/** A live-trades card like the site's feed (illustrative wallets). */
+function row(who, side, sol, usd, ago) {
+  return `<div style="display:flex;align-items:center;gap:16px;height:58px;padding:0 22px;border-top:1px solid rgba(170,215,255,.08)">
       <span style="width:30px;height:30px;border-radius:50%;flex:none;background:linear-gradient(135deg,#9ED4FF,#2F6BFF);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)"></span>
       <span style="font:500 19px Geist;color:#E6F0FF;flex:1;white-space:nowrap">${who} <span style="margin-left:6px;font:600 11px GeistMono;letter-spacing:.14em;padding:3px 7px;border-radius:6px;color:#9ECFFF;background:rgba(111,178,255,.12);box-shadow:inset 0 0 0 1px rgba(111,178,255,.3);vertical-align:3px">SMART</span></span>
       <span style="font:600 13px GeistMono;letter-spacing:.12em;padding:5px 10px;border-radius:7px;${side === 'BUY' ? 'color:#46E3A0;background:rgba(61,220,151,.12)' : 'color:#FF7A85;background:rgba(255,92,108,.12)'}">${side}</span>
@@ -91,6 +93,26 @@ function header({ ca }) {
       <span style="font:500 18px GeistMono;color:#7E93AE;width:74px;text-align:right">${usd}</span>
       <span style="font:500 15px GeistMono;color:#5F7390;width:34px;text-align:right">${ago}</span>
     </div>`;
+}
+function liveCard(width) {
+  return `<div style="width:${width}px;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,rgba(22,40,70,.72),rgba(8,15,28,.82));box-shadow:inset 0 0 0 1px rgba(170,215,255,.16),0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.4)">
+    <div style="display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 22px">
+      <span style="display:flex;align-items:center;gap:12px;font:600 15px GeistMono;letter-spacing:.2em;color:#DCEBFF"><span style="width:10px;height:10px;border-radius:50%;background:#3DDC97;box-shadow:0 0 14px #3DDC97"></span>LIVE TRADES</span>
+      <span style="font:500 13px GeistMono;letter-spacing:.14em;color:#6F86A6">SOLANA</span>
+    </div>
+    ${row('Wallet 07', 'BUY', '42.5', '$8.1K', '4s')}
+    ${row('Wallet 21', 'BUY', '18.0', '$3.4K', '11s')}
+    ${row('Wallet 03', 'SELL', '96.2', '$18K', '26s')}
+    ${row('Wallet 14', 'BUY', '7.25', '$1.4K', '41s')}
+    <div style="display:flex;align-items:center;justify-content:space-between;height:66px;padding:0 22px;border-top:1px solid rgba(170,215,255,.08);background:rgba(111,178,255,.04)">
+      <span style="font:500 17px Geist;color:#A9B8CB">Copy any trade in one tap</span>
+      <span style="height:38px;padding:0 18px;border-radius:11px;display:grid;place-items:center;font:600 15px Geist;color:#03060C;background:linear-gradient(180deg,#EAF5FF,#A8D3FF);box-shadow:0 8px 24px rgba(111,178,255,.35)">Copy trade</span>
+    </div>
+  </div>`;
+}
+
+/** X header, 1500x500. X lays the profile picture over the bottom left (about x 40-375, y 333-500): nothing goes there. */
+function header({ ca }) {
   const below = ca
     ? `<div style="display:inline-flex;align-items:center;gap:14px;height:46px;padding:0 20px 0 7px;border-radius:14px;background:rgba(111,178,255,.08);box-shadow:inset 0 0 0 1.5px rgba(111,178,255,.32)">
         <span style="height:32px;padding:0 11px;border-radius:9px;display:grid;place-items:center;font:700 14px GeistMono;letter-spacing:.14em;color:#03060C;background:linear-gradient(180deg,#EAF5FF,#A8D3FF)">CA</span>
@@ -115,21 +137,38 @@ function header({ ca }) {
       <div style="margin-top:24px;font:600 60px/1.02 Geist;letter-spacing:-.045em;color:#F1F6FF">Follow the wallets<br><span style="background:linear-gradient(92deg,#E4F2FF 0%,#9ECFFF 45%,#6FB2FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent">that move first.</span></div>
       <div style="margin-top:18px">${below}</div>
     </div>
-    <div style="position:absolute;right:96px;top:64px;width:600px;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,rgba(22,40,70,.72),rgba(8,15,28,.82));box-shadow:inset 0 0 0 1px rgba(170,215,255,.16),0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.4)">
-      <div style="display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 22px">
-        <span style="display:flex;align-items:center;gap:12px;font:600 15px GeistMono;letter-spacing:.2em;color:#DCEBFF"><span style="width:10px;height:10px;border-radius:50%;background:#3DDC97;box-shadow:0 0 14px #3DDC97"></span>LIVE TRADES</span>
-        <span style="font:500 13px GeistMono;letter-spacing:.14em;color:#6F86A6">SOLANA</span>
-      </div>
-      ${row('Wallet 07', 'BUY', '42.5', '$8.1K', '4s')}
-      ${row('Wallet 21', 'BUY', '18.0', '$3.4K', '11s')}
-      ${row('Wallet 03', 'SELL', '96.2', '$18K', '26s')}
-      ${row('Wallet 14', 'BUY', '7.25', '$1.4K', '41s')}
-      <div style="display:flex;align-items:center;justify-content:space-between;height:66px;padding:0 22px;border-top:1px solid rgba(170,215,255,.08);background:rgba(111,178,255,.04)">
-        <span style="font:500 17px Geist;color:#A9B8CB">Copy any trade in one tap</span>
-        <span style="height:38px;padding:0 18px;border-radius:11px;display:grid;place-items:center;font:600 15px Geist;color:#03060C;background:linear-gradient(180deg,#EAF5FF,#A8D3FF);box-shadow:0 8px 24px rgba(111,178,255,.35)">Copy trade</span>
-      </div>
-    </div>
+    <div style="position:absolute;right:96px;top:64px">${liveCard(600)}</div>
     ${grain(1500, 500, 0.05)}
+  </div>`;
+}
+
+/** X article cover, 2000x800 (5:2): the launch story's headline, with the live feed beside it. */
+function cover() {
+  return `<div style="position:relative;width:2000px;height:800px;overflow:hidden;background:#03060C;font-family:Geist">
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,#0A1630 0%,#050B18 70%,#03060C 100%)"></div>
+    <div style="position:absolute;left:-160px;top:-300px;width:1200px;height:1000px;background:radial-gradient(closest-side,rgba(90,160,255,.26),rgba(90,160,255,0))"></div>
+    <div style="position:absolute;right:-100px;top:-160px;width:1200px;height:1100px;background:radial-gradient(closest-side,rgba(47,107,255,.24),rgba(47,107,255,0))"></div>
+    <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:64px 64px;-webkit-mask-image:radial-gradient(ellipse at 60% 45%,#000 10%,transparent 70%);mask-image:radial-gradient(ellipse at 60% 45%,#000 10%,transparent 70%)"></div>
+    <svg width="2000" height="800" style="position:absolute;inset:0">
+      <defs>
+        <linearGradient id="rv" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3B7BFF" stop-opacity="0"/><stop offset=".35" stop-color="#6FB2FF" stop-opacity=".55"/><stop offset=".7" stop-color="#BFE2FF" stop-opacity=".7"/><stop offset="1" stop-color="#3B7BFF" stop-opacity="0"/></linearGradient>
+        <filter id="bl"><feGaussianBlur stdDeviation="12"/></filter>
+      </defs>
+      <path d="M-60 770 C 380 780, 640 690, 920 712 S 1060 770, 1210 700 S 1500 300, 2060 340" fill="none" stroke="url(#rv)" stroke-width="20" opacity=".45" filter="url(#bl)"/>
+      <path d="M-60 770 C 380 780, 640 690, 920 712 S 1060 770, 1210 700 S 1500 300, 2060 340" fill="none" stroke="url(#rv)" stroke-width="2.5"/>
+      <path d="M-60 800 C 400 810, 660 725, 935 748 S 1080 800, 1235 738 S 1525 345, 2060 385" fill="none" stroke="url(#rv)" stroke-width="1.2" stroke-dasharray="2 10" opacity=".7"/>
+    </svg>
+    <div style="position:absolute;left:150px;top:150px;width:900px">
+      ${sized(logo, 'height:72px;width:auto')}
+      <div style="margin-top:46px;display:inline-flex;align-items:center;gap:14px;padding:12px 22px;border-radius:999px;background:rgba(111,178,255,.1);box-shadow:inset 0 0 0 1.5px rgba(111,178,255,.35);font:500 20px GeistMono;letter-spacing:.2em;color:#9ECFFF">
+        <span style="width:11px;height:11px;border-radius:50%;background:#3DDC97;box-shadow:0 0 16px #3DDC97"></span>INTRODUCING OXBOW
+      </div>
+      <div style="margin-top:28px;font:600 96px/1 Geist;letter-spacing:-.045em;color:#F1F6FF">Follow the wallets<br><span style="background:linear-gradient(92deg,#E4F2FF 0%,#9ECFFF 45%,#6FB2FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent">that move first.</span></div>
+      <div style="margin-top:30px;font:500 30px/1.4 Geist;color:#A9B8CB;max-width:780px">Smart-money trades on Solana, live. Copy any of them in one tap, from your own wallet.</div>
+    </div>
+    <div style="position:absolute;right:150px;top:150px;zoom:1.25">${liveCard(600)}</div>
+    <div style="position:absolute;right:150px;bottom:64px;font:500 24px GeistMono;letter-spacing:.16em;color:#6FB2FF">OXBOWFLOW.COM</div>
+    ${grain(2000, 800, 0.05)}
   </div>`;
 }
 
