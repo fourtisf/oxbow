@@ -108,7 +108,19 @@ try {
         console.error('Give a file: one wallet per line, address then an optional label. Lines starting with # are skipped.');
         process.exit(1);
       }
-      const lines = readFileSync(rawAddress, 'utf8').split(/\r?\n/);
+      let content: string;
+      try {
+        content = readFileSync(rawAddress, 'utf8');
+      } catch (e) {
+        const code = (e as NodeJS.ErrnoException).code;
+        console.error(
+          code === 'ENOENT'
+            ? `No file at ${rawAddress}. Create it first (e.g. nano ${rawAddress}): one wallet address per line, optionally followed by a label.`
+            : `Can't read ${rawAddress}: ${(e as Error).message}`,
+        );
+        process.exit(1);
+      }
+      const lines = content.split(/\r?\n/);
       let added = 0;
       let skipped = 0;
       for (const line of lines) {
