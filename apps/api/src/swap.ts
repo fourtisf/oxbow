@@ -8,15 +8,20 @@
  * puts in (so they spend exactly what they chose); on a sell it is taken from
  * the SOL the route is expected to return. Off when no treasury is set or the
  * treasury account can't receive SOL yet (it needs its rent-exempt minimum).
+ *
+ * Before the transaction goes to the wallet it is simulated against the
+ * trader's real balances, so a trade that would fail (not enough SOL, price
+ * already past the slippage) is refused with the reason instead of reaching a
+ * wallet prompt that can only fail.
  */
 import type { FastifyInstance } from 'fastify';
-import { PublicKey, type AddressLookupTableAccount, type Connection } from '@solana/web3.js';
-import { SOL_MINT, SwapBuildBodySchema, SwapQuoteQuerySchema, type BuiltSwap, type SwapQuote, type SwapQuoteQuery } from '@oxbow/shared';
+import { PublicKey, type AddressLookupTableAccount, type Connection, type VersionedTransaction } from '@solana/web3.js';
+import { SOL_MINT, SwapBuildBodySchema, SwapQuoteQuerySchema, txFailure, type BuiltSwap, type SwapQuote, type SwapQuoteQuery } from '@oxbow/shared';
 import { composeSwapTx, feeOf, SwapAssemblyError } from '@oxbow/solana/swap';
 import { HttpError, priv, withTimeout } from './http';
 import { JupiterError, type Jupiter, type JupiterQuote } from './jupiter';
 
-export type SwapRpc = Pick<Connection, 'getLatestBlockhash' | 'getAddressLookupTable' | 'getBalance' | 'getMinimumBalanceForRentExemption'>;
+export type SwapRpc = Pick<Connection, 'getLatestBlockhash' | 'getAddressLookupTable' | 'getBalance' | 'getMinimumBalanceForRentExemption' | 'simulateTransaction'>;
 
 export interface SwapConfig {
   treasury?: string;
@@ -41,6 +46,27 @@ export function jupiterFailure(e: unknown): never {
   throw new HttpError(502, 'jupiter_unavailable');
 }
 const TREASURY_CHECK_MS = 10 * 60_000;
+const SIMULATE_MS = 6000;
+
+/**
+ * Runs `tx` against the chain as it is now (no signature needed). Throws the reason when it would
+ * fail; a node that can't answer in time lets the wallet decide.
+ */
+export async function preflight(rpc: Pick<Connection, 'simulateTransaction'>, tx: VersionedTransaction, log: (m: string) => void): Promise<void> {
+  let sim;
+  try {
+    sim = await withTimeout(rpc.simulateTransaction(tx, { sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed' }), SIMULATE_MS);
+  } catch {
+    return;
+  }
+  if (!sim.value.err) return;
+  const logs = sim.value.logs ?? [];
+  const text = `${JSON.stringify(sim.value.err)} ${logs.join(' ')}`;
+  const kind = txFailure(text);
+  const detail = (logs.find((l) => /Error Message|failed|insufficient|error/i.test(l)) ?? JSON.stringify(sim.value.err)).slice(0, 160);
+  log(`Swap would fail (${kind}): ${detail}`);
+  throw new HttpError(400, kind === 'failed' ? 'simulation_failed' : kind, { detail });
+}
 const ALT_MS = 60_000;
 
 export function registerSwapRoutes(app: FastifyInstance, ctx: Ctx) {
@@ -144,6 +170,7 @@ export function registerSwapRoutes(app: FastifyInstance, ctx: Ctx) {
         blockhash,
         fee: q.fee > 0n && config.treasury ? { to: new PublicKey(config.treasury), lamports: q.fee } : null,
       });
+      await preflight(rpc, tx, ctx.log);
       return { transaction: Buffer.from(tx.serialize()).toString('base64'), quote: q.quote, lastValidBlockHeight };
     } catch (e) {
       if (e instanceof SwapAssemblyError) {

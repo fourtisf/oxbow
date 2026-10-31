@@ -117,10 +117,19 @@ export function useInstalledWallets(): Set<string> {
 
 export type WalletErrorCode = 'NOT_INSTALLED' | 'REJECTED' | 'HARDWARE' | 'FAILED' | 'CANT_SIGN';
 export class WalletError extends Error {
-  constructor(readonly code: WalletErrorCode) {
-    super(code);
+  constructor(
+    readonly code: WalletErrorCode,
+    /** The wallet's own message, when it gave one. */
+    readonly detail = '',
+  ) {
+    super(detail ? `${code}: ${detail}` : code);
   }
 }
+
+const messageOf = (e: unknown) => {
+  const x = e as { message?: unknown; error?: { message?: unknown } } | null;
+  return String(x?.message ?? x?.error?.message ?? e ?? '').slice(0, 300);
+};
 
 /** Wallets answer a refused prompt with EIP-1193 code 4001 or a "rejected" message. */
 const rejected = (e: unknown) => {
@@ -204,7 +213,7 @@ export async function signAndSend(name: string, address: string, tx: Uint8Array,
     const [out] = (await features['solana:signTransaction'].signTransaction({ account, transaction: tx, chain: CHAIN })) as { signedTransaction: Uint8Array }[];
     signed = out!.signedTransaction;
   } catch (e) {
-    throw new WalletError(rejected(e) ? 'REJECTED' : 'FAILED');
+    throw new WalletError(rejected(e) ? 'REJECTED' : 'FAILED', messageOf(e));
   }
   return send(signed);
 }

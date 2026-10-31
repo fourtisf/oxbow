@@ -121,6 +121,8 @@ export const FLOW = {
 };
 
 export interface MockState {
+  /** Builds fail with a slippage error below this many basis points. */
+  slippageNeeded?: number;
   tracked: Set<string>;
   orders: Record<string, unknown>[];
   posts: { path: string; body: unknown }[];
@@ -201,8 +203,10 @@ export async function mockApi(page: Page, opts: { live?: unknown[]; empty?: bool
     if (tm) return tm[1] === M.meme ? json(route, tokenDetail(MEME)) : tm[1] === M.rug ? json(route, tokenDetail(RUG, true)) : json(route, { error: 'not_found' }, 404);
     if (p === '/api/swap/quote') return json(route, quoteFor(url.searchParams));
     if (p === '/api/swap/build') {
-      const b = req.postDataJSON() as Record<string, string>;
-      return json(route, { transaction: 'AQID', quote: quoteFor(new URLSearchParams(b)), lastValidBlockHeight: 1 });
+      const b = req.postDataJSON() as Record<string, string | number>;
+      // The price runs away from anything under 3% slippage.
+      if (state.slippageNeeded && Number(b.slippageBps) < state.slippageNeeded) return json(route, { error: 'slippage', detail: 'Error Message: Slippage tolerance exceeded.' }, 400);
+      return json(route, { transaction: 'AQID', quote: quoteFor(new URLSearchParams(b as Record<string, string>)), lastValidBlockHeight: 1 });
     }
     if (p.startsWith('/api/tx/')) return json(route, { status: 'confirmed' });
     if (p.startsWith('/api/wallet/') && p.endsWith('/balances')) return json(route, { [SOL]: 2.5, [M.meme]: 50_000 });

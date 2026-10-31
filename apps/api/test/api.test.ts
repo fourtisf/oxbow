@@ -459,6 +459,30 @@ describe.skipIf(!ready)('Oxbow tracker API', () => {
     });
   });
 
+  describe('trades that would fail', () => {
+    it('are refused with the reason before the wallet is asked', async () => {
+      const body = { wallet: addr(), inputMint: WSOL, outputMint: M.meme, amount: '1000000000', slippageBps: 100 };
+      chain.simulateLogs = ['Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 invoke [1]', 'Program log: AnchorError occurred. Error Code: SlippageToleranceExceeded. Error Number: 6001. Error Message: Slippage tolerance exceeded.'];
+      expect((await app().inject({ method: 'POST', url: '/api/swap/build', payload: body })).json()).toMatchObject({ error: 'slippage' });
+      chain.simulateLogs = ['Transfer: insufficient lamports 19000000, need 1000000000'];
+      chain.simulateErr = { InstructionError: [2, { Custom: 1 }] };
+      expect((await app().inject({ method: 'POST', url: '/api/swap/build', payload: body })).json()).toMatchObject({ error: 'insufficient_sol' });
+      chain.simulateLogs = null;
+      expect((await app().inject({ method: 'POST', url: '/api/swap/build', payload: body })).statusCode).toBe(200);
+    });
+
+    it('says why the node refused a send', async () => {
+      const unsigned = BuiltSwapSchema.parse((await app().inject({ method: 'POST', url: '/api/swap/build', payload: { wallet: addr(), inputMint: WSOL, outputMint: M.meme, amount: '1000000000' } })).json()).transaction;
+      chain.sendError = 'Transaction simulation failed: Blockhash not found';
+      expect((await post('/api/tx/send', { transaction: unsigned })).body).toMatchObject({ error: 'expired' });
+      chain.sendError = 'Transaction simulation failed: Error processing Instruction 3: custom program error: 0x1771';
+      expect((await post('/api/tx/send', { transaction: unsigned })).body).toMatchObject({ error: 'slippage' });
+      chain.sendError = 'Transaction simulation failed: something else';
+      expect((await post('/api/tx/send', { transaction: unsigned })).body).toMatchObject({ error: 'send_failed', detail: expect.stringContaining('something else') });
+      chain.sendError = null;
+    });
+  });
+
   describe('transactions', () => {
     it('reports status and refuses garbage', async () => {
       expect((await get(`/api/tx/${sig()}`)).body).toEqual({ status: 'confirmed' });

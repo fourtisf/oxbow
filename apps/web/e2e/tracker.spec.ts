@@ -245,6 +245,41 @@ test.describe('copy trading', () => {
     await expect(panel.getByRole('alert')).toHaveText('Cancelled in your wallet.');
   });
 
+  test('when the price moves past the slippage, says so and offers more', async ({ page }) => {
+    const api = await mockApi(page);
+    api.slippageNeeded = 300;
+    await fakePhantom(page);
+    await page.goto(`/token/${M.meme}`);
+    await page.getByRole('button', { name: 'Select Wallet' }).first().click();
+    await acceptTermsIfAsked(page);
+    await page.getByRole('dialog', { name: 'Select wallet' }).getByRole('button', { name: 'Phantom', exact: true }).click();
+    await page.locator('.tacts').getByRole('button', { name: 'Buy' }).click();
+    const panel = page.getByRole('dialog', { name: 'Buy MEME' });
+    await panel.getByRole('button', { name: '0.1 SOL' }).click();
+    await panel.getByRole('button', { name: 'Buy MEME' }).click();
+    await expect(panel.getByRole('alert')).toContainText('The price moved more than your slippage allows');
+    await panel.getByRole('button', { name: 'Use 3% slippage' }).click();
+    await expect(panel.getByRole('button', { name: '3%', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await panel.getByRole('button', { name: 'Buy MEME' }).click();
+    await expect(panel.getByRole('heading', { name: 'Bought MEME' })).toBeVisible();
+  });
+
+  test('the trade panel fits a short laptop screen: no sideways scroll, the button in reach', async ({ page }) => {
+    test.skip(test.info().project.name === 'mobile', 'desktop layout');
+    await page.setViewportSize({ width: 1366, height: 640 });
+    await mockApi(page);
+    await page.goto(`/token/${M.meme}`);
+    await page.locator('.tacts').getByRole('button', { name: 'Buy' }).click();
+    const panel = page.getByRole('dialog', { name: 'Buy MEME' });
+    await panel.getByRole('button', { name: '0.1 SOL' }).click();
+    await expect(panel.locator('.tp-quote')).toBeVisible();
+    const box = await panel.locator('.modal-scroll').evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }));
+    expect(box.sw).toBeLessThanOrEqual(box.cw);
+    const go = panel.getByRole('button', { name: 'Connect wallet' });
+    await go.scrollIntoViewIfNeeded();
+    await expect(go).toBeInViewport();
+  });
+
   test('a token that failed the safety check needs an explicit acknowledgement', async ({ page }) => {
     await mockApi(page);
     await fakePhantom(page);

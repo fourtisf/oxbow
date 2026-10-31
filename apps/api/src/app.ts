@@ -11,19 +11,7 @@ import Fastify, { type FastifyBaseLogger } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import type { Redis } from 'ioredis';
 import { z, ZodError } from 'zod';
-import {
-  AddressSchema,
-  AddWalletBodySchema,
-  FeedQuerySchema,
-  SendTxBodySchema,
-  SignatureSchema,
-  SOL_MINT,
-  type FeedTrade,
-  type HealthState,
-  type Status,
-  type TokenSearchResult,
-  type TxStatus,
-} from '@oxbow/shared';
+import { AddressSchema, AddWalletBodySchema, FeedQuerySchema, SendTxBodySchema, SignatureSchema, SOL_MINT, type FeedTrade, type HealthState, type Status, type TokenSearchResult, type TxStatus, txFailure } from '@oxbow/shared';
 import type { PrismaClient } from '@oxbow/db';
 import { fetchJsonSafely } from '@oxbow/solana/safe-fetch';
 import type { AccountReader } from '@oxbow/solana/token';
@@ -50,6 +38,7 @@ export type ChainReader = AccountReader &
     | 'getAddressLookupTable'
     | 'getSignatureStatuses'
     | 'sendRawTransaction'
+    | 'simulateTransaction'
     | 'getBalance'
     | 'getMinimumBalanceForRentExemption'
     | 'getParsedTokenAccountsByOwner'
@@ -402,10 +391,14 @@ export async function buildApp(deps: Deps) {
       throw new HttpError(400, 'bad_transaction');
     }
     try {
-      const signature = await withTimeout(deps.rpc.sendRawTransaction(bytes, { skipPreflight: false, maxRetries: 3 }), 12_000);
+      const signature = await withTimeout(deps.rpc.sendRawTransaction(bytes, { skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 3 }), 12_000);
       return { signature };
     } catch (e) {
-      throw new HttpError(400, 'send_failed', { detail: (e as Error).message.slice(0, 200) });
+      // The node's preflight refused it: say why (price moved past the slippage, not enough SOL, took too long to sign).
+      const err = e as Error & { logs?: string[]; transactionLogs?: string[] };
+      const text = `${err.message} ${(err.logs ?? err.transactionLogs ?? []).join(' ')}`;
+      const kind = txFailure(text);
+      throw new HttpError(400, kind === 'failed' ? 'send_failed' : kind, { detail: err.message.slice(0, 200) });
     }
   });
 

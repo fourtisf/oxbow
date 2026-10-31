@@ -51,6 +51,7 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
   const [input, setInput] = useState('');
   const [step, setStep] = useState<number | null>(null);
   const [error, setError] = useState<TradeErrorCode | null>(null);
+  const [errorDetail, setErrorDetail] = useState('');
   const [done, setDone] = useState<string | null>(null);
   const [ack, setAck] = useState(false);
   const token = target!.token;
@@ -90,6 +91,8 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
   }, [side]);
 
   const insufficient = balIn !== null && Number(input || 0) > balIn + 1e-12;
+  /** One step up the slippage choices, offered when the price moved past the current one. */
+  const nextSlippage = SLIPPAGE_BPS.find((b) => b > slippageBps) ?? null;
   const highImpact = !!q && q.priceImpactPct > HIGH_IMPACT_PCT;
   const needsAck = !!target!.danger && buy;
   const canSubmit = !!q && !insufficient && step === null && (!needsAck || ack);
@@ -101,6 +104,7 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
     }
     if (!q) return;
     setError(null);
+    setErrorDetail('');
     try {
       const r = await executeSwap(wallet, { inputMint: inMint, outputMint: outMint, amount: raw, slippageBps }, (s) => setStep(s));
       setDone(r.signature);
@@ -109,6 +113,7 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
       void qc.invalidateQueries({ queryKey: ['balances'] });
     } catch (e) {
       setError(e instanceof TradeError ? e.code : 'FAILED');
+      setErrorDetail(e instanceof TradeError ? e.detail : '');
     } finally {
       setStep(null);
     }
@@ -268,9 +273,15 @@ function Panel({ onBusy }: { onBusy: (b: boolean) => void }) {
             </ol>
           )}
           {error && (
-            <p className="err" role="alert">
-              {t.trade.errors[error]}
-            </p>
+            <div className="tp-err" role="alert">
+              <p className="err">{t.trade.errors[error]}</p>
+              {error === 'SLIPPAGE' && nextSlippage && (
+                <button type="button" className="chip" onClick={() => setSlippage(nextSlippage)}>
+                  {t.trade.useSlippage(`${nextSlippage / 100}%`)}
+                </button>
+              )}
+              {error === 'FAILED' && errorDetail && <p className="fine mono">{errorDetail}</p>}
+            </div>
           )}
 
           <Button block size="lg" className={buy ? undefined : 'sellbtn'} onClick={submit} disabled={wallet ? !canSubmit : false}>

@@ -119,7 +119,8 @@ export function Modal({ open, onClose, label, busy, children }: { open: boolean;
       >
         <div className="card modal-card" ref={card}>
           <BracketCorners />
-          {children}
+          {/* Scrolls on its own so the corners stay on the frame on short screens. */}
+          <div className="modal-scroll">{children}</div>
         </div>
       </div>
     </Portal>

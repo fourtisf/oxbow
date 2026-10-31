@@ -7,12 +7,15 @@
  * wallet's own prompt.
  */
 import { z } from 'zod';
-import { BalancesSchema, BuiltLimitSchema, BuiltSwapSchema, SwapQuoteSchema, TxStatusSchema, type LimitCreateBody, type SwapQuote, type SwapQuoteQuery } from '@oxbow/shared';
+import { BalancesSchema, BuiltLimitSchema, BuiltSwapSchema, SwapQuoteSchema, TxStatusSchema, txFailure, type LimitCreateBody, type SwapQuote, type SwapQuoteQuery } from '@oxbow/shared';
 import { ApiError, get, post, qs } from './api/http';
 import type { ConnectedWallet } from './store/wallet';
 import { signAndSend, WalletError } from './wallets';
 
-export type TradeErrorCode = 'REJECTED' | 'CANT_SIGN' | 'TX_FAILED' | 'TIMEOUT' | 'NO_ROUTE' | 'FAILED' | 'REJECTED_BY_JUPITER' | 'BUSY';
+export type TradeErrorCode = 'REJECTED' | 'CANT_SIGN' | 'TX_FAILED' | 'TIMEOUT' | 'NO_ROUTE' | 'FAILED' | 'REJECTED_BY_JUPITER' | 'BUSY' | 'SLIPPAGE' | 'INSUFFICIENT_SOL' | 'EXPIRED';
+
+/** What the API or the wallet said went wrong, as the panel's reasons. */
+const FAILURE_CODES = { slippage: 'SLIPPAGE', insufficient_sol: 'INSUFFICIENT_SOL', expired: 'EXPIRED' } as const;
 
 export class TradeError extends Error {
   constructor(
@@ -32,9 +35,17 @@ export function asTradeError(e: unknown): TradeError {
   if (e instanceof TradeError) return e;
   if (e instanceof ApiError && e.code === 'jupiter_busy') return new TradeError('BUSY');
   if (e instanceof ApiError && e.code === 'limit_rejected') return new TradeError('REJECTED_BY_JUPITER', String(e.details.detail ?? ''));
-  if (e instanceof WalletError) return new TradeError(e.code === 'REJECTED' ? 'REJECTED' : e.code === 'CANT_SIGN' ? 'CANT_SIGN' : 'FAILED');
+  if (e instanceof ApiError && e.code in FAILURE_CODES) return new TradeError(FAILURE_CODES[e.code as keyof typeof FAILURE_CODES], String(e.details.detail ?? ''));
+  if (e instanceof WalletError) {
+    if (e.code === 'REJECTED') return new TradeError('REJECTED');
+    if (e.code === 'CANT_SIGN') return new TradeError('CANT_SIGN');
+    // The wallet simulated it and refused: its message says why.
+    const kind = txFailure(e.detail);
+    return new TradeError(kind === 'failed' ? 'FAILED' : FAILURE_CODES[kind], e.detail);
+  }
   if (e instanceof ApiError && (e.code === 'no_route' || e.code === 'sol_side_required')) return new TradeError('NO_ROUTE');
-  return new TradeError('FAILED');
+  if (e instanceof ApiError) return new TradeError('FAILED', String(e.details.detail ?? e.code));
+  return new TradeError('FAILED', e instanceof Error ? e.message.slice(0, 200) : '');
 }
 
 export type QuoteInput = Pick<SwapQuoteQuery, 'inputMint' | 'outputMint' | 'slippageBps'> & { amount: bigint };
@@ -74,7 +85,10 @@ async function signBuilt(wallet: ConnectedWallet, build: () => Promise<{ transac
     await confirmed(signature);
     return signature;
   } catch (e) {
-    throw asTradeError(e);
+    const err = asTradeError(e);
+    // The full story for whoever opens the console.
+    console.warn('Trade not completed:', err.code, err.detail || '', e);
+    throw err;
   }
 }
 

@@ -229,7 +229,16 @@ export class FakeChain {
   async getSignatureStatuses(sigs: string[]) {
     return { context: { slot: 1 }, value: sigs.map(() => ({ slot: 1, confirmations: null, err: null, confirmationStatus: 'confirmed' as const })) };
   }
+  /** Set to make simulations fail with these logs (and this error). */
+  simulateLogs: string[] | null = null;
+  simulateErr: object = { InstructionError: [3, { Custom: 6001 }] };
+  async simulateTransaction() {
+    return { context: { slot: 1 }, value: this.simulateLogs ? { err: this.simulateErr, logs: this.simulateLogs, accounts: null, unitsConsumed: 0, returnData: null } : { err: null, logs: [], accounts: null, unitsConsumed: 0, returnData: null } };
+  }
+  /** Set to make sends fail with this message, the way web3.js reports a refused preflight. */
+  sendError: string | null = null;
   async sendRawTransaction() {
+    if (this.sendError) throw new Error(this.sendError);
     return sig();
   }
   async getParsedTokenAccountsByOwner(owner: PublicKey, filter: { programId?: PublicKey; mint?: PublicKey }) {
