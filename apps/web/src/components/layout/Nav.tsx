@@ -6,6 +6,7 @@ import { useT } from '@/i18n/client';
 import { NAV, social } from '@/lib/site';
 import { BookIcon, PulseIcon, StarIcon, WalletIcon, XLogo } from '../ui/Icons';
 import { BrandMark } from './BrandMark';
+import { CaChip } from './CaChip';
 import { WalletButton } from './WalletButton';
 
 const ICONS = {
@@ -52,6 +53,7 @@ export function Nav() {
           )}
         </nav>
         <div className="nav-end">
+          <CaChip className="nav-ca" />
           <span className="netpill">
             <span className="live" aria-hidden="true" />
             {t.nav.mainnet}

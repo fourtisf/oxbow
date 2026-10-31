@@ -41,10 +41,21 @@ test('main navigation marks the current page', async ({ page, isMobile }) => {
   await expect(nav.getByRole('link', { name: /Wallets/ })).toHaveAttribute('aria-current', 'page');
 });
 
-test('footer lists X and Telegram as coming soon until their links are set', async ({ page }) => {
+test('footer links Oxbow on X, lists Telegram as coming soon, and shows the CA as coming soon', async ({ page }) => {
   await mockApi(page);
   await page.goto('/docs');
   const community = page.locator('footer .fgrid > div').filter({ has: page.getByRole('heading', { name: 'Community' }) });
-  await expect(community.locator('.fsoon')).toHaveText(['X Soon', 'Telegram Soon']);
-  await expect(community.getByRole('link')).toHaveCount(0);
+  await expect(community.getByRole('link', { name: 'X' })).toHaveAttribute('href', 'https://x.com/oxbowflow');
+  await expect(community.locator('.fsoon')).toHaveText(['Telegram Soon']);
+  await expect(community.locator('.cachip')).toHaveText('CAComing soon');
+});
+
+test('the CA is shown as coming soon in the hero and the nav', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+  await expect(page.locator('.hero .ca.soon')).toContainText('Coming soon');
+  // Phones: the hero and footer carry it; the nav has no room.
+  if (test.info().project.name === 'mobile') return;
+  await expect(page.locator('.nav .cachip.soon')).toBeVisible();
+  await expect(page.locator('.nav').getByRole('link', { name: 'Oxbow on X' })).toHaveAttribute('href', 'https://x.com/oxbowflow');
 });

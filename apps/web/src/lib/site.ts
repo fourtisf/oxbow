@@ -1,9 +1,12 @@
 /** https URL from env, or null while the account doesn't exist yet. */
 const link = (v: string | undefined) => (v && /^https:\/\/\S+$/.test(v.trim()) ? v.trim() : null);
 
+/** Oxbow's official X account; NEXT_PUBLIC_X_URL overrides it. */
+const OFFICIAL_X = 'https://x.com/oxbowflow';
+
 /** Official social accounts (NEXT_PUBLIC_X_URL, NEXT_PUBLIC_TELEGRAM_URL). Unset ones show as "Soon". */
 export const social = {
-  x: link(process.env.NEXT_PUBLIC_X_URL),
+  x: link(process.env.NEXT_PUBLIC_X_URL) ?? OFFICIAL_X,
   telegram: link(process.env.NEXT_PUBLIC_TELEGRAM_URL),
 };
 

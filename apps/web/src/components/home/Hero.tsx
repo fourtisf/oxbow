@@ -27,9 +27,9 @@ export function Hero() {
         </h1>
         <p className="lede">{t.home.lede}</p>
         <AddWallet big />
-        <div className="ca">
-          <span className="label">CA</span>
-          <span className="mono cav">{ca ?? t.home.caSoon}</span>
+        <div className={ca ? 'ca' : 'ca soon'}>
+          <span className="tag">CA</span>
+          <span className="addr-t">{ca ?? t.home.caSoon}</span>
           {ca && (
             <button type="button" className="icon-btn" aria-label={t.home.copyCa} onClick={() => copyText(ca)}>
               <CopyIcon />

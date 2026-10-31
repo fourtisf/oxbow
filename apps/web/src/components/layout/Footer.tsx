@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { getT } from '@/i18n/server';
-import { social } from '@/lib/site';
+import { social, xHandle } from '@/lib/site';
 import { BrandMark } from './BrandMark';
+import { CaChip } from './CaChip';
 
 export function Footer() {
   const t = getT();
@@ -34,8 +35,9 @@ export function Footer() {
           </div>
           <div>
             <h2>{t.footer.community}</h2>
-            <SocialLink href={social.x} label="X" soon={t.footer.soon} />
+            <SocialLink href={social.x} label={xHandle ? `X ${xHandle}` : 'X'} soon={t.footer.soon} />
             <SocialLink href={social.telegram} label="Telegram" soon={t.footer.soon} />
+            <CaChip className="foot-ca" />
           </div>
         </div>
         <div className="fbot">
